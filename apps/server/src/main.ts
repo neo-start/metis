@@ -415,7 +415,9 @@ const makeServerProgram = (input: CliInput) =>
         : localUrl;
     const pairingBaseUrl = config.publicUrl?.origin ?? bindUrl;
     const startupPairingUrl =
-      config.publicUrl || !isLoopbackHost(config.host)
+      config.publicUrl ||
+      !isLoopbackHost(config.host) ||
+      (config.mode === "web" && config.authToken)
         ? yield* serverAuth.issueStartupPairingUrl(pairingBaseUrl).pipe(
             Effect.mapError(
               (cause) =>
@@ -479,7 +481,9 @@ const makeServerProgram = (input: CliInput) =>
       yield* Effect.logInfo(
         config.publicUrl
           ? "Remote access requires an authenticated owner session"
-          : "Insecure remote pairing link created",
+          : isLoopbackHost(config.host)
+            ? "Local authenticated owner pairing link created"
+            : "Insecure remote pairing link created",
         {
           pairingUrl: startupPairingUrl,
           hint:

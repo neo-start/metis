@@ -123,7 +123,7 @@ describe("agent gateway device tools surface", () => {
     expect(description("device_list")).toContain("use an already-booted device");
     expect(description("device_boot")).toContain("only when device_list finds nothing booted");
     expect(description("device_boot")).toContain("boot-limit-reached");
-    expect(description("device_install")).toContain("Synara never builds");
+    expect(description("device_install")).toContain("Metis never builds");
     expect(description("device_install")).toContain("xcodebuild");
     expect(description("device_launch")).toContain("com.apple.Preferences");
     expect(description("device_open_url")).toContain("exp://127.0.0.1:8081");

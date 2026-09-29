@@ -34,6 +34,7 @@ import {
   type ProviderRuntimeEvent,
   type ProviderKind,
   type ProviderSession,
+  isCodexProviderKind,
 } from "@synara/contracts";
 import {
   providerSupportsAutoRuntimeMode,
@@ -138,6 +139,7 @@ const PROVIDER_RUNTIME_IDLE_STOP_MS = Number.isFinite(Number(configuredProviderR
   ? Math.max(0, Number(configuredProviderRuntimeIdleStopMs))
   : DEFAULT_PROVIDER_RUNTIME_IDLE_STOP_MS;
 const MAX_TARGETED_CHILD_INTERRUPT_TOMBSTONES = 16_384;
+const MAX_SETTLED_RUNTIME_TASK_TOMBSTONES_PER_THREAD = 1_024;
 
 function validateAutoRuntimeMode(
   operation: string,
@@ -517,7 +519,13 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
     );
     const runtimeEventProducerScope = yield* Scope.make("sequential");
     const runtimeIdleTimers = new Map<ThreadId, ReturnType<typeof setTimeout>>();
-    const liveRuntimeTaskIds = new Map<ThreadId, Set<string>>();
+    // Live provider-native task ids per thread, with the description from
+    // task.started so callers can name what still owns the runtime.
+    const liveRuntimeTaskIds = new Map<ThreadId, Map<string, string | undefined>>();
+    // Recently settled task ids per thread. Late progress or metadata-only
+    // patches for them must not resurrect a task whose terminal event already
+    // arrived; only a new task.started (e.g. a resumed agent) revives one.
+    const settledRuntimeTaskIds = new Map<ThreadId, Set<string>>();
     const runtimeTaskSettlementWaiters = new Map<ThreadId, Set<() => void>>();
     // Fired idle callbacks outlive their timer map entry, so use generations to
     // invalidate async stop work when new user work starts in that gap.
@@ -583,11 +591,36 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
       runtimeIdleTimers.set(threadId, timer);
     };
 
-    const markRuntimeTaskLive = (threadId: ThreadId, taskId: string): void => {
-      const taskIds = liveRuntimeTaskIds.get(threadId) ?? new Set<string>();
-      taskIds.add(taskId);
+    const markRuntimeTaskLive = (
+      threadId: ThreadId,
+      taskId: string,
+      description?: string | undefined,
+    ): void => {
+      const taskIds = liveRuntimeTaskIds.get(threadId) ?? new Map<string, string | undefined>();
+      taskIds.set(taskId, description ?? taskIds.get(taskId));
       liveRuntimeTaskIds.set(threadId, taskIds);
       clearRuntimeIdleTimer(threadId);
+    };
+
+    const isRuntimeTaskTombstoned = (threadId: ThreadId, taskId: string): boolean =>
+      settledRuntimeTaskIds.get(threadId)?.has(taskId) === true;
+
+    const tombstoneRuntimeTask = (threadId: ThreadId, taskId: string): void => {
+      const taskIds = settledRuntimeTaskIds.get(threadId) ?? new Set<string>();
+      taskIds.delete(taskId);
+      taskIds.add(taskId);
+      while (taskIds.size > MAX_SETTLED_RUNTIME_TASK_TOMBSTONES_PER_THREAD) {
+        const oldest = taskIds.values().next().value;
+        if (oldest === undefined) break;
+        taskIds.delete(oldest);
+      }
+      settledRuntimeTaskIds.set(threadId, taskIds);
+    };
+
+    const reviveRuntimeTask = (threadId: ThreadId, taskId: string): void => {
+      const taskIds = settledRuntimeTaskIds.get(threadId);
+      taskIds?.delete(taskId);
+      if (taskIds?.size === 0) settledRuntimeTaskIds.delete(threadId);
     };
 
     const resolveRuntimeTaskSettlementWaiters = (threadId: ThreadId): void => {
@@ -599,6 +632,12 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
     const clearLiveRuntimeTasks = (threadId: ThreadId): void => {
       liveRuntimeTaskIds.delete(threadId);
       resolveRuntimeTaskSettlementWaiters(threadId);
+    };
+
+    // The runtime that owned these task ids is gone; forget their tombstones too.
+    const forgetRuntimeTasks = (threadId: ThreadId): void => {
+      settledRuntimeTaskIds.delete(threadId);
+      clearLiveRuntimeTasks(threadId);
     };
 
     const waitForLiveRuntimeTasksToSettle = (threadId: ThreadId): Effect.Effect<void> =>
@@ -753,22 +792,36 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
           clearRuntimeIdleTimer(event.threadId);
           return;
         case "task.started":
-        case "task.progress":
-          markRuntimeTaskLive(event.threadId, event.payload.taskId);
+          reviveRuntimeTask(event.threadId, event.payload.taskId);
+          markRuntimeTaskLive(event.threadId, event.payload.taskId, event.payload.description);
           return;
-        case "task.updated":
-          if (
-            event.payload.status === "completed" ||
-            event.payload.status === "failed" ||
-            event.payload.status === "killed" ||
-            event.payload.status === "paused"
-          ) {
-            markRuntimeTaskSettled(event.threadId, event.payload.taskId);
-          } else {
+        case "task.progress":
+          if (!isRuntimeTaskTombstoned(event.threadId, event.payload.taskId)) {
             markRuntimeTaskLive(event.threadId, event.payload.taskId);
           }
           return;
+        case "task.updated":
+          switch (event.payload.status) {
+            case "completed":
+            case "failed":
+            case "killed":
+              tombstoneRuntimeTask(event.threadId, event.payload.taskId);
+              markRuntimeTaskSettled(event.threadId, event.payload.taskId);
+              return;
+            case "paused":
+              markRuntimeTaskSettled(event.threadId, event.payload.taskId);
+              return;
+            case undefined:
+              // Metadata-only patches (backgrounding, workflow launch details)
+              // say nothing about liveness and may arrive after settlement.
+              return;
+            default:
+              reviveRuntimeTask(event.threadId, event.payload.taskId);
+              markRuntimeTaskLive(event.threadId, event.payload.taskId);
+              return;
+          }
         case "task.completed":
+          tombstoneRuntimeTask(event.threadId, event.payload.taskId);
           markRuntimeTaskSettled(event.threadId, event.payload.taskId);
           return;
         case "session.started":
@@ -784,13 +837,13 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
             event.payload.state === "closed"
           ) {
             if (event.payload.state === "archived" || event.payload.state === "closed") {
-              clearLiveRuntimeTasks(event.threadId);
+              forgetRuntimeTasks(event.threadId);
             }
             scheduleRuntimeIdleStop(event.threadId);
           }
           return;
         case "session.exited":
-          clearLiveRuntimeTasks(event.threadId);
+          forgetRuntimeTasks(event.threadId);
           // Adapters may emit this before descendant cleanup is verified.
           // An owned idle teardown must keep its retry until the barrier passes.
           if (runtimeIdleCleanupGenerations.has(event.threadId)) {
@@ -2355,10 +2408,9 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
               const forkedOption = yield* adapter.forkThread!({
                 threadId: input.threadId,
                 sourceThreadId: ThreadId.makeUnsafe(input.externalThreadId),
-                sourceResumeCursor:
-                  input.provider === "codex"
-                    ? { threadId: input.externalThreadId }
-                    : { resume: input.externalThreadId },
+                sourceResumeCursor: isCodexProviderKind(input.provider)
+                  ? { threadId: input.externalThreadId }
+                  : { resume: input.externalThreadId },
                 sourceCwd: input.sourceCwd,
                 ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
                 modelSelection: input.modelSelection,
@@ -2377,7 +2429,7 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
               }
               const forked = forkedOption.value;
               const nativeCopyId = runtimePayloadRecord(forked.resumeCursor)[
-                input.provider === "codex" ? "threadId" : "resume"
+                isCodexProviderKind(input.provider) ? "threadId" : "resume"
               ];
               if (
                 forked.threadId !== input.threadId ||
@@ -3088,8 +3140,49 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
     const stopRuntimeSession: StopRuntimeSession = (rawInput) =>
       stopRuntimeSessionInternal(rawInput);
 
+    // A terminal task event can be lost (provider crash paths, protocol gaps),
+    // which would otherwise pin the id forever: it blocks compaction, restart
+    // recovery and the idle stop. When the adapter can vouch for its complete
+    // live-task set, settle tracked ids it no longer knows. Adapters that cannot
+    // vouch leave tracking untouched, so real background work keeps blocking.
+    const reconcileLiveRuntimeTasksWithAdapter = (threadId: ThreadId): Effect.Effect<void> =>
+      Effect.gen(function* () {
+        const tracked = liveRuntimeTaskIds.get(threadId);
+        if (!tracked || tracked.size === 0) return;
+        const binding = Option.getOrUndefined(yield* directory.getBinding(threadId));
+        if (!binding) return;
+        const adapter = yield* registry.getByProvider(binding.provider);
+        if (!adapter.getLiveTaskIds) return;
+        const adapterTaskIds = yield* adapter.getLiveTaskIds(threadId);
+        if (!adapterTaskIds) return;
+        for (const taskId of Array.from(liveRuntimeTaskIds.get(threadId)?.keys() ?? [])) {
+          if (adapterTaskIds.has(taskId)) continue;
+          yield* Effect.logWarning(
+            "provider service settling runtime task the adapter no longer tracks",
+            {
+              threadId,
+              taskId,
+            },
+          );
+          markRuntimeTaskSettled(threadId, taskId);
+        }
+      }).pipe(Effect.orElseSucceed(() => undefined));
+
+    const listLiveRuntimeTasks: NonNullable<ProviderServiceShape["listLiveRuntimeTasks"]> = (
+      input,
+    ) =>
+      reconcileLiveRuntimeTasksWithAdapter(input.threadId).pipe(
+        Effect.map(() =>
+          Array.from(
+            liveRuntimeTaskIds.get(input.threadId)?.entries() ?? [],
+            ([taskId, description]) =>
+              description === undefined ? { taskId } : { taskId, description },
+          ),
+        ),
+      );
+
     const hasLiveRuntimeTasks: NonNullable<ProviderServiceShape["hasLiveRuntimeTasks"]> = (input) =>
-      Effect.sync(() => (liveRuntimeTaskIds.get(input.threadId)?.size ?? 0) > 0);
+      listLiveRuntimeTasks(input).pipe(Effect.map((tasks) => tasks.length > 0));
 
     stopIdleRuntimeSession = (threadId, generation, cleanupStarted = false) => {
       const stopEffect = Effect.gen(function* () {
@@ -3133,6 +3226,16 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
           session.activeTurnId !== undefined ||
           (liveRuntimeTaskIds.get(threadId)?.size ?? 0) > 0
         ) {
+          retireRuntimeIdleGeneration(threadId, generation);
+          return;
+        }
+        // The adapter may still track background work whose task.started this
+        // service never kept (e.g. after a reconciliation settled it early).
+        // Stopping the runtime would kill that work.
+        const adapterTaskIds = adapter.getLiveTaskIds
+          ? yield* adapter.getLiveTaskIds(threadId)
+          : undefined;
+        if (adapterTaskIds !== undefined && adapterTaskIds.size > 0) {
           retireRuntimeIdleGeneration(threadId, generation);
           return;
         }
@@ -3501,6 +3604,7 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
           ])) {
             clearLiveRuntimeTasks(threadId);
           }
+          settledRuntimeTaskIds.clear();
           runtimeIdleGenerations.clear();
           runtimeIdleCleanupGenerations.clear();
           runtimeIdleStopsInFlight.clear();
@@ -3547,6 +3651,7 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
       stopSession,
       stopRuntimeSession,
       hasLiveRuntimeTasks,
+      listLiveRuntimeTasks,
       clearSessionResumeCursor,
       listSessions,
       getCapabilities,

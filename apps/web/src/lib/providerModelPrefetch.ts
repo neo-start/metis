@@ -6,7 +6,12 @@
 // Layer: Web lib
 // Exports: resolve + prefetch helpers that mirror ChatView's listModels query keys.
 
-import type { ProviderKind, ServerProviderStatus, ServerSettings } from "@synara/contracts";
+import {
+  isCodexProviderKind,
+  type ProviderKind,
+  type ServerProviderStatus,
+  type ServerSettings,
+} from "@synara/contracts";
 import type { QueryClient } from "@tanstack/react-query";
 
 import type { AppSettings } from "../appSettings";
@@ -45,6 +50,7 @@ export type ProviderModelPrefetchSettings = Pick<
  */
 export const NEW_THREAD_MODEL_PREFETCH_PROVIDERS: ReadonlyArray<Exclude<ProviderKind, "droid">> = [
   "codex",
+  "codexSecondary",
   "claudeAgent",
   "cursor",
   "antigravity",
@@ -131,6 +137,8 @@ export function providerModelsPrefetchQueryOptions(input: {
       });
     case "codex":
       return providerModelsQueryOptions({ provider: "codex", priority });
+    case "codexSecondary":
+      return providerModelsQueryOptions({ provider: "codexSecondary", priority });
     case "cursor":
       return providerModelsQueryOptions({
         provider: "cursor",
@@ -231,7 +239,7 @@ export function prefetchProviderModelsForNewThread(
     void queryClient.prefetchQuery({
       ...modelsOptions,
       retry:
-        provider === "codex" || provider === "claudeAgent"
+        isCodexProviderKind(provider) || provider === "claudeAgent"
           ? 0
           : providerModelDiscoveryRetry(provider),
       staleTime:

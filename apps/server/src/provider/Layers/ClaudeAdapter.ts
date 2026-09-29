@@ -109,6 +109,7 @@ import {
 
 import { buildClaudeMcpServers } from "../../agentGateway/mcpInjection.ts";
 import { renderSynaraHarnessPolicy } from "../../agentGateway/harnessPolicy.ts";
+import { renderMetisMemoryContextForThread } from "../../metisMemory/memoryContext.ts";
 import { shouldAllowSynaraComputerProviderTool } from "../../agentGateway/computerToolPermission.ts";
 import { AgentGatewayCredentials } from "../../agentGateway/Services/AgentGatewayCredentials.ts";
 import { PROVIDER_ADAPTER_RUNTIME_EVENT_BUFFER_CAPACITY } from "../Services/ProviderAdapter.ts";
@@ -439,6 +440,10 @@ interface ClaudeSessionContext {
   // seed the set because they can race the aggregate snapshot and suppress its
   // "Moved to background" notice entirely.
   readonly knownBackgroundTaskIds: Set<string>;
+  // True once this runtime has delivered at least one background_tasks_changed
+  // snapshot. Until then knownBackgroundTaskIds cannot prove that no background
+  // task is running (older CLIs never send the snapshot).
+  backgroundTaskSnapshotObserved: boolean;
   // Task ids with provider-terminal evidence. Agent-scoped human interactions
   // are cancelled only on this evidence (or whole-session stop), never merely
   // because their parent foreground turn completed.
@@ -1094,6 +1099,38 @@ function hasActiveClaudeRuntimeWork(context: ClaudeSessionContext): boolean {
   );
 }
 
+// Task ids this runtime can prove are still running, or undefined when it
+// cannot vouch for the complete set. With no parent turn in flight, every
+// running provider task is either a background task (reported through the
+// REPLACE-semantics background_tasks_changed snapshot) or a subagent run. Live
+// workflows and active subagent turns can own member tasks the adapter does not
+// track individually, so they make the answer unknown rather than empty.
+function claudeAuthoritativeLiveTaskIds(
+  context: ClaudeSessionContext,
+): ReadonlySet<string> | undefined {
+  if (
+    context.stopped ||
+    context.turnState !== undefined ||
+    (context.pendingDispatches ?? 0) > 0 ||
+    !context.backgroundTaskSnapshotObserved ||
+    context.liveWorkflowTaskIds.size > 0 ||
+    context.pendingApprovals.size > 0 ||
+    context.pendingUserInputs.size > 0
+  ) {
+    return undefined;
+  }
+  const taskIds = new Set(context.knownBackgroundTaskIds);
+  for (const run of context.subagentRuns.values()) {
+    if (run.context.turnState !== undefined) {
+      return undefined;
+    }
+    if (run.taskId !== undefined) {
+      taskIds.add(run.taskId);
+    }
+  }
+  return taskIds;
+}
+
 // Persistent TODOs block compaction but survive restart through the resume cursor.
 function hasActiveClaudeCompactionWork(context: ClaudeSessionContext): boolean {
   return hasActiveClaudeRuntimeWork(context) || hasUnfinishedClaudeTasks(context.trackedTasks);
@@ -1291,9 +1328,10 @@ const CLAUDE_INTERRUPT_TIMEOUT = Duration.seconds(10);
 export const buildEmbeddedClaudeSystemPromptAppend = (
   gatewayControlAvailable: boolean,
   enableComputerControl = false,
+  metisMemoryContext: string | null = null,
 ) =>
   [
-    "You are running inside Synara, a coding app that embeds the Claude Agent SDK.",
+    "You are running inside Metis, a coding app that embeds the Claude Agent SDK.",
     "Do not present the host app as Claude Code unless the user is explicitly asking about Claude Code.",
     "Treat the current working directory as the active workspace for the task.",
     "When the user asks about the current project, codebase, or repository, proactively inspect files in the current working directory before asking the user where to look.",
@@ -1304,6 +1342,8 @@ export const buildEmbeddedClaudeSystemPromptAppend = (
       enableComputerControl,
       automationAuthoring: "tool-descriptions",
     }),
+    // Last, so memory edits only change the tail of the cached system prompt.
+    ...(metisMemoryContext === null ? [] : [metisMemoryContext]),
   ].join("\n");
 
 const CLAUDE_WORKER_EFFORT_TIERS = ["low", "medium", "high", "xhigh"] as const;
@@ -3418,6 +3458,7 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
           pendingSubagentSteers: new Map(),
           pendingSubagentStops: new Set(),
           knownBackgroundTaskIds: new Set(),
+          backgroundTaskSnapshotObserved: false,
           terminalTaskIds: new Set(),
           settledSubagentToolUseIds: new Map(),
           liveWorkflowTaskIds: new Set(),
@@ -4309,6 +4350,11 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
           if (fingerprint === lastEmitted) {
             continue;
           }
+          // The workflow can settle while the transcripts are read. A progress
+          // event emitted after its terminal event would mark it live again.
+          if (context.stopped || !context.liveWorkflowTaskIds.has(taskId)) {
+            return;
+          }
           lastEmitted = fingerprint;
           const stamp = yield* makeEventStamp();
           yield* offerRuntimeEvent(context, {
@@ -4762,6 +4808,10 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
                 ? Object.assign({}, agent, { effort })
                 : agent;
             });
+            // Stop the live poller before the terminal event so it cannot emit
+            // task.progress afterwards and mark the settled workflow live again.
+            context.liveWorkflowTaskIds.delete(message.task_id);
+            yield* stopWorkflowRuntimePoller(context, message.task_id);
             yield* offerRuntimeEvent(context, {
               ...base,
               type: "task.completed",
@@ -4776,11 +4826,9 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
                 ...(workflowAgents ? { workflowAgents } : {}),
               },
             });
-            context.liveWorkflowTaskIds.delete(message.task_id);
             context.knownWorkflowTaskIds.delete(message.task_id);
             context.workflowTaskIdByMemberTaskId.delete(message.task_id);
             context.workflowRuntimeStates.delete(message.task_id);
-            yield* stopWorkflowRuntimePoller(context, message.task_id);
             const run = subagentRunForTask(context, message.tool_use_id, message.task_id);
             if (run) {
               context.subagentRuns.delete(run.toolUseId);
@@ -4821,6 +4869,7 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
             // removals settle through their own task lifecycle events.
             const tasks = Array.isArray(message.tasks) ? message.tasks : [];
             const added = tasks.filter((task) => !context.knownBackgroundTaskIds.has(task.task_id));
+            context.backgroundTaskSnapshotObserved = true;
             context.knownBackgroundTaskIds.clear();
             for (const task of tasks) {
               context.knownBackgroundTaskIds.add(task.task_id);
@@ -4838,6 +4887,17 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
             yield* emitRuntimeWarning(context, notice, message);
             return;
           }
+          // Inner protocol/UX notices with no Metis surface, consumed quietly as
+          // in T3 Code's ClaudeAdapter so they don't surface as unknown-subtype
+          // warnings. Slash commands are read on demand via supportedCommands().
+          case "local_command_output":
+          case "plugin_install":
+          case "commands_changed":
+          case "memory_recall":
+          case "elicitation_complete":
+          case "control_request_progress":
+          case "worker_shutting_down":
+            return;
           default:
             yield* warnUnhandledSdkKind(
               context,
@@ -5836,6 +5896,10 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
             append: buildEmbeddedClaudeSystemPromptAppend(
               agentGatewayCredentials !== undefined,
               input.enableComputerControl === true,
+              renderMetisMemoryContextForThread({
+                threadId,
+                toolsAvailable: agentGatewayCredentials !== undefined,
+              }),
             ),
             // Strip per-user dynamic sections (working directory, auto-memory
             // path) into the first user message so the cached system-prompt
@@ -6066,6 +6130,7 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
             pendingSubagentSteers,
             pendingSubagentStops,
             knownBackgroundTaskIds: new Set(),
+            backgroundTaskSnapshotObserved: false,
             terminalTaskIds: new Set(),
             settledSubagentToolUseIds: new Map(),
             liveWorkflowTaskIds: new Set(),
@@ -6745,6 +6810,12 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
         });
       });
 
+    const getLiveTaskIds: NonNullable<ClaudeAdapterShape["getLiveTaskIds"]> = (threadId) =>
+      Effect.sync(() => {
+        const context = sessions.get(threadId);
+        return context ? claudeAuthoritativeLiveTaskIds(context) : undefined;
+      });
+
     // Moves one in-flight foreground Task call to the background (the CLI's
     // Ctrl+B): the blocking Task tool_result returns immediately, the parent
     // turn continues, and the task settles later via task_notification.
@@ -6820,7 +6891,7 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
             provider: PROVIDER,
             operation: "forkThread",
             issue:
-              "The source Claude session has a turn in flight; Synara will rebuild the fork from its retained transcript.",
+              "The source Claude session has a turn in flight; Metis will rebuild the fork from its retained transcript.",
           });
         }
         const sourceState = readClaudeResumeState(input.sourceResumeCursor);
@@ -7375,6 +7446,7 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
       steerTurn,
       interruptTurn,
       stopTask,
+      getLiveTaskIds,
       backgroundTask,
       steerSubagent,
       readThread,

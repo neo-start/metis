@@ -359,10 +359,10 @@ describe("Antigravity CLI integration helpers", () => {
     }
   });
 
-  it("installs the generated Synara MCP plugin alongside the capture hooks", async () => {
+  it("installs the generated Metis MCP plugin alongside the capture hooks", async () => {
     const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "synara-antigravity-home-test-"));
     const stdioProxy = {
-      command: "/Applications/Synara.app/Contents/MacOS/Synara",
+      command: "/Applications/Metis.app/Contents/MacOS/Metis",
       args: ["/state/agent-gateway-mcp-proxy.mjs"],
     };
     const invocations: Array<{
@@ -476,7 +476,7 @@ describe("Antigravity CLI integration helpers", () => {
       hasGatewaySessionLease: false,
     });
     expect(identityOnlyPrompt).not.toContain("browser_*");
-    expect(identityOnlyPrompt).toContain("Synara MCP control is unavailable");
+    expect(identityOnlyPrompt).toContain("Metis MCP control is unavailable");
 
     const envWithoutLease = buildAntigravityTurnProcessEnvironment({
       eventFile: "/tmp/thread-b-hooks.ndjson",
@@ -508,7 +508,7 @@ describe("Antigravity CLI integration helpers", () => {
     });
   });
 
-  it("keeps the globally installed hook neutral outside Synara sessions", () => {
+  it("keeps the globally installed hook neutral outside Metis sessions", () => {
     const command = buildAntigravityCaptureCommand(
       "__synara_gui_must_not_launch__",
       "__capture_script_must_not_run__",
@@ -584,7 +584,7 @@ describe("Antigravity CLI integration helpers", () => {
     }
   });
 
-  it("runs the capture script for Synara-managed sessions", async () => {
+  it("runs the capture script for Metis-managed sessions", async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "synara-antigravity-hook-test-"));
     const scriptPath = path.join(directory, "capture.cjs");
     const eventPath = path.join(directory, "events.ndjson");
@@ -618,20 +618,20 @@ describe("Antigravity CLI integration helpers", () => {
     }
   });
 
-  it("runs packaged Electron as Node only for Synara-managed sessions", () => {
+  it("runs packaged Electron as Node only for Metis-managed sessions", () => {
     expect(
       buildAntigravityCaptureCommand(
-        "/Applications/Synara.app/Contents/MacOS/Synara",
+        "/Applications/Metis.app/Contents/MacOS/Metis",
         "/tmp/synara-capture/capture.cjs",
         "pre-tool",
         "darwin",
       ),
     ).toBe(
-      `if [ -z "\${SYNARA_ANTIGRAVITY_EVENTS:-}" ]; then cat >/dev/null 2>&1 || :; printf '%s\\n' '{"decision":"ask"}'; else ELECTRON_RUN_AS_NODE=1 '/Applications/Synara.app/Contents/MacOS/Synara' '/tmp/synara-capture/capture.cjs' 'pre-tool'; fi`,
+      `if [ -z "\${SYNARA_ANTIGRAVITY_EVENTS:-}" ]; then cat >/dev/null 2>&1 || :; printf '%s\\n' '{"decision":"ask"}'; else ELECTRON_RUN_AS_NODE=1 '/Applications/Metis.app/Contents/MacOS/Metis' '/tmp/synara-capture/capture.cjs' 'pre-tool'; fi`,
     );
     expect(
       buildAntigravityCaptureCommand(
-        String.raw`C:\Users\test\AppData\Local\Programs\Synara\Synara.exe`,
+        String.raw`C:\Users\test\AppData\Local\Programs\Metis\Metis.exe`,
         String.raw`C:\Users\test\.gemini\capture.cjs`,
         "pre-tool",
         "win32",
@@ -641,29 +641,29 @@ describe("Antigravity CLI integration helpers", () => {
       // escapes intact, so `"` arrives as `\"` and quoted paths fail to
       // execute ("not recognized as an internal or external command"). The
       // win32 command must stay free of double quotes.
-      String.raw`if not defined SYNARA_ANTIGRAVITY_EVENTS (more >nul 2>nul & echo {"decision":"ask"}) else (set ELECTRON_RUN_AS_NODE=1&& C:\Users\test\AppData\Local\Programs\Synara\Synara.exe C:\Users\test\.gemini\capture.cjs pre-tool)`,
+      String.raw`if not defined SYNARA_ANTIGRAVITY_EVENTS (more >nul 2>nul & echo {"decision":"ask"}) else (set ELECTRON_RUN_AS_NODE=1&& C:\Users\test\AppData\Local\Programs\Metis\Metis.exe C:\Users\test\.gemini\capture.cjs pre-tool)`,
     );
     // PreInvocation gates the LLM invocation: answer allow so subagent
     // launches are not denied (which would make the parent CLI exit 1).
     expect(
       buildAntigravityCaptureCommand(
-        String.raw`C:\Users\test\AppData\Local\Programs\Synara\Synara.exe`,
+        String.raw`C:\Users\test\AppData\Local\Programs\Metis\Metis.exe`,
         String.raw`C:\Users\test\.gemini\capture.cjs`,
         "pre-invocation",
         "win32",
       ),
     ).toBe(
-      String.raw`if not defined SYNARA_ANTIGRAVITY_EVENTS (more >nul 2>nul & echo {"decision":"allow"}) else (set ELECTRON_RUN_AS_NODE=1&& C:\Users\test\AppData\Local\Programs\Synara\Synara.exe C:\Users\test\.gemini\capture.cjs pre-invocation)`,
+      String.raw`if not defined SYNARA_ANTIGRAVITY_EVENTS (more >nul 2>nul & echo {"decision":"allow"}) else (set ELECTRON_RUN_AS_NODE=1&& C:\Users\test\AppData\Local\Programs\Metis\Metis.exe C:\Users\test\.gemini\capture.cjs pre-invocation)`,
     );
     expect(
       buildAntigravityCaptureCommand(
-        "/Applications/Synara.app/Contents/MacOS/Synara",
+        "/Applications/Metis.app/Contents/MacOS/Metis",
         "/tmp/synara-capture/capture.cjs",
         "pre-invocation",
         "darwin",
       ),
     ).toBe(
-      `if [ -z "\${SYNARA_ANTIGRAVITY_EVENTS:-}" ]; then cat >/dev/null 2>&1 || :; printf '%s\\n' '{"decision":"allow"}'; else ELECTRON_RUN_AS_NODE=1 '/Applications/Synara.app/Contents/MacOS/Synara' '/tmp/synara-capture/capture.cjs' 'pre-invocation'; fi`,
+      `if [ -z "\${SYNARA_ANTIGRAVITY_EVENTS:-}" ]; then cat >/dev/null 2>&1 || :; printf '%s\\n' '{"decision":"allow"}'; else ELECTRON_RUN_AS_NODE=1 '/Applications/Metis.app/Contents/MacOS/Metis' '/tmp/synara-capture/capture.cjs' 'pre-invocation'; fi`,
     );
   });
 

@@ -7,6 +7,7 @@ folder keeps a small set of focused guides that stay in sync with the repository
 - [Core concepts](./core-concepts.md) — projects, tasks, environments, provider sessions, and Git ownership.
 - [Providers](./providers.md) — what Synara manages and what stays provider-owned.
 - [External MCP integrations](./external-mcp.md) — pair another local app with a scoped Synara task surface.
+- [Soul and long-term memory](./memory.md) — the identity file and memories every provider session reads.
 - [Release process](./release.md) — release and signing setup checklist.
 - [Canary workflow](./canary.md) — install, update, operate, and roll back an isolated Canary build.
 

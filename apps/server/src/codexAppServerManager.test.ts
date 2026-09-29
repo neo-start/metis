@@ -55,6 +55,7 @@ import {
   CodexJsonlFramer,
   CodexJsonlWriter,
 } from "./codexAppServerTransport";
+import { resolveSynaraCodexHomeOverlayPath } from "./codexHomePaths";
 import { ensureIsolatedScratchWorkspace } from "./scratchWorkspaces";
 import {
   SYNARA_GATEWAY_HARNESS_POLICY,
@@ -221,7 +222,7 @@ const autoTurnOverrides = {
   sandboxPolicy: { type: "workspaceWrite" },
 } as const;
 
-describe("Codex Synara harness policy", () => {
+describe("Codex Metis harness policy", () => {
   it("keeps Computer desktop guidance out of base and disabled default/plan instructions", () => {
     const disabledInstructions = [SYNARA_GATEWAY_HARNESS_POLICY];
     for (const interactionMode of ["default", "plan"] as const) {
@@ -239,13 +240,13 @@ describe("Codex Synara harness policy", () => {
         interactionMode,
         enableComputerControl: true,
       })?.settings.developer_instructions;
-      expect(enabled).toContain("## Synara computer use");
+      expect(enabled).toContain("## Metis computer use");
       expect(enabled).toContain("The computer_* tools are live on this session");
     }
     for (const instructions of disabledInstructions) {
       expect(instructions).not.toContain("Use `Computer Use`");
       expect(instructions).not.toContain("desktop apps, OS settings");
-      expect(instructions).not.toContain("## Synara computer use");
+      expect(instructions).not.toContain("## Metis computer use");
       expect(instructions).not.toContain("computer_");
     }
   });
@@ -257,7 +258,7 @@ describe("Codex Synara harness policy", () => {
     ]) {
       expect(instructions).toContain(SYNARA_HARNESS_POLICY_MARKER);
       expect(instructions.split(SYNARA_HARNESS_POLICY_MARKER)).toHaveLength(2);
-      expect(instructions).toContain("Synara is the host and harness");
+      expect(instructions).toContain("Metis is the host and harness");
       expect(instructions).toContain("Final responses must restate every needed scope");
       expect(instructions).toContain("include all decision context");
       expect(instructions).toContain("one exact synara_create_threads plan");
@@ -1089,7 +1090,7 @@ describe("codex CLI version gate", () => {
       writeBinary("0.1.0", "replaced-in-place-by-a-downgrade");
       await expect(
         assertSupportedCodexCliVersion({ binaryPath, cwd: dir, homePath }),
-      ).rejects.toThrow(/too old for Synara/);
+      ).rejects.toThrow(/too old for Metis/);
     } finally {
       reset();
       vi.unstubAllEnvs();
@@ -1130,7 +1131,7 @@ describe("codex CLI version gate", () => {
       writeBinary("0.1.0", "replaced-in-place-by-a-downgrade");
       await expect(
         assertSupportedCodexCliVersion({ binaryPath: "codex", cwd: dir, homePath }),
-      ).rejects.toThrow(/too old for Synara/);
+      ).rejects.toThrow(/too old for Metis/);
     } finally {
       reset();
       vi.unstubAllEnvs();
@@ -1167,10 +1168,10 @@ describe("codex CLI version gate", () => {
     try {
       await expect(
         assertSupportedCodexCliVersion({ binaryPath, cwd: dir, homePath }),
-      ).rejects.toThrow(/too old for Synara/);
+      ).rejects.toThrow(/too old for Metis/);
       await expect(
         assertSupportedCodexCliVersion({ binaryPath, cwd: dir, homePath }),
-      ).rejects.toThrow(/too old for Synara/);
+      ).rejects.toThrow(/too old for Metis/);
       // Failures are re-probed so installing or upgrading Codex takes effect at once.
       expect(probeCount()).toBe(2);
     } finally {
@@ -1271,7 +1272,7 @@ describe("buildCodexProcessEnv", () => {
     }
   });
 
-  it("applies durable section suppressions inside Synara's Codex overlay", async () => {
+  it("applies durable section suppressions inside Metis's Codex overlay", async () => {
     const tempDir = mkdtempSync(path.join(os.tmpdir(), "synara-codex-env-"));
     const runtimeHome = mkdtempSync(path.join(os.tmpdir(), "synara-runtime-home-"));
     try {
@@ -1292,7 +1293,7 @@ describe("buildCodexProcessEnv", () => {
         "utf8",
       );
 
-      const overlayHome = path.join(runtimeHome, "codex-home-overlay");
+      const overlayHome = resolveSynaraCodexHomeOverlayPath({ SYNARA_HOME: runtimeHome }, tempDir);
       mkdirSync(overlayHome, { recursive: true });
       writeFileSync(
         path.join(overlayHome, "synara-config-suppressions-v1.json"),
@@ -1309,7 +1310,9 @@ describe("buildCodexProcessEnv", () => {
         platform: "darwin",
       });
 
-      expect(env.CODEX_HOME).toBe(path.join(runtimeHome, "codex-home-overlay"));
+      expect(env.CODEX_HOME).toBe(
+        resolveSynaraCodexHomeOverlayPath({ SYNARA_HOME: runtimeHome }, tempDir),
+      );
       const codexHome = env.CODEX_HOME;
       if (typeof codexHome !== "string") {
         throw new Error("Expected CODEX_HOME to be set.");
@@ -1347,7 +1350,7 @@ describe("buildCodexProcessEnv", () => {
         "utf8",
       );
 
-      const overlayHome = path.join(runtimeHome, "codex-home-overlay");
+      const overlayHome = resolveSynaraCodexHomeOverlayPath({ SYNARA_HOME: runtimeHome }, tempDir);
       const env = await buildCodexProcessEnv({
         env: { SYNARA_HOME: runtimeHome },
         homePath: tempDir,
@@ -1377,7 +1380,7 @@ describe("buildCodexProcessEnv", () => {
     try {
       writeFileSync(path.join(tempDir, "config.toml"), 'model = "gpt-5.5"', "utf8");
 
-      const overlayHome = path.join(runtimeHome, "codex-home-overlay");
+      const overlayHome = resolveSynaraCodexHomeOverlayPath({ SYNARA_HOME: runtimeHome }, tempDir);
       mkdirSync(overlayHome, { recursive: true });
       writeFileSync(
         path.join(overlayHome, "synara-config-suppressions-v1.json"),
@@ -1410,7 +1413,7 @@ describe("buildCodexProcessEnv", () => {
     }
   });
 
-  it("keeps Codex SQLite state out of Synara's Codex home overlay", async () => {
+  it("keeps Codex SQLite state out of Metis's Codex home overlay", async () => {
     const tempDir = mkdtempSync(path.join(os.tmpdir(), "synara-codex-env-"));
     const runtimeHome = mkdtempSync(path.join(os.tmpdir(), "synara-runtime-home-"));
     const lstatOrUndefined = (target: string) => {
@@ -1433,7 +1436,7 @@ describe("buildCodexProcessEnv", () => {
         writeFileSync(path.join(tempDir, entry), "source-db", "utf8");
       }
 
-      const overlayHome = path.join(runtimeHome, "codex-home-overlay");
+      const overlayHome = resolveSynaraCodexHomeOverlayPath({ SYNARA_HOME: runtimeHome }, tempDir);
       mkdirSync(overlayHome, { recursive: true });
       // Links left behind by releases that mirrored SQLite state per file,
       // including a WAL sidecar whose source Codex has since checkpointed away.
@@ -1468,7 +1471,7 @@ describe("buildCodexProcessEnv", () => {
     }
   });
 
-  it("repairs stale auth.json files in Synara's Codex home overlay", async () => {
+  it("repairs stale auth.json files in Metis's Codex home overlay", async () => {
     const tempDir = mkdtempSync(path.join(os.tmpdir(), "synara-codex-env-"));
     const runtimeHome = mkdtempSync(path.join(os.tmpdir(), "synara-runtime-home-"));
     try {
@@ -1476,7 +1479,7 @@ describe("buildCodexProcessEnv", () => {
       writeFileSync(path.join(tempDir, "config.toml"), 'model = "gpt-5.5"', "utf8");
       writeFileSync(sourceAuthPath, '{"tokens":{"access_token":"fresh"}}', "utf8");
 
-      const overlayHome = path.join(runtimeHome, "codex-home-overlay");
+      const overlayHome = resolveSynaraCodexHomeOverlayPath({ SYNARA_HOME: runtimeHome }, tempDir);
       const overlayAuthPath = path.join(overlayHome, "auth.json");
       mkdirSync(overlayHome, { recursive: true });
       writeFileSync(overlayAuthPath, '{"tokens":{"access_token":"stale"}}', "utf8");
@@ -1497,7 +1500,7 @@ describe("buildCodexProcessEnv", () => {
     }
   });
 
-  it("preserves real generated image directories in Synara's Codex home overlay", async () => {
+  it("preserves real generated image directories in Metis's Codex home overlay", async () => {
     const tempDir = mkdtempSync(path.join(os.tmpdir(), "synara-codex-env-"));
     const runtimeHome = mkdtempSync(path.join(os.tmpdir(), "synara-runtime-home-"));
     try {
@@ -1506,7 +1509,7 @@ describe("buildCodexProcessEnv", () => {
       mkdirSync(sourceGeneratedImagesDir, { recursive: true });
       writeFileSync(path.join(sourceGeneratedImagesDir, "source.png"), "source-image", "utf8");
 
-      const overlayHome = path.join(runtimeHome, "codex-home-overlay");
+      const overlayHome = resolveSynaraCodexHomeOverlayPath({ SYNARA_HOME: runtimeHome }, tempDir);
       const overlayGeneratedImagesDir = path.join(overlayHome, "generated_images");
       mkdirSync(overlayGeneratedImagesDir, { recursive: true });
       const overlayImagePath = path.join(overlayGeneratedImagesDir, "overlay.png");
@@ -2228,7 +2231,7 @@ describe("startSession", () => {
       )
       .mockImplementation(() => {
         throw new Error(
-          "Codex CLI v0.36.0 is too old for Synara. Upgrade to v0.37.0 or newer and restart Synara.",
+          "Codex CLI v0.36.0 is too old for Metis. Upgrade to v0.37.0 or newer and restart Metis.",
         );
       });
 
@@ -2242,7 +2245,7 @@ describe("startSession", () => {
           agentGatewayCapabilityInput: AGENT_GATEWAY_NO_CAPABILITIES,
         }),
       ).rejects.toThrow(
-        "Codex CLI v0.36.0 is too old for Synara. Upgrade to v0.37.0 or newer and restart Synara.",
+        "Codex CLI v0.36.0 is too old for Metis. Upgrade to v0.37.0 or newer and restart Metis.",
       );
       expect(versionCheck).toHaveBeenCalledTimes(1);
       expect(events).toEqual([
@@ -2250,7 +2253,7 @@ describe("startSession", () => {
           method: "session/startFailed",
           kind: "error",
           message:
-            "Codex CLI v0.36.0 is too old for Synara. Upgrade to v0.37.0 or newer and restart Synara.",
+            "Codex CLI v0.36.0 is too old for Metis. Upgrade to v0.37.0 or newer and restart Metis.",
         },
       ]);
     } finally {
@@ -4298,7 +4301,7 @@ describe("MCP tool call elicitation approvals", () => {
     turnId: "turn_mcp",
     serverName: "synara",
     mode: "form",
-    message: "Allow Synara to launch the calculator?",
+    message: "Allow Metis to launch the calculator?",
     requestedSchema: { type: "object", properties: {} },
     _meta: {
       codex_approval_kind: "mcp_tool_call",
@@ -4321,7 +4324,7 @@ describe("MCP tool call elicitation approvals", () => {
     return { ...harness, context };
   }
 
-  it("delegates exact active Synara Computer calls to gateway consent without persistent permission", async () => {
+  it("delegates exact active Metis Computer calls to gateway consent without persistent permission", async () => {
     const { manager, context, emitEvent, writeMessage } = computerApprovalHarness();
     for (const toolName of ["computer_click", "computer_type_text", "computer_read_clipboard"]) {
       const params = approvalParams();
@@ -4570,7 +4573,7 @@ describe("MCP tool call elicitation approvals", () => {
       expect.objectContaining({
         kind: "error",
         method: "mcpServer/elicitation/request/unrenderable",
-        message: "Synara declined an MCP elicitation it cannot render yet.",
+        message: "Metis declined an MCP elicitation it cannot render yet.",
       }),
     );
   });

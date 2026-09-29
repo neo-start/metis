@@ -1,4 +1,15 @@
-# Synara agent instructions
+# Metis agent instructions
+
+## Fork rules (2026-09-23)
+
+- The user authorized this independent project under `~/Stars/agent-workbench` and explicitly requested maximum practical reuse of T3 Code and Synara source. Search both upstream implementations before writing a replacement. Preserve licenses; record source paths, commit hashes and adaptations in `THIRD_PARTY_NOTICES.md` and `docs/workbench/upstream.json`.
+- Synara is the current runtime and data-model baseline. Port compatible T3 modules incrementally; do not combine incompatible event stores or replace authentication/approval boundaries implicitly. `.upstream/t3code` is a read-only, ignored reference checkout.
+- The user selected **Metis** as the product name and **Folded Volume / Blue** as the current logo. Use the selected original from `docs/metis-logo-colors/images/01-blue.png`; see `docs/workbench/branding.md`. Preserve existing UI color tokens, data/profile paths and upstream protocol/package identifiers; branding must not strand sessions.
+- Use `npm run metis` for the desktop, `npm run metis:serve` for the persistent local browser service, or `npm run metis:remote` for that service with an explicitly configured HTTPS tunnel. Only one backend may own `.agent-workbench` at a time. Quit a desktop-owned backend before starting the shared service. On macOS/Linux, reopening the desktop then attaches to the live shared service and does not stop it on exit. It uses the existing cookie and one-time pairing flow. `--isolated` opens the earlier remote profile. Shared-service Windows ACL support, backend-to-desktop computer/browser host attachment, and packaged release identity remain unfinished.
+- Do not add or run frontend tests, browser automation, screenshots or visual QA unless the user explicitly requests them. Formatting, lint, typecheck, builds and relevant non-frontend checks are authorized.
+- Reuse existing icons and primary color tokens. Buttons need restrained hover/press/focus feedback; reveal actions with reserved space and short opacity/2–4 px movement, respecting reduced motion. Animate transform/opacity rather than layout dimensions.
+
+## Inherited engineering principles
 
 Synara is a multi-provider coding-agent workspace with web, server, CLI, and desktop surfaces. Prioritize correctness, reliability, and predictable performance during streaming, reconnects, cancellation, and recovery. Do not treat the project as a disposable early prototype or use this file as permission for unrelated rewrites.
 

@@ -508,7 +508,7 @@ export async function ensureCapturePlugin(
       {
         $schema: "https://antigravity.google/schemas/v1/plugin.json",
         name: "synara-capture",
-        description: "Streams Antigravity CLI lifecycle events to Synara when requested.",
+        description: "Streams Antigravity CLI lifecycle events to Metis when requested.",
       },
       null,
       2,
@@ -578,11 +578,14 @@ export function buildAntigravityTurnPrompt(
   input: {
     readonly prompt: string;
     readonly hasGatewaySessionLease: boolean;
+    /** False drops the Metis memory block (Windows command-line budget). */
+    readonly includeMetisMemory?: boolean;
   },
 ): string {
   const harnessPolicy = takeSynaraHarnessPolicyForProviderSession(state, {
     provider: PROVIDER,
     scopedGatewayConnectionAvailable: input.hasGatewaySessionLease,
+    ...(input.includeMetisMemory === false ? { includeMetisMemory: false } : {}),
   });
   return [harnessPolicy, input.prompt].filter(Boolean).join("\n\n");
 }
@@ -2228,7 +2231,7 @@ const makeAntigravityAdapter = (dependencies: AntigravityAdapterDependencies = {
             new ProviderAdapterRequestError({
               provider: PROVIDER,
               method: "plugin/install",
-              detail: messageFromCause(cause, "Failed to install the Synara capture hook."),
+              detail: messageFromCause(cause, "Failed to install the Metis capture hook."),
               cause,
             }),
         });
@@ -2348,11 +2351,25 @@ const makeAntigravityAdapter = (dependencies: AntigravityAdapterDependencies = {
         const policyDeliveryState: SynaraHarnessPolicyDeliveryState = {
           harnessPolicyDelivered: context.harnessPolicyDelivered,
           enableComputerControl: context.enableComputerControl,
+          threadId: context.session.threadId,
         };
-        const providerPrompt = buildAntigravityTurnPrompt(policyDeliveryState, {
+        let providerPrompt = buildAntigravityTurnPrompt(policyDeliveryState, {
           prompt: normalizedPrompt,
           hasGatewaySessionLease: canBootstrapGateway,
         });
+        if (
+          antigravityPromptCommandLineIssue(providerPrompt) &&
+          context.harnessPolicyDelivered !== true
+        ) {
+          // Windows passes the prompt on the command line. Metis memory is
+          // best-effort context: drop it before refusing the user's prompt.
+          policyDeliveryState.harnessPolicyDelivered = context.harnessPolicyDelivered;
+          providerPrompt = buildAntigravityTurnPrompt(policyDeliveryState, {
+            prompt: normalizedPrompt,
+            hasGatewaySessionLease: canBootstrapGateway,
+            includeMetisMemory: false,
+          });
+        }
         const promptIssue = antigravityPromptCommandLineIssue(providerPrompt);
         if (promptIssue) {
           return yield* new ProviderAdapterValidationError({
@@ -2410,7 +2427,7 @@ const makeAntigravityAdapter = (dependencies: AntigravityAdapterDependencies = {
           return yield* new ProviderAdapterRequestError({
             provider: PROVIDER,
             method: "turn/prepare",
-            detail: `The Synara gateway credential is no longer active for this provider turn (expected gateway capabilities: ${expectedCapabilities.join(", ") || "none"}; lease minted with: ${mintedCapabilities.join(", ") || "none"}).`,
+            detail: `The Metis gateway credential is no longer active for this provider turn (expected gateway capabilities: ${expectedCapabilities.join(", ") || "none"}; lease minted with: ${mintedCapabilities.join(", ") || "none"}).`,
           });
         }
         if (gatewaySessionLease) context.gatewaySessionLease = gatewaySessionLease;

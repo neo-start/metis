@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, it } from "vitest";
 
+import { resolveSynaraCodexHomeOverlayPath } from "./codexHomePaths.ts";
 import { resolveAllowedLocalPreviewFile } from "./localImageFiles.ts";
 
 const tempDirs: string[] = [];
@@ -75,8 +76,7 @@ describe("resolveAllowedLocalPreviewFile", () => {
     const sourceHome = path.join(fakeRoot, "source", ".codex");
     const synaraHome = path.join(fakeRoot, "synara", "runtime");
     const overlayImageDir = path.join(
-      synaraHome,
-      "codex-home-overlay",
+      resolveSynaraCodexHomeOverlayPath({ SYNARA_HOME: synaraHome }, sourceHome),
       "generated_images",
       "thread-overlay",
     );

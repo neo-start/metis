@@ -7,6 +7,7 @@ import { MODEL_OPTIONS_BY_PROVIDER } from "@synara/contracts";
 
 type ModelProviderKind =
   | "codex"
+  | "codexSecondary"
   | "claudeAgent"
   | "cursor"
   | "antigravity"
@@ -96,6 +97,7 @@ function inferProviderFromLabel(label: string): ModelProviderKind | undefined {
 function inferLegacyModelProvider(provider: unknown, model: string): ModelProviderKind {
   if (
     provider === "codex" ||
+    provider === "codexSecondary" ||
     provider === "claudeAgent" ||
     provider === "cursor" ||
     provider === "antigravity" ||

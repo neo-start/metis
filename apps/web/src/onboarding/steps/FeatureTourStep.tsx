@@ -48,7 +48,7 @@ export function FeatureTourStep() {
 
   return (
     <div className="grid min-h-0 flex-1 grid-cols-[220px_minmax(0,1fr)] gap-8">
-      <div className="flex flex-col gap-0.5" role="tablist" aria-label="Synara capabilities">
+      <div className="flex flex-col gap-0.5" role="tablist" aria-label="Metis capabilities">
         {TOUR_CARDS.map((card) => {
           const Icon = card.icon;
           const selected = card.id === selectedCard.id;

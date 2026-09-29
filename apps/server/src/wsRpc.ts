@@ -149,6 +149,11 @@ import { makeOwnerThreadDiagnosticReader } from "./diagnostics/ownerThreadDiagno
 import { OrchestrationEventStore } from "./persistence/Services/OrchestrationEventStore";
 import { ProviderRuntimeEventRepository } from "./persistence/Services/ProviderRuntimeEvents";
 import { requireWsOwnerSession } from "./wsOwnerAuthorization";
+import {
+  MetisMemory,
+  type MetisMemoryError,
+  type MetisMemoryShape,
+} from "./metisMemory/Services/MetisMemory";
 import { makeWsRequestAdmission } from "./wsRequestAdmission";
 import { voiceUploadAdmissionGate } from "./voiceUploadAdmission";
 import {
@@ -420,6 +425,23 @@ const makeWsRpcHandlersLayer = () =>
       // with the same unsupported-platform answer the backend would give.
       const deviceService = Option.getOrUndefined(yield* Effect.serviceOption(DeviceService));
       const computerService = Option.getOrUndefined(yield* Effect.serviceOption(ComputerService));
+      // Optional so route-level tests can mount the group without memory files.
+      const metisMemory = Option.getOrUndefined(yield* Effect.serviceOption(MetisMemory));
+      // Memory holds personal context; only the owner session may read or edit it.
+      const withMetisMemory = <A>(
+        run: (memory: MetisMemoryShape) => Effect.Effect<A, MetisMemoryError>,
+        fallbackMessage: string,
+      ) => {
+        const operation: Effect.Effect<A, MetisMemoryError | WsRpcError> =
+          metisMemory === undefined
+            ? Effect.fail(new WsRpcError({ message: "Metis memory is unavailable." }))
+            : run(metisMemory);
+        return requireWsOwnerSession.pipe(
+          Effect.andThen(
+            operation.pipe(Effect.mapError((cause) => toWsRpcError(cause, fallbackMessage))),
+          ),
+        );
+      };
       const connectionSessions = yield* WsConnectionSessions;
       const computerInterests = new ComputerEventInterests(connectionSessions.onClose);
       const computerHandlers = makeWsComputerHandlers(
@@ -751,6 +773,7 @@ const makeWsRpcHandlersLayer = () =>
         return {
           cwd: config.cwd,
           homeDir: config.homeDir,
+          ...(config.publicUrl ? { publicUrl: config.publicUrl.origin } : {}),
           chatWorkspaceRoot: config.chatWorkspaceRoot,
           studioWorkspaceRoot: config.studioWorkspaceRoot,
           worktreesDir: config.worktreesDir,
@@ -2114,6 +2137,20 @@ const makeWsRpcHandlersLayer = () =>
               Stream.mapError((cause) => toWsRpcError(cause, "Automation event stream failed")),
             ),
           ),
+
+        [WS_METHODS.memoryGetOverview]: () =>
+          withMetisMemory((memory) => memory.getOverview(), "Failed to load Metis memory"),
+        [WS_METHODS.memoryRead]: (input) =>
+          withMetisMemory((memory) => memory.read(input), "Failed to read memory"),
+        [WS_METHODS.memoryWrite]: (input) =>
+          withMetisMemory(
+            (memory) => memory.write({ ...input, origin: "user" }),
+            "Failed to save memory",
+          ),
+        [WS_METHODS.memoryDelete]: (input) =>
+          withMetisMemory((memory) => memory.remove(input), "Failed to delete memory"),
+        [WS_METHODS.memoryUpdateSoul]: (input) =>
+          withMetisMemory((memory) => memory.writeSoul(input.content), "Failed to save soul.md"),
 
         ...makeWsDeviceHandlers(deviceService),
         [DEVICE_WS_METHODS.subscribeEvents]: (_, { clientId }) =>

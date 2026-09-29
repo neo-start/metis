@@ -283,6 +283,7 @@ function SplitPaneEmptyState(props: {
                 <ProviderIcon
                   provider={thread.modelSelection.provider}
                   className="size-4 shrink-0"
+                  tooltip
                 />
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-ui-lg leading-snug font-medium text-foreground">
@@ -1079,6 +1080,7 @@ export function SplitChatSurface(props: { splitViewId: SplitViewId; routeThreadI
                     <ProviderIcon
                       provider={thread.modelSelection.provider}
                       className="size-4 shrink-0"
+                      tooltip
                     />
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-ui-lg leading-snug font-medium text-foreground">

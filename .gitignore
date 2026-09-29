@@ -1,4 +1,7 @@
 node_modules
+/.agent-workbench/
+/.agent-workbench-remote/
+/.upstream/
 .bun
 .turbo
 .DS_Store
@@ -48,3 +51,4 @@ __screenshots__/
 .unlazy/
 # Claude Code worktrees are local scratch checkouts, not part of the repo.
 .claude/worktrees/
+/.impeccable/hook.cache.json

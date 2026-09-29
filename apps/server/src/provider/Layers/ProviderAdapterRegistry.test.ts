@@ -7,7 +7,12 @@ import { Effect, Layer, Stream } from "effect";
 
 import { AntigravityAdapter, AntigravityAdapterShape } from "../Services/AntigravityAdapter.ts";
 import { ClaudeAdapter, ClaudeAdapterShape } from "../Services/ClaudeAdapter.ts";
-import { CodexAdapter, CodexAdapterShape } from "../Services/CodexAdapter.ts";
+import {
+  CodexAdapter,
+  CodexAdapterShape,
+  CodexSecondaryAdapter,
+  CodexSecondaryAdapterShape,
+} from "../Services/CodexAdapter.ts";
 import { CursorAdapter, CursorAdapterShape } from "../Services/CursorAdapter.ts";
 import { DevinAdapter, DevinAdapterShape } from "../Services/DevinAdapter.ts";
 import { DroidAdapter, DroidAdapterShape } from "../Services/DroidAdapter.ts";
@@ -21,6 +26,23 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 
 const fakeCodexAdapter: CodexAdapterShape = {
   provider: "codex",
+  capabilities: { sessionModelSwitch: "in-session" },
+  startSession: vi.fn(),
+  sendTurn: vi.fn(),
+  interruptTurn: vi.fn(),
+  respondToRequest: vi.fn(),
+  respondToUserInput: vi.fn(),
+  stopSession: vi.fn(),
+  listSessions: vi.fn(),
+  hasSession: vi.fn(),
+  readThread: vi.fn(),
+  rollbackThread: vi.fn(),
+  stopAll: vi.fn(),
+  streamEvents: Stream.empty,
+};
+
+const fakeCodexSecondaryAdapter: CodexSecondaryAdapterShape = {
+  provider: "codexSecondary",
   capabilities: { sessionModelSwitch: "in-session" },
   startSession: vi.fn(),
   sendTurn: vi.fn(),
@@ -182,6 +204,7 @@ const registryLayer = (codexAdapter = fakeCodexAdapter) =>
       ProviderAdapterRegistryLive,
       Layer.mergeAll(
         Layer.succeed(CodexAdapter, codexAdapter),
+        Layer.succeed(CodexSecondaryAdapter, fakeCodexSecondaryAdapter),
         Layer.succeed(ClaudeAdapter, fakeClaudeAdapter),
         Layer.succeed(CursorAdapter, fakeCursorAdapter),
         Layer.succeed(DevinAdapter, fakeDevinAdapter),
@@ -202,6 +225,7 @@ layer("ProviderAdapterRegistryLive", (it) => {
     Effect.gen(function* () {
       const registry = yield* ProviderAdapterRegistry;
       const codex = yield* registry.getByProvider("codex");
+      const codexSecondary = yield* registry.getByProvider("codexSecondary");
       const claude = yield* registry.getByProvider("claudeAgent");
       const cursor = yield* registry.getByProvider("cursor");
       const devin = yield* registry.getByProvider("devin");
@@ -211,6 +235,7 @@ layer("ProviderAdapterRegistryLive", (it) => {
       const opencode = yield* registry.getByProvider("opencode");
       const pi = yield* registry.getByProvider("pi");
       assert.equal(codex, fakeCodexAdapter);
+      assert.equal(codexSecondary, fakeCodexSecondaryAdapter);
       assert.equal(claude, fakeClaudeAdapter);
       assert.equal(cursor, fakeCursorAdapter);
       assert.equal(devin, fakeDevinAdapter);
@@ -223,6 +248,7 @@ layer("ProviderAdapterRegistryLive", (it) => {
       const providers = yield* registry.listProviders();
       assert.deepEqual(providers, [
         "codex",
+        "codexSecondary",
         "claudeAgent",
         "cursor",
         "devin",
@@ -259,5 +285,5 @@ it("rejects duplicate provider identities while constructing the registry", asyn
 
   await expect(
     Effect.runPromise(Effect.provide(Effect.void, registryLayer(duplicate))),
-  ).rejects.toThrow("Duplicate provider adapter registrations: claudeAgent at index 1.");
+  ).rejects.toThrow("Duplicate provider adapter registrations: claudeAgent at index 2.");
 });

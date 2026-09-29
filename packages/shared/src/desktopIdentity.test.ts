@@ -22,7 +22,7 @@ import {
 describe("desktopIdentity", () => {
   it("uses the exact canonical production and development bundle IDs", () => {
     expect(SYNARA_PRODUCTION_BUNDLE_ID).toBe("com.emanueledipietro.synara");
-    expect(SYNARA_DEVELOPMENT_BUNDLE_ID).toBe("com.emanueledipietro.synara.dev");
+    expect(SYNARA_DEVELOPMENT_BUNDLE_ID).toBe("local.agentworkbench.desktop.dev");
     expect(synaraDesktopIdentity("production").bundleId).toBe(SYNARA_PRODUCTION_BUNDLE_ID);
     expect(synaraDesktopIdentity("development").bundleId).toBe(SYNARA_DEVELOPMENT_BUNDLE_ID);
   });
@@ -96,7 +96,9 @@ describe("desktopIdentity", () => {
   });
 
   it("isolates development and Canary homes from packaged Stable", () => {
-    expect(synaraDesktopIdentity("development").defaultHomeDirectoryName).toBe(".synara-dev");
+    expect(synaraDesktopIdentity("development").defaultHomeDirectoryName).toBe(
+      ".agent-workbench-dev",
+    );
     expect(synaraDesktopIdentity("canary").defaultHomeDirectoryName).toBe(".synara-canary");
     expect(synaraDesktopIdentity("cua").defaultHomeDirectoryName).toBe(".synara-cua");
     expect(synaraDesktopIdentity("production").defaultHomeDirectoryName).toBe(".synara");

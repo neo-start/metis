@@ -1,4 +1,5 @@
 import { CuaDriverHost, sweepOrphanedCuaDrivers } from "./cuaDriverHost";
+import { clearStaleCuaHostSocket } from "./cuaHostSocket";
 import { createLinuxCuaDriverHost } from "./linuxCuaDriverHost";
 import { LinuxEscapeKillSwitchMonitor, linuxEscapeSession } from "./linuxEscapeKillSwitchMonitor";
 import { ComputerFrameTap } from "./computerFrameTap";
@@ -75,6 +76,14 @@ import {
   synaraDesktopIdentity,
 } from "@synara/shared/desktopIdentity";
 import { NetService } from "@synara/shared/Net";
+import {
+  isMetisSharedNavigationAllowed,
+  parseMetisPairingUrl,
+  readMetisOwnerPairingUrl,
+  readMetisDesktopHostBridge,
+  readMetisSharedService,
+  type MetisSharedService,
+} from "./metisSharedService";
 import { applyShellEnvironmentHydrationMarker } from "@synara/shared/shell";
 import { RotatingFileSink } from "@synara/shared/logging";
 import {
@@ -314,7 +323,7 @@ if (
   requestedSourceBuildMarker !== undefined &&
   requestedSourceBuildMarker !== SYNARA_SOURCE_DESKTOP_BUILD_MARKER
 ) {
-  throw new Error("The source desktop launcher and built main are incompatible. Rebuild Synara.");
+  throw new Error("The source desktop launcher and built main are incompatible. Rebuild Metis.");
 }
 
 // Capture the real archive identity before any explicit app.asar lookup. Static
@@ -382,6 +391,10 @@ const APP_RUN_ID = Crypto.randomBytes(6).toString("hex");
 const DESKTOP_BACKEND_SHUTDOWN_TOKEN = Crypto.randomBytes(32).toString("hex");
 const DESKTOP_BROWSER_HOST_CAPABILITY = Crypto.randomBytes(32).toString("base64url");
 const DESKTOP_BROWSER_HOST_CAPABILITY_FD = 3;
+// A Metis shared service fixes these for its backend; otherwise they are ours.
+let browserHostCapability = DESKTOP_BROWSER_HOST_CAPABILITY;
+let browserHostPipePath = SYNARA_BROWSER_HOST_PIPE_PATH;
+let fixedCuaHostEndpoint: string | undefined;
 // Electron's single-instance lock is scoped through userData on Windows/Linux.
 // Set the flavor-specific profile first so Stable, Dev, and Canary never contend
 // for the same lock even when they use the same Electron executable.
@@ -424,7 +437,7 @@ const BROWSER_PERF_SAMPLE_INTERVAL_MS = 5_000;
 const DESKTOP_MENU_ZOOM_FACTOR_STEP = 1.1;
 const DESKTOP_MENU_MIN_ZOOM_FACTOR = 0.25;
 const DESKTOP_MENU_MAX_ZOOM_FACTOR = 5;
-const SYNARA_BROWSER_LABEL = "Synara browser";
+const SYNARA_BROWSER_LABEL = "Metis browser";
 const browserPerfLoggingEnabled = process.env.SYNARA_BROWSER_PERF === "1";
 
 type DesktopUpdateErrorContext = DesktopUpdateState["errorContext"];
@@ -437,6 +450,7 @@ let backendPort = 0;
 let backendAuthToken = "";
 let backendHttpUrl = "";
 let backendWsUrl = "";
+let metisSharedService: MetisSharedService | null = null;
 let backendReadinessAbortController: AbortController | null = null;
 let backendInitialWindowOpenInFlight: Promise<void> | null = null;
 // Guards every blocking backend-lifecycle dialog (startup block, give-up) so a
@@ -564,13 +578,14 @@ function startBrowserPerformanceLogging(): void {
 }
 
 async function ensureBrowserHostPipeServer(): Promise<void> {
-  if (browserHostPipeServer || !SYNARA_BROWSER_HOST_PIPE_PATH) {
+  if (browserHostPipeServer || !browserHostPipePath) {
     return;
   }
   const server = new BrowserHostPipeServer(browserManager, {
+    pipePath: browserHostPipePath,
     vault: browserVault,
     vaultCapture: browserVaultCapture,
-    capability: DESKTOP_BROWSER_HOST_CAPABILITY,
+    capability: browserHostCapability,
     requestOpenPanel: (threadId) => {
       if (!threadId) return;
       mainWindow?.webContents.send(IPC.browser.requestOpenPanel, { threadId });
@@ -1258,9 +1273,9 @@ async function rejectUnverifiableDesktopMigrationBundle(error: unknown): Promise
   writeDesktopLogHeader(`migration bundle source check failed message=${message}`);
   await dialog.showMessageBox({
     type: "error",
-    title: "Synara could not verify its server build",
+    title: "Metis could not verify its server build",
     message: "The migration source could not be checked safely.",
-    detail: `${message}\n\nRebuild with bun run build:desktop before starting Synara. The database was not opened.`,
+    detail: `${message}\n\nRebuild with bun run build:desktop before starting Metis. The database was not opened.`,
     buttons: ["Quit"],
     defaultId: 0,
     noLink: true,
@@ -1277,11 +1292,11 @@ async function rejectDesktopMigrationBundleMismatch(
   );
   await dialog.showMessageBox({
     type: "error",
-    title: "Synara's server build is stale",
+    title: "Metis's server build is stale",
     message: "The built migration code does not match this checkout.",
     detail:
       `Expected ${mismatch.expectedDigest}, but the desktop bundle contains ` +
-      `${mismatch.actualDigest}.\n\nRebuild with bun run build:desktop before starting Synara. The database was not opened.`,
+      `${mismatch.actualDigest}.\n\nRebuild with bun run build:desktop before starting Metis. The database was not opened.`,
     buttons: ["Quit"],
     defaultId: 0,
     noLink: true,
@@ -1355,15 +1370,15 @@ async function handleDesktopMigrationRecovery(): Promise<DesktopMigrationRecover
       ];
       if (canInstallUpdate) {
         choices.push({
-          label: "Update Synara and restart",
-          detail: "install the newest Synara release, which may already contain the fix",
+          label: "Update Metis and restart",
+          detail: "install the newest Metis release, which may already contain the fix",
           decision: "install-update",
         });
       }
       if (releaseUrl !== null) {
         choices.push({
           label: "Download latest release",
-          detail: `${canInstallUpdate ? "download that release" : "download the latest Synara release"} in a browser`,
+          detail: `${canInstallUpdate ? "download that release" : "download the latest Metis release"} in a browser`,
           decision: "open-release-page",
         });
       }
@@ -1378,16 +1393,16 @@ async function handleDesktopMigrationRecovery(): Promise<DesktopMigrationRecover
         type: previousFailure === null ? "warning" : "error",
         title:
           previousFailure === null
-            ? "Synara needs to recover its database"
+            ? "Metis needs to recover its database"
             : restoreFailed
               ? "Migration recovery failed"
-              : "Synara could not update itself",
+              : "Metis could not update itself",
         message:
           previousFailure === null
-            ? "Synara stopped a database migration before it could finish safely."
+            ? "Metis stopped a database migration before it could finish safely."
             : restoreFailed
               ? "The saved database backup could not be restored."
-              : "The newest Synara release could not be installed.",
+              : "The newest Metis release could not be installed.",
         detail: `${previousFailure === null ? "" : `${previousFailure.message}\n\n`}You can ${options}. No provider or chat process will start until recovery succeeds.`,
         buttons: choices.map((choice) => choice.label),
         defaultId: 0,
@@ -1562,7 +1577,7 @@ function handleFatalStartupError(stage: string, error: unknown): void {
   console.error(`[desktop] fatal startup error (${stage})`, error);
   if (!isQuitting) {
     isQuitting = true;
-    dialog.showErrorBox("Synara failed to start", `Stage: ${stage}\n${message}${detail}`);
+    dialog.showErrorBox("Metis failed to start", `Stage: ${stage}\n${message}${detail}`);
   }
   requestGracefulAppQuit(`fatal startup (${stage})`);
 }
@@ -1745,14 +1760,14 @@ async function checkForUpdatesFromMenu(): Promise<void> {
     void dialog.showMessageBox({
       type: "info",
       title: "You're up to date!",
-      message: `Synara ${updateState.currentVersion} is currently the newest version available.`,
+      message: `Metis ${updateState.currentVersion} is currently the newest version available.`,
       buttons: ["OK"],
     });
   } else if (updateState.status === "downloading" || updateState.status === "available") {
     void dialog.showMessageBox({
       type: "info",
       title: "Update found",
-      message: "Synara is preparing the update in the background.",
+      message: "Metis is preparing the update in the background.",
       buttons: ["OK"],
     });
   } else if (updateState.status === "downloaded") {
@@ -2154,13 +2169,13 @@ function resolveUserDataPath(): string {
 function repairBrowserProfileBeforeElectronReady(userDataPath: string): void {
   const browserProfileRepair = repairBrowserProfileFromBridgeManifest(userDataPath);
   if (browserProfileRepair.status === "repaired") {
-    console.info("[desktop] Completed Synara browser profile bridge repair", {
+    console.info("[desktop] Completed Metis browser profile bridge repair", {
       sourcePath: browserProfileRepair.sourcePath,
       targetPath: browserProfileRepair.targetPath,
       copiedEntries: browserProfileRepair.copiedEntries,
     });
   } else if (browserProfileRepair.status === "repair-failed") {
-    console.warn("[desktop] Failed to complete Synara browser profile bridge repair", {
+    console.warn("[desktop] Failed to complete Metis browser profile bridge repair", {
       sourcePath: browserProfileRepair.sourcePath,
       targetPath: browserProfileRepair.targetPath,
       error: browserProfileRepair.error,
@@ -2345,14 +2360,21 @@ async function syncMacAppBundleIcon(
   icon: DesktopAppIcon,
   image: Electron.NativeImage | null,
 ): Promise<void> {
-  // Do not customize the shared Electron executable used by development runs.
-  if (!app.isPackaged || lastPersistedMacAppIcon === icon) return;
   const bundlePath = resolveMacAppBundlePath(process.execPath, process.platform);
   if (!bundlePath) return;
+  // Only the packaged app or this fork's own generated launcher may receive
+  // Finder metadata. Never customize a shared node_modules/Electron.app.
+  const ownsSourceBundle =
+    isSourceDesktopBuild &&
+    desktopFlavor === "development" &&
+    bundlePath === Path.join(ROOT_DIR, "apps/desktop/.electron-runtime", `${APP_DISPLAY_NAME}.app`);
+  if ((!app.isPackaged && !ownsSourceBundle) || lastPersistedMacAppIcon === icon) return;
   await persistMacAppIcon({
     bundlePath,
     cacheDirectory: Path.join(STATE_DIR, "mac-app-icons"),
-    png: icon === "default" ? null : (image?.toPNG() ?? null),
+    // Metis uses its selected PNG for the default icon. NSWorkspace stores it
+    // outside the signed bundle, so a brand change does not reset TCC grants.
+    png: icon === "default" && desktopFlavor !== "development" ? null : (image?.toPNG() ?? null),
   });
   lastPersistedMacAppIcon = icon;
 }
@@ -2443,6 +2465,7 @@ async function applyDesktopAppIconUnlocked(
     return;
   }
   if (
+    desktopFlavor !== "development" &&
     usesMacBundleAppIcon({
       icon,
       platform: process.platform,
@@ -2456,11 +2479,14 @@ async function applyDesktopAppIconUnlocked(
     return;
   }
 
-  const resourceName = desktopAppIconResourceName({
-    icon,
-    platform: process.platform,
-    isDarkAppearance: process.platform === "darwin" && nativeTheme.shouldUseDarkColors,
-  });
+  const resourceName =
+    desktopFlavor === "development" && process.platform === "darwin" && icon === "default"
+      ? "metis-app-icon-blue.png"
+      : desktopAppIconResourceName({
+          icon,
+          platform: process.platform,
+          isDarkAppearance: process.platform === "darwin" && nativeTheme.shouldUseDarkColors,
+        });
   const iconPath = resolveResourcePath(resourceName);
   if (!iconPath) return;
 
@@ -2673,11 +2699,11 @@ function restartAfterStartupBundleSwap(error: BundleChangedDuringStartupError): 
   void dialog
     .showMessageBox({
       type: "warning",
-      title: "Synara needs to restart",
-      message: "Synara changed while it was opening.",
+      title: "Metis needs to restart",
+      message: "Metis changed while it was opening.",
       detail:
-        "The current process cannot safely read the replaced application bundle. Restart Synara to finish opening with one consistent version.",
-      buttons: ["Restart Synara"],
+        "The current process cannot safely read the replaced application bundle. Restart Metis to finish opening with one consistent version.",
+      buttons: ["Restart Metis"],
       defaultId: 0,
     })
     .catch(() => undefined)
@@ -2729,8 +2755,8 @@ function startBundleSwapWatcher(): void {
     void dialog
       .showMessageBox({
         type: "warning",
-        title: "Synara was replaced on disk",
-        message: "The installed Synara app changed while it was running.",
+        title: "Metis was replaced on disk",
+        message: "The installed Metis app changed while it was running.",
         detail:
           "The interface keeps running from a safeguarded copy, but parts of the app loaded later can still read the replaced file. Restart now to pick up the new version safely.",
         buttons: ["Restart Now", "Later"],
@@ -2899,7 +2925,7 @@ function processInstallMarkerOnStartup(): void {
   }
 
   automaticUpdateActivitySuppressed = true;
-  const message = `Synara restarted, but update ${marker.toVersion} was not installed. Try again.`;
+  const message = `Metis restarted, but update ${marker.toVersion} was not installed. Try again.`;
   setUpdateState(
     reduceDesktopUpdateStateOnInstallRestartFailure(
       updateState,
@@ -3329,7 +3355,7 @@ async function installLatestUpdateForMigrationRecovery(): Promise<string | null>
   }
 
   if (updateState.status === "up-to-date") {
-    return `Synara ${app.getVersion()} is already the newest release, so updating cannot repair this database.`;
+    return `Metis ${app.getVersion()} is already the newest release, so updating cannot repair this database.`;
   }
   if (updateState.status !== "downloaded") {
     return updateState.message ?? "The update could not be downloaded.";
@@ -3752,7 +3778,7 @@ async function startCuaHost(): Promise<void> {
         resourcesPath: process.resourcesPath,
         appRoot: resolveAppRoot(),
         bundleId: desktopIdentity.bundleId,
-        capability: DESKTOP_BROWSER_HOST_CAPABILITY,
+        capability: browserHostCapability,
         inputMonitor: linuxEscapeKillSwitchMonitor,
         ownPids: () => new Set([process.pid, ...app.getAppMetrics().map((metric) => metric.pid)]),
       }),
@@ -3770,7 +3796,8 @@ async function startCuaHost(): Promise<void> {
       ? Path.join(process.resourcesPath, "cua-driver", "cua-driver")
       : Path.join(resolveAppRoot(), "apps/desktop/resources/cua-driver/cua-driver"),
     bundleId: desktopIdentity.bundleId,
-    capability: DESKTOP_BROWSER_HOST_CAPABILITY,
+    capability: browserHostCapability,
+    ...(fixedCuaHostEndpoint ? { hostEndpoint: fixedCuaHostEndpoint } : {}),
     // Computer use must never bind the app hosting it: the integrated
     // browser's webviews live in this app's own renderer pids.
     ownPids: () => new Set([process.pid, ...app.getAppMetrics().map((m) => m.pid)]),
@@ -3851,6 +3878,8 @@ async function startCuaHost(): Promise<void> {
       return result;
     },
   });
+  // A fixed endpoint may hold a socket left by a desktop that exited uncleanly.
+  if (fixedCuaHostEndpoint) await clearStaleCuaHostSocket(fixedCuaHostEndpoint);
   await attachCuaHost(host);
   // The physical Escape kill switch lives in a dedicated helper process: its
   // listen-only event tap can report a hardware Escape even while Electron's
@@ -3966,7 +3995,7 @@ function backendFailureDialogDetail(reason: string): string {
   const cause = summary.length > 0 ? summary : reason;
   return [
     cause,
-    "Synara paused automatic restarts so a failing backend can't keep respawning in the background.",
+    "Metis paused automatic restarts so a failing backend can't keep respawning in the background.",
     `Log file:\n${Path.join(LOG_DIR, BACKEND_LOG_FILE_NAME)}`,
   ].join("\n\n");
 }
@@ -3995,8 +4024,8 @@ function presentBackendStartupGiveUp(reason: string): void {
     for (;;) {
       const result = await dialog.showMessageBox({
         type: "error",
-        title: "Synara's backend didn't start",
-        message: `Synara's backend failed to start ${BACKEND_MAX_CONSECUTIVE_START_FAILURES} times in a row.`,
+        title: "Metis's backend didn't start",
+        message: `Metis's backend failed to start ${BACKEND_MAX_CONSECUTIVE_START_FAILURES} times in a row.`,
         detail,
         buttons: ["Try again", "Open logs", "Quit"],
         defaultId: 0,
@@ -4033,25 +4062,25 @@ function schemaTooNewRestoreDetail(
 ): string {
   if (restoreCandidate) {
     return (
-      `Synara verified the exact pre-migration backup at:\n${restoreCandidate.backupPath}\n\n` +
+      `Metis verified the exact pre-migration backup at:\n${restoreCandidate.backupPath}\n\n` +
       `Its tracker ends at migration ${restoreCandidate.backupMigrationId}; its shared lineage is compatible ` +
       "with this build, and it passed SQLite integrity checking."
     );
   }
 
   if (block.recovery.kind === "restore-available") {
-    return "The recorded backup does not match this desktop database exactly, so Synara will not restore it.";
+    return "The recorded backup does not match this desktop database exactly, so Metis will not restore it.";
   }
 
   switch (block.recovery.reason) {
     case "missing-provenance":
-      return "No completed migration backup record exists for this database, so Synara cannot choose a backup safely.";
+      return "No completed migration backup record exists for this database, so Metis cannot choose a backup safely.";
     case "invalid-provenance":
       return "The completed migration backup record does not describe this exact database state.";
     case "invalid-backup":
       return "The exact recorded backup is missing, unreadable, or failed SQLite integrity checking.";
     case "incompatible-backup":
-      return "The exact recorded backup has a schema or migration lineage this Synara build cannot open safely.";
+      return "The exact recorded backup has a schema or migration lineage this Metis build cannot open safely.";
   }
 }
 
@@ -4083,7 +4112,7 @@ async function handleDesktopSchemaTooNewRecovery(
         });
       }
       if (canInstallUpdate) {
-        choices.push({ label: "Update Synara and restart", decision: "install-update" });
+        choices.push({ label: "Update Metis and restart", decision: "install-update" });
       }
       if (releaseUrl !== null) {
         choices.push({ label: "Download latest release", decision: "open-release-page" });
@@ -4097,16 +4126,16 @@ async function handleDesktopSchemaTooNewRecovery(
         type: previousFailure === null ? "warning" : "error",
         title:
           previousFailure === null
-            ? "This database is newer than Synara"
+            ? "This database is newer than Metis"
             : restoreFailed
               ? "Database restore failed"
-              : "Synara could not update itself",
+              : "Metis could not update itself",
         message:
           previousFailure === null
             ? `Database migration ${block.databaseMigrationId} is newer than this build supports (${block.latestSupportedMigrationId}).`
             : restoreFailed
               ? "The verified database backup could not be restored."
-              : "The newest Synara release could not be installed.",
+              : "The newest Metis release could not be installed.",
         detail:
           `${previousFailure === null ? "" : `${previousFailure.message}\n\n`}` +
           `${schemaTooNewRestoreDetail(block, restoreCandidate)}\n\n` +
@@ -4172,15 +4201,15 @@ function handleBackendStartupBlock(block: BackendStartupBlock): void {
             type: "error",
             title:
               previousFailure === null
-                ? "Synara could not verify migration recovery"
-                : "Synara could not update itself",
+                ? "Metis could not verify migration recovery"
+                : "Metis could not update itself",
             message:
               previousFailure === null
                 ? "The backend stopped for database safety, but its recovery details were invalid."
-                : "The newest Synara release could not be installed.",
+                : "The newest Metis release could not be installed.",
             detail:
               `${previousFailure === null ? "" : `${previousFailure.message}\n\n`}` +
-              "Synara will keep the backend and provider processes stopped. The recovery record is not trusted, so restoring from it is disabled; choose one of the safe actions below.",
+              "Metis will keep the backend and provider processes stopped. The recovery record is not trusted, so restoring from it is disabled; choose one of the safe actions below.",
             buttons: choices.map((choice) => choice.label),
             defaultId: 0,
             cancelId: choices.length - 1,
@@ -4209,7 +4238,7 @@ function handleBackendStartupBlock(block: BackendStartupBlock): void {
       const challenge = block.challenge;
       const result = await dialog.showMessageBox({
         type: "warning",
-        title: "Synara found a different database migration history",
+        title: "Metis found a different database migration history",
         message: `Migration ${challenge.firstDivergedId} does not match this build.`,
         detail:
           `The database records "${challenge.recordedName}", while this build expects ` +
@@ -4235,11 +4264,11 @@ function handleBackendStartupBlock(block: BackendStartupBlock): void {
     if (block.kind === "migration-runtime-identity-mismatch") {
       await dialog.showMessageBox({
         type: "error",
-        title: "Synara's server build does not match",
+        title: "Metis's server build does not match",
         message: "The desktop and server migration code came from different builds.",
         detail: app.isPackaged
-          ? "Update or reinstall Synara before starting it again. The database was not opened."
-          : "Rebuild with bun run build:desktop before starting Synara again. The database was not opened.",
+          ? "Update or reinstall Metis before starting it again. The database was not opened."
+          : "Rebuild with bun run build:desktop before starting Metis again. The database was not opened.",
         buttons: ["Quit"],
         defaultId: 0,
         noLink: true,
@@ -4251,10 +4280,10 @@ function handleBackendStartupBlock(block: BackendStartupBlock): void {
     if (block.kind === "migration-recovery-required") {
       const result = await dialog.showMessageBox({
         type: "warning",
-        title: "Synara needs to recover its database",
+        title: "Metis needs to recover its database",
         message: "A database migration did not finish safely.",
         detail:
-          "Restart Synara to open the verified backup recovery flow. Provider and chat processes will remain stopped until recovery completes.",
+          "Restart Metis to open the verified backup recovery flow. Provider and chat processes will remain stopped until recovery completes.",
         buttons: ["Restart and recover", "Quit"],
         defaultId: 0,
         cancelId: 1,
@@ -4271,13 +4300,13 @@ function handleBackendStartupBlock(block: BackendStartupBlock): void {
 
     const processDetail =
       block.ownerPid === null
-        ? "Another Synara server is already using this database."
-        : `Another Synara server (process ${block.ownerPid}) is already using this database.`;
+        ? "Another Metis server is already using this database."
+        : `Another Metis server (process ${block.ownerPid}) is already using this database.`;
     const result = await dialog.showMessageBox({
       type: "warning",
-      title: "Synara is already running elsewhere",
-      message: "Your local Synara data is in use by another process.",
-      detail: `${processDetail}\n\nStop the other Synara app or development server, then try again. Your data has not been changed.`,
+      title: "Metis is already running elsewhere",
+      message: "Your local Metis data is in use by another process.",
+      detail: `${processDetail}\n\nStop the other Metis app or development server, then try again. Your data has not been changed.`,
       buttons: ["Try again", "Quit"],
       defaultId: 0,
       cancelId: 1,
@@ -4303,7 +4332,7 @@ async function restartBackendAfterCrash(
   reason: string,
   trigger: BackendStartTrigger = "crash-restart",
 ): Promise<void> {
-  if (isQuitting || backendProcess) {
+  if (metisSharedService || isQuitting || backendProcess) {
     return;
   }
 
@@ -4339,6 +4368,8 @@ async function restartBackendAfterCrash(
 type BackendStartTrigger = "lifecycle" | "crash-restart";
 
 function startBackend(trigger: BackendStartTrigger = "lifecycle"): void {
+  // This window is only a client; the independent launcher owns this backend.
+  if (metisSharedService) return;
   if (isQuitting || backendProcess) return;
   // Recovery owns the database until it clears the marker. Callers that restart
   // the backend after an unrelated failure — a given-up update install, say —
@@ -4615,6 +4646,7 @@ function isMainRendererAvailable(): boolean {
 
 async function confirmRunningChatsThenQuit(reason: string): Promise<void> {
   if (
+    metisSharedService ||
     !shouldPromptForRunningChatsBeforeQuit(reason) ||
     runningChatsQuitGuard.hasAllowedQuit() ||
     isQuitting ||
@@ -4687,8 +4719,9 @@ function registerIpcHandlers(): void {
   ipcMain.on(IPC.wsUrl, (event: IpcMainEvent) => {
     // The backend port is reserved at runtime, so preload asks main for the
     // live URL instead of trusting build-time or inherited renderer env.
-    event.returnValue =
-      normalizeDesktopWsUrl(backendWsUrl) ?? resolveDesktopWsUrlFromEnv(process.env);
+    event.returnValue = metisSharedService
+      ? null
+      : (normalizeDesktopWsUrl(backendWsUrl) ?? resolveDesktopWsUrlFromEnv(process.env));
   });
 
   ipcMain.removeAllListeners(IPC.zoomFactor);
@@ -5094,7 +5127,7 @@ function registerIpcHandlers(): void {
             "Secure browser session persistence failed.",
           ];
           console.warn(
-            "[Synara browser]",
+            "[Metis browser]",
             error instanceof Error && allowed.includes(error.message)
               ? error.message
               : "Browser session checkpoint failed.",
@@ -5221,6 +5254,16 @@ function createWindow(): BrowserWindow {
   attachRendererCrashRecovery(window);
   attachDesktopPhysicalZoomShortcuts(window);
 
+  if (metisSharedService) {
+    const sharedOrigin = metisSharedService.origin;
+    // The native preload must never travel with a redirected external page.
+    const guardNavigation = (event: { preventDefault(): void }, url: string) => {
+      if (!isMetisSharedNavigationAllowed(sharedOrigin, url)) event.preventDefault();
+    };
+    window.webContents.on("will-navigate", guardNavigation);
+    window.webContents.on("will-redirect", guardNavigation);
+  }
+
   window.webContents.on("will-attach-webview", (event, webPreferences, params) => {
     const partition = params.partition;
     if (
@@ -5339,7 +5382,9 @@ function createWindow(): BrowserWindow {
     }
   });
 
-  if (isDevelopment) {
+  if (metisSharedService) {
+    void loadMetisSharedWindow(window, metisSharedService);
+  } else if (isDevelopment) {
     void window.loadURL(process.env.VITE_DEV_SERVER_URL as string);
     window.webContents.openDevTools({ mode: "detach" });
   } else {
@@ -5363,6 +5408,85 @@ function createWindow(): BrowserWindow {
   });
 
   return window;
+}
+
+async function loadMetisSharedWindow(
+  window: BrowserWindow,
+  service: MetisSharedService,
+): Promise<void> {
+  try {
+    // Keep the normal cookie/session flow. A native window pairs once and its
+    // Electron profile remembers that session; no startup secret goes into IPC.
+    const nativeSession = window.webContents.session;
+    const authenticated = async () => {
+      const response = await nativeSession.fetch(`${service.origin}/api/auth/session`, {
+        credentials: "include",
+        redirect: "error",
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!response.ok) throw new Error("Shared service authentication is unavailable.");
+      const state = (await response.json()) as { authenticated?: boolean };
+      return state.authenticated === true;
+    };
+    const cookies = await nativeSession.cookies.get({ url: service.origin });
+    const hadSession = cookies.some((cookie) => cookie.name === "synara_session");
+    let paired = await authenticated();
+    let pairingUrl =
+      paired || hadSession ? null : readMetisOwnerPairingUrl(BASE_DIR, service.origin);
+    while (!paired) {
+      if (window.isDestroyed() || isQuitting) return;
+      if (pairingUrl) {
+        const credential = new URLSearchParams(new URL(pairingUrl).hash.slice(1)).get("token");
+        const response = await nativeSession.fetch(`${service.origin}/api/auth/bootstrap`, {
+          method: "POST",
+          credentials: "include",
+          redirect: "error",
+          signal: AbortSignal.timeout(10_000),
+          headers: { "Content-Type": "application/json", Origin: service.origin },
+          body: JSON.stringify({ credential }),
+        });
+        pairingUrl = null;
+        paired = response.ok && (await authenticated());
+        if (paired) break;
+      }
+      const result = await dialog.showMessageBox({
+        type: "info",
+        title: "连接 Metis 工作区",
+        message: "为这个桌面窗口配对一次",
+        detail:
+          "在已登录的 Metis 设置 → 手机与远程连接中生成并复制配对链接，再点击下方按钮。链接只能使用一次，有效期为 5 分钟。",
+        buttons: ["使用已复制的配对链接", "在浏览器打开 Metis", "取消"],
+        defaultId: 0,
+        cancelId: 2,
+        noLink: true,
+      });
+      if (result.response === 2) {
+        window.close();
+        return;
+      }
+      if (result.response === 1) {
+        await shell.openExternal(service.origin);
+      } else {
+        // Read the clipboard only in response to this explicit user action.
+        pairingUrl = parseMetisPairingUrl(service.origin, clipboard.readText());
+      }
+    }
+    if (!paired || window.isDestroyed() || isQuitting) return;
+    await nativeSession.cookies.flushStore();
+    await window.loadURL(service.origin);
+    writeDesktopLogHeader("Metis shared-service window loaded; session authenticated");
+  } catch {
+    // loadURL errors can include the single-use credential. Never log them.
+    writeDesktopLogHeader("Metis shared-service window could not load");
+    await dialog.showMessageBox({
+      type: "error",
+      title: "Metis",
+      message: "无法连接 Metis 共享服务",
+      detail: "请确认后台服务与网络连接正常后，重新打开 Metis。",
+      buttons: ["关闭"],
+    });
+    window.close();
+  }
 }
 
 /**
@@ -5450,13 +5574,13 @@ function presentRendererCrashRecovery(
 
   const message =
     response.cause === "reload-budget-exhausted"
-      ? `Synara's window crashed ${response.crashes} times in a row.`
-      : "Synara's window stopped unexpectedly.";
+      ? `Metis's window crashed ${response.crashes} times in a row.`
+      : "Metis's window stopped unexpectedly.";
   const detail = [
     `The window's renderer process exited (${reason}).`,
     response.cause === "reload-budget-exhausted"
-      ? "Synara paused automatic reloads so a repeating crash can't keep reloading in the background."
-      : "This exit reason repeats on reload, so Synara did not retry automatically.",
+      ? "Metis paused automatic reloads so a repeating crash can't keep reloading in the background."
+      : "This exit reason repeats on reload, so Metis did not retry automatically.",
     `Log file:\n${Path.join(LOG_DIR, DESKTOP_LOG_FILE_NAME)}`,
   ].join("\n\n");
 
@@ -5464,7 +5588,7 @@ function presentRendererCrashRecovery(
     for (;;) {
       const result = await dialog.showMessageBox({
         type: "error",
-        title: "Synara's window stopped",
+        title: "Metis's window stopped",
         message,
         detail,
         buttons: ["Reload", "Open logs", "Quit"],
@@ -5589,8 +5713,61 @@ if (!hasSingleInstanceLock) {
   });
 }
 
+// The shared backend dials these per call, so serving them after it started is fine.
+async function startMetisSharedDesktopHosts(service: MetisSharedService): Promise<void> {
+  let bridge: ReturnType<typeof readMetisDesktopHostBridge>;
+  try {
+    bridge = readMetisDesktopHostBridge(BASE_DIR, service);
+  } catch (error) {
+    console.warn("[Metis] Browser and computer tools are unavailable for this service", error);
+    return;
+  }
+  if (!bridge) {
+    writeDesktopLogHeader("shared service offers no desktop host bridge");
+    return;
+  }
+  browserHostCapability = bridge.capability;
+  browserHostPipePath = bridge.browserHostPipePath;
+  try {
+    await ensureBrowserHostPipeServer();
+  } catch (error) {
+    console.warn("[Metis browser] Failed to start browser host pipe", error);
+  }
+  // Only the macOS host accepts a caller-chosen endpoint today.
+  if (process.platform !== "darwin") return;
+  fixedCuaHostEndpoint = bridge.cuaHostSocket;
+  try {
+    await startCuaHost();
+  } catch (error) {
+    console.warn("[Metis] Failed to start computer host", error);
+  }
+  writeDesktopLogHeader("shared service desktop hosts started");
+}
+
 async function bootstrap(): Promise<void> {
   writeDesktopLogHeader("bootstrap start");
+  metisSharedService = readMetisSharedService(BASE_DIR);
+  if (metisSharedService) {
+    // Attach before migration/recovery: the service owns the database and its
+    // lifecycle. Native dialogs, menus, window controls and icons stay in Electron.
+    backendHttpUrl = metisSharedService.localOrigin;
+    delete process.env.SYNARA_DESKTOP_WS_URL;
+    configureAutoUpdater();
+    registerIpcHandlers();
+    await waitForHttpReady(backendHttpUrl, {
+      path: "/health",
+      timeoutMs: 15_000,
+      isReady: async (response) => {
+        if (!response.ok) return false;
+        const health = (await response.json()) as { startupReady?: boolean };
+        return health.startupReady === true;
+      },
+    });
+    mainWindow = createWindow();
+    writeDesktopLogHeader("Metis attached to existing shared service; no backend spawned");
+    await startMetisSharedDesktopHosts(metisSharedService);
+    return;
+  }
   if (!(await requireCurrentDesktopMigrationBundle())) {
     return;
   }
@@ -5631,7 +5808,7 @@ async function bootstrap(): Promise<void> {
     }
   } catch {
     console.warn(
-      "[Synara browser] Secure session restoration is unavailable; no saved session cookies were restored.",
+      "[Metis browser] Secure session restoration is unavailable; no saved session cookies were restored.",
     );
   }
 
@@ -5640,7 +5817,7 @@ async function bootstrap(): Promise<void> {
   try {
     await ensureBrowserHostPipeServer();
   } catch (error) {
-    console.warn("[Synara browser] Failed to start browser host pipe", error);
+    console.warn("[Metis browser] Failed to start browser host pipe", error);
   }
   await startCuaHost();
   startBackend();

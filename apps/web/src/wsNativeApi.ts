@@ -213,24 +213,71 @@ function defaultBrowserTitle(url: string): string {
   }
 }
 
+// Desktop auth is a bearer session held only in renderer memory. Never put the
+// reusable desktop bootstrap credential into HTTP URLs or browser storage.
+let desktopAuthSession: Promise<string> | undefined;
+
 async function requestAuthJson<T>(
   path: string,
   options: {
     readonly method?: "GET" | "POST";
     readonly body?: unknown;
   } = {},
+  retryDesktopAuth = true,
 ): Promise<T> {
   const hasBody = options.body !== undefined;
-  const response = await fetch(path, {
+  const bridgeUrl = window.desktopBridge?.getWsUrl?.();
+  const desktopUrl = bridgeUrl ? new URL(bridgeUrl) : undefined;
+  let bearer: string | undefined;
+  let usedDesktopSession: Promise<string> | undefined;
+  if (desktopUrl) {
+    const credential = desktopUrl.searchParams.get("token");
+    if (!credential || !["127.0.0.1", "localhost", "[::1]"].includes(desktopUrl.hostname)) {
+      throw new Error("Desktop authentication requires its local backend.");
+    }
+    desktopUrl.protocol = desktopUrl.protocol === "wss:" ? "https:" : "http:";
+    desktopUrl.search = "";
+    if (!desktopAuthSession) {
+      desktopAuthSession = (async () => {
+        const response = await fetch(new URL("/api/auth/bootstrap/bearer", desktopUrl), {
+          method: "POST",
+          credentials: "omit",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ credential }),
+        });
+        if (!response.ok)
+          throw new Error("Desktop authentication failed. Restart Metis to reconnect.");
+        const result = (await response.json()) as AuthBearerBootstrapResult;
+        return result.sessionToken;
+      })().catch((error: unknown) => {
+        desktopAuthSession = undefined;
+        throw error;
+      });
+    }
+    usedDesktopSession = desktopAuthSession;
+    bearer = await usedDesktopSession;
+  }
+  const response = await fetch(desktopUrl ? new URL(path, desktopUrl) : path, {
     method: options.method ?? "GET",
-    credentials: "same-origin",
+    credentials: desktopUrl ? "omit" : "same-origin",
+    headers: {
+      ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
+      ...(hasBody ? { "Content-Type": "application/json" } : {}),
+    },
     ...(hasBody
       ? {
-          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(options.body),
         }
       : {}),
   });
+  if (response.status === 401 && desktopUrl) {
+    if (desktopAuthSession === usedDesktopSession) desktopAuthSession = undefined;
+    if (retryDesktopAuth && path !== "/api/auth/logout") {
+      // Only the local desktop can reuse its owner bootstrap. Remote devices
+      // never silently re-pair after revocation. Retry at most once per call.
+      return requestAuthJson<T>(path, options, false);
+    }
+  }
   const payload = (await response.json().catch(() => null)) as unknown;
   if (!response.ok) {
     const message =
@@ -701,6 +748,7 @@ export function createWsNativeApi(): NativeApi {
         const result = await requestAuthJson<AuthLogoutResult>("/api/auth/logout", {
           method: "POST",
         });
+        desktopAuthSession = undefined;
         await transport.dispose();
         return result;
       },
@@ -841,6 +889,13 @@ export function createWsNativeApi(): NativeApi {
       archiveRun: (input) => transport.request(WS_METHODS.automationArchiveRun, input),
       resolveProposal: (input) => transport.request(WS_METHODS.automationResolveProposal, input),
       onEvent: automationEventListeners.subscribe,
+    },
+    memory: {
+      getOverview: () => transport.request(WS_METHODS.memoryGetOverview),
+      read: (input) => transport.request(WS_METHODS.memoryRead, input),
+      write: (input) => transport.request(WS_METHODS.memoryWrite, input),
+      delete: (input) => transport.request(WS_METHODS.memoryDelete, input),
+      updateSoul: (input) => transport.request(WS_METHODS.memoryUpdateSoul, input),
     },
     device: {
       list: (input) => transport.request(DEVICE_WS_METHODS.list, input),

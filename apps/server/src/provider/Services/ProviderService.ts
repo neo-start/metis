@@ -76,6 +76,11 @@ export interface ProviderSessionStartOutcomeOptions {
 /**
  * ProviderServiceShape - Service API for provider session and turn orchestration.
  */
+export interface ProviderLiveRuntimeTask {
+  readonly taskId: string;
+  readonly description?: string;
+}
+
 export interface ProviderServiceShape {
   readonly startClaudeCompaction?: (input: {
     readonly threadId: ThreadId;
@@ -214,6 +219,14 @@ export interface ProviderServiceShape {
    * terminates those tasks.
    */
   readonly hasLiveRuntimeTasks?: (input: { readonly threadId: ThreadId }) => Effect.Effect<boolean>;
+
+  /**
+   * The provider-native tasks that keep the thread's runtime alive, with the
+   * description each task started with. Used to explain what blocks an action.
+   */
+  readonly listLiveRuntimeTasks?: (input: {
+    readonly threadId: ThreadId;
+  }) => Effect.Effect<ReadonlyArray<ProviderLiveRuntimeTask>>;
 
   /**
    * Forget a stale provider-native resume cursor while preserving local routing

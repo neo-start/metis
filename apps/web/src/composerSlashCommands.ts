@@ -4,6 +4,7 @@ import {
   type GitBranch,
   type ProviderInteractionMode,
   type ProviderKind,
+  isCodexProviderKind,
 } from "@synara/contracts";
 import { DEFAULT_PROVIDER_ORDER } from "./providerOrdering";
 import {
@@ -88,7 +89,7 @@ function expandProviderNativeSlashCommandNames(
  * command list but does not honor bare `/review` text turns (#218).
  */
 export function providerUsesAppOwnedReviewSlashCommand(provider: ProviderKind): boolean {
-  return provider === "codex" || provider === "opencode";
+  return isCodexProviderKind(provider) || provider === "opencode";
 }
 
 function shouldKeepBuiltInSlashCommandDespiteNativeCollision(
@@ -231,7 +232,7 @@ const COMPOSER_SLASH_COMMAND_DEFINITIONS: Record<
   "computer-use": {
     command: "computer-use",
     label: "/computer-use",
-    description: "Use Synara Computer for this request only",
+    description: "Use Metis Computer for this request only",
     source: "app",
   },
   fast: {

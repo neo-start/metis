@@ -153,7 +153,7 @@ const make = Effect.gen(function* () {
             .pipe(
               Effect.catch((error) =>
                 Effect.logWarning(
-                  "provider-native skill discovery failed; serving the Synara skills catalog only",
+                  "provider-native skill discovery failed; serving the Metis skills catalog only",
                   { provider: parsed.provider, error },
                 ).pipe(Effect.as(null)),
               ),
@@ -266,7 +266,7 @@ const make = Effect.gen(function* () {
       if (!(yield* providerIsEnabled(parsed.provider))) {
         return yield* new ProviderValidationError({
           operation: "ProviderDiscoveryService.readPlugin",
-          issue: `Provider '${parsed.provider}' is disabled in Synara settings.`,
+          issue: `Provider '${parsed.provider}' is disabled in Metis settings.`,
         });
       }
       const adapter = yield* registry.getByProvider(parsed.provider);

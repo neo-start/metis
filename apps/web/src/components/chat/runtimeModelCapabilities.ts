@@ -9,6 +9,7 @@ import type {
   ProviderKind,
   ProviderModelDescriptor,
 } from "@synara/contracts";
+import { isCodexProviderKind } from "@synara/contracts";
 import {
   getClaudeContextWindowSuffix,
   getDefaultEffort,
@@ -94,7 +95,9 @@ export function getRuntimeAwareModelCapabilities(input: {
   const staticCapabilities = getModelCapabilities(input.provider, input.model);
   // Runtime discovery is authoritative when available; the static table is only a startup fallback.
   const supportsFastMode =
-    (input.provider === "codex" || input.provider === "cursor" || input.provider === "devin") &&
+    (isCodexProviderKind(input.provider) ||
+      input.provider === "cursor" ||
+      input.provider === "devin") &&
     input.runtimeModel
       ? input.runtimeModel.supportsFastMode === true
       : staticCapabilities.supportsFastMode;
@@ -111,7 +114,7 @@ export function getRuntimeAwareModelCapabilities(input: {
   const runtimeEfforts = input.runtimeModel?.supportedReasoningEfforts;
   // Providers with dynamic catalogs, including Droid, expose model-specific effort ladders here.
   if (
-    (input.provider !== "codex" &&
+    (!isCodexProviderKind(input.provider) &&
       input.provider !== "cursor" &&
       input.provider !== "antigravity" &&
       input.provider !== "grok" &&

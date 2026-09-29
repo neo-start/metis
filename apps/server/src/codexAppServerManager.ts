@@ -67,6 +67,7 @@ import {
   SYNARA_GATEWAY_HARNESS_POLICY,
   renderSynaraHarnessPolicy,
 } from "./agentGateway/harnessPolicy.ts";
+import { renderMetisMemoryContextForThread } from "./metisMemory/memoryContext.ts";
 import {
   AGENT_GATEWAY_TURN_AUTHORITY_RETIRED,
   type AgentGatewayCapabilityInput,
@@ -185,6 +186,11 @@ type CodexSessionApprovalOverride = {
 interface CodexSessionContext {
   readonly enableComputerControl?: boolean;
   readonly gatewaySessionLease?: AgentGatewaySessionLease;
+  /**
+   * The session's `<metis_memory>` block, rendered on the first turn and then
+   * kept stable so every turn's developer instructions stay identical.
+   */
+  metisMemoryContext?: string | null;
   /** Set once this runtime's bearer is permanently fenced to a terminal turn. */
   gatewayCredentialRetired?: boolean;
   activeInteractionMode?: ProviderInteractionMode | undefined;
@@ -844,6 +850,8 @@ export function buildCodexCollaborationMode(input: {
   readonly interactionMode?: ProviderInteractionMode;
   readonly model?: string;
   readonly effort?: string;
+  /** Metis long-term memory block appended after the host policy. */
+  readonly metisMemoryContext?: string | null;
 }):
   | {
       mode: "default" | "plan";
@@ -863,21 +871,24 @@ export function buildCodexCollaborationMode(input: {
     nativeMode === "plan"
       ? CODEX_PLAN_MODE_DEVELOPER_INSTRUCTIONS
       : CODEX_DEFAULT_MODE_DEVELOPER_INSTRUCTIONS;
+  const policyInstructions =
+    input.enableComputerControl === true
+      ? instructions.replace(
+          SYNARA_GATEWAY_HARNESS_POLICY,
+          renderSynaraHarnessPolicy({
+            gatewayControlAvailable: true,
+            enableComputerControl: true,
+          }),
+        )
+      : instructions;
   return {
     mode: nativeMode,
     settings: {
       model,
       reasoning_effort: input.effort ?? "medium",
-      developer_instructions:
-        input.enableComputerControl === true
-          ? instructions.replace(
-              SYNARA_GATEWAY_HARNESS_POLICY,
-              renderSynaraHarnessPolicy({
-                gatewayControlAvailable: true,
-                enableComputerControl: true,
-              }),
-            )
-          : instructions,
+      developer_instructions: input.metisMemoryContext
+        ? `${policyInstructions}\n\n${input.metisMemoryContext}`
+        : policyInstructions,
     },
   };
 }
@@ -1077,6 +1088,9 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
   private readonly teardownProcessTree: typeof teardownProviderProcessTree;
   private readonly taskCompleteFallbackGraceMs: number;
   private readonly discoverySessionIdleMs: number;
+  private readonly resolveDefaultProviderOptions:
+    | (() => Promise<ProviderSessionStartInput["providerOptions"]>)
+    | undefined;
   constructor(
     services?: ServiceMap.ServiceMap<never>,
     options?: {
@@ -1092,6 +1106,13 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
       readonly teardownProcessTree?: typeof teardownProviderProcessTree;
       readonly taskCompleteFallbackGraceMs?: number;
       readonly discoverySessionIdleMs?: number;
+      /**
+       * Launch options for discovery runtimes that no caller scoped explicitly.
+       * A second Codex account sets this so metadata never comes from ~/.codex.
+       */
+      readonly resolveDefaultProviderOptions?: () => Promise<
+        ProviderSessionStartInput["providerOptions"]
+      >;
     },
   ) {
     super();
@@ -1105,6 +1126,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
       0,
       options?.discoverySessionIdleMs ?? CODEX_DISCOVERY_SESSION_IDLE_MS,
     );
+    this.resolveDefaultProviderOptions = options?.resolveDefaultProviderOptions;
   }
 
   // The Synara MCP server rides on the shared overlay config (no secrets),
@@ -1301,10 +1323,10 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
         this.emitLifecycleEvent(
           context,
           "session/threadStartWithoutResume",
-          "Starting a new Codex thread for a Synara thread that previously had a provider binding.",
+          "Starting a new Codex thread for a Metis thread that previously had a provider binding.",
         );
         await Effect.logWarning(
-          "codex app-server starting a fresh thread for a previously bound Synara thread",
+          "codex app-server starting a fresh thread for a previously bound Metis thread",
           {
             threadId,
             threadOpenMethod: "thread/start",
@@ -1524,8 +1546,15 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
     if (input.effort) {
       turnStartParams.effort = input.effort;
     }
+    if (context.metisMemoryContext === undefined) {
+      context.metisMemoryContext = renderMetisMemoryContextForThread({
+        threadId: context.session.threadId,
+        toolsAvailable: context.gatewaySessionLease !== undefined,
+      });
+    }
     const collaborationMode = buildCodexCollaborationMode({
       enableComputerControl: context.enableComputerControl === true,
+      metisMemoryContext: context.metisMemoryContext,
       ...(input.interactionMode !== undefined ? { interactionMode: input.interactionMode } : {}),
       ...(normalizedModel !== undefined ? { model: normalizedModel } : {}),
       ...(input.effort !== undefined ? { effort: input.effort } : {}),
@@ -3020,7 +3049,22 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
     };
   }
 
-  private async getOrCreateDiscoverySession(
+  private getOrCreateDiscoverySession(
+    cwd: string,
+    providerOptions?: ProviderSessionStartInput["providerOptions"],
+  ): Promise<CodexSessionContext> {
+    // Only an account-scoped manager resolves defaults first; the common path
+    // stays synchronous up to registering the startup so concurrent callers
+    // and stopAll() observe it.
+    if (providerOptions === undefined && this.resolveDefaultProviderOptions) {
+      return this.resolveDefaultProviderOptions().then((defaults) =>
+        this.getOrCreateScopedDiscoverySession(cwd, defaults),
+      );
+    }
+    return this.getOrCreateScopedDiscoverySession(cwd, providerOptions);
+  }
+
+  private async getOrCreateScopedDiscoverySession(
     cwd: string,
     providerOptions?: ProviderSessionStartInput["providerOptions"],
   ): Promise<CodexSessionContext> {
@@ -3725,7 +3769,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
       this.emitErrorEvent(
         context,
         "mcpServer/elicitation/request/unrenderable",
-        "Synara declined an MCP elicitation it cannot render yet.",
+        "Metis declined an MCP elicitation it cannot render yet.",
       );
       return;
     }
@@ -3825,7 +3869,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
         return;
       }
 
-      const detail = "Codex asked a question Synara could not render, so it was declined.";
+      const detail = "Codex asked a question Metis could not render, so it was declined.";
       this.emitErrorEvent(context, "item/tool/requestUserInput/unrenderable", detail);
       await this.writeMessage(context, {
         id: request.id,

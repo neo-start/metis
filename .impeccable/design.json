@@ -1,0 +1,330 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-23T10:01:21.292518+00:00",
+  "title": "Design System: Metis",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "Primary action",
+        "tonalRamp": [
+          "oklch(from var(--primary) 0.15 c h)",
+          "oklch(from var(--primary) 0.26 c h)",
+          "oklch(from var(--primary) 0.38 c h)",
+          "oklch(from var(--primary) 0.49 c h)",
+          "oklch(from var(--primary) 0.61 c h)",
+          "oklch(from var(--primary) 0.72 c h)",
+          "oklch(from var(--primary) 0.84 c h)",
+          "oklch(from var(--primary) 0.95 c h)"
+        ]
+      },
+      "primary-foreground": {
+        "role": "neutral",
+        "displayName": "Primary contrast ink",
+        "tonalRamp": [
+          "oklch(from var(--primary-foreground) 0.15 c h)",
+          "oklch(from var(--primary-foreground) 0.26 c h)",
+          "oklch(from var(--primary-foreground) 0.38 c h)",
+          "oklch(from var(--primary-foreground) 0.49 c h)",
+          "oklch(from var(--primary-foreground) 0.61 c h)",
+          "oklch(from var(--primary-foreground) 0.72 c h)",
+          "oklch(from var(--primary-foreground) 0.84 c h)",
+          "oklch(from var(--primary-foreground) 0.95 c h)"
+        ]
+      },
+      "background": {
+        "role": "neutral",
+        "displayName": "Route background",
+        "tonalRamp": [
+          "oklch(from var(--background) 0.15 c h)",
+          "oklch(from var(--background) 0.26 c h)",
+          "oklch(from var(--background) 0.38 c h)",
+          "oklch(from var(--background) 0.49 c h)",
+          "oklch(from var(--background) 0.61 c h)",
+          "oklch(from var(--background) 0.72 c h)",
+          "oklch(from var(--background) 0.84 c h)",
+          "oklch(from var(--background) 0.95 c h)"
+        ]
+      },
+      "foreground": {
+        "role": "neutral",
+        "displayName": "Main ink",
+        "tonalRamp": [
+          "oklch(from var(--foreground) 0.15 c h)",
+          "oklch(from var(--foreground) 0.26 c h)",
+          "oklch(from var(--foreground) 0.38 c h)",
+          "oklch(from var(--foreground) 0.49 c h)",
+          "oklch(from var(--foreground) 0.61 c h)",
+          "oklch(from var(--foreground) 0.72 c h)",
+          "oklch(from var(--foreground) 0.84 c h)",
+          "oklch(from var(--foreground) 0.95 c h)"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Muted surface",
+        "tonalRamp": [
+          "oklch(from var(--muted) 0.15 c h)",
+          "oklch(from var(--muted) 0.26 c h)",
+          "oklch(from var(--muted) 0.38 c h)",
+          "oklch(from var(--muted) 0.49 c h)",
+          "oklch(from var(--muted) 0.61 c h)",
+          "oklch(from var(--muted) 0.72 c h)",
+          "oklch(from var(--muted) 0.84 c h)",
+          "oklch(from var(--muted) 0.95 c h)"
+        ]
+      },
+      "muted-foreground": {
+        "role": "neutral",
+        "displayName": "Supporting ink",
+        "tonalRamp": [
+          "oklch(from var(--muted-foreground) 0.15 c h)",
+          "oklch(from var(--muted-foreground) 0.26 c h)",
+          "oklch(from var(--muted-foreground) 0.38 c h)",
+          "oklch(from var(--muted-foreground) 0.49 c h)",
+          "oklch(from var(--muted-foreground) 0.61 c h)",
+          "oklch(from var(--muted-foreground) 0.72 c h)",
+          "oklch(from var(--muted-foreground) 0.84 c h)",
+          "oklch(from var(--muted-foreground) 0.95 c h)"
+        ]
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Divider",
+        "tonalRamp": [
+          "oklch(from var(--border) 0.15 c h)",
+          "oklch(from var(--border) 0.26 c h)",
+          "oklch(from var(--border) 0.38 c h)",
+          "oklch(from var(--border) 0.49 c h)",
+          "oklch(from var(--border) 0.61 c h)",
+          "oklch(from var(--border) 0.72 c h)",
+          "oklch(from var(--border) 0.84 c h)",
+          "oklch(from var(--border) 0.95 c h)"
+        ]
+      },
+      "popover": {
+        "role": "neutral",
+        "displayName": "Elevated surface",
+        "tonalRamp": [
+          "oklch(from var(--popover) 0.15 c h)",
+          "oklch(from var(--popover) 0.26 c h)",
+          "oklch(from var(--popover) 0.38 c h)",
+          "oklch(from var(--popover) 0.49 c h)",
+          "oklch(from var(--popover) 0.61 c h)",
+          "oklch(from var(--popover) 0.72 c h)",
+          "oklch(from var(--popover) 0.84 c h)",
+          "oklch(from var(--popover) 0.95 c h)"
+        ]
+      },
+      "secondary": {
+        "role": "neutral",
+        "displayName": "Secondary control",
+        "tonalRamp": [
+          "oklch(from var(--secondary) 0.15 c h)",
+          "oklch(from var(--secondary) 0.26 c h)",
+          "oklch(from var(--secondary) 0.38 c h)",
+          "oklch(from var(--secondary) 0.49 c h)",
+          "oklch(from var(--secondary) 0.61 c h)",
+          "oklch(from var(--secondary) 0.72 c h)",
+          "oklch(from var(--secondary) 0.84 c h)",
+          "oklch(from var(--secondary) 0.95 c h)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "body": {
+        "displayName": "UI body",
+        "purpose": "Settings-driven interface copy."
+      },
+      "title": {
+        "displayName": "Panel title",
+        "purpose": "Settings-driven section hierarchy; not a fixed display scale."
+      }
+    },
+    "shadows": [
+      {
+        "name": "dialog-light",
+        "value": "0 16px 50px -12px rgba(0,0,0,0.34)",
+        "purpose": "Existing opaque dialog surface."
+      },
+      {
+        "name": "dialog-dark",
+        "value": "0 16px 50px -12px rgba(0,0,0,0.7)",
+        "purpose": "Existing dark dialog surface."
+      }
+    ],
+    "motion": [
+      {
+        "name": "button-feedback",
+        "value": "200ms ease-out",
+        "purpose": "Shared button background, border, color, opacity, and transform feedback."
+      },
+      {
+        "name": "button-press",
+        "value": "translateY(1px)",
+        "purpose": "Only with no reduced-motion preference; reduced motion removes transition and transform."
+      },
+      {
+        "name": "home-row-feedback",
+        "value": "200ms",
+        "purpose": "Home task-row hover and press fill; no row translation."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "sm",
+        "value": "40rem"
+      },
+      {
+        "name": "lg",
+        "value": "64rem"
+      }
+    ],
+    "evidence": {
+      "mode": "source-only",
+      "artifact": "apps/web/src/components/WorkbenchHome.tsx",
+      "limitations": [
+        "No screenshots, browser QA, frontend tests, or live visual measurement; prohibited unless explicitly requested.",
+        "Scoped source-review findings were scored resolved: four home findings, four Connections findings, and two mobile-preview findings; this is not whole-surface runtime or rendered approval.",
+        "Snippets require inherited runtime theme and typography variables; they are isolated style samples without application behavior.",
+        "Tonal ramps are derived panel-only previews of active variables, not observed application palette tokens or new design rules."
+      ],
+      "artifacts": [
+        "apps/web/src/components/WorkbenchHome.tsx",
+        "apps/web/src/components/settings/ConnectionsSettingsPanel.tsx",
+        "docs/workbench/mobile-preview/index.html",
+        "docs/workbench/mobile-preview/styles.css",
+        "docs/workbench/mobile-preview/preview.js"
+      ],
+      "reviews": [
+        {
+          "surface": "Connections settings",
+          "disposition": "ship",
+          "scope": "Listed source fixes only",
+          "resolved": [
+            "Distinct loading and error states",
+            "Bounded local-desktop 401 recovery and clearing its bearer cache on logout",
+            "Non-announcing countdown with readable static expiry",
+            "Explicit revoked-link notice"
+          ]
+        },
+        {
+          "surface": "Mobile preview",
+          "disposition": "ship",
+          "scope": "Listed source fixes only",
+          "resolved": [
+            "Focus continuation after approval and simulated pairing",
+            "44px coarse-pointer filters, disclosures, and send control"
+          ]
+        }
+      ],
+      "capabilityBoundary": {
+        "connections": "Uses inherited Synara pairing/auth/device APIs with a T3-derived secure pairing-URL helper. The opt-in CLI tunnel service requires manually configured Cloudflare resources. It defaults to existing desktop data; Electron must quit before switching. Paired desktop browsers and phones share one service.",
+        "mobilePreview": "Local simulated state only; no network, real credentials, or Agent execution. Downloaded files contain demo text.",
+        "notDelivered": [
+          "Deployed cloud control service",
+          "QR pairing flow",
+          "Native phone app",
+          "Full Electron attachment to the persistent service; automatic merge of the historical isolated remote database"
+        ]
+      }
+    }
+  },
+  "components": [
+    {
+      "name": "Primary button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Shared Button default size; label is an illustrative static preview.",
+      "html": "<button class=\"ds-button ds-primary\">新建对话</button>",
+      "css": ".ds-button{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:8px;white-space:nowrap;cursor:pointer;border:1px solid transparent;border-radius:var(--radius);font-family:var(--font-ui-family);font-size:var(--app-font-size-ui);font-weight:500;height:36px;padding:0 11px;outline:none;transition:background-color 200ms ease-out,border-color 200ms ease-out,color 200ms ease-out,opacity 200ms ease-out,transform 200ms ease-out}.ds-button:focus-visible{box-shadow:0 0 0 1px var(--background),0 0 0 2px color-mix(in oklab,var(--ring) 60%,transparent)}.ds-button:disabled{pointer-events:none;opacity:.64}@media(min-width:40rem){.ds-button{height:32px}}@media(pointer:coarse){.ds-button::after{content:\"\";position:absolute;width:100%;height:100%;min-width:44px;min-height:44px}}@media(prefers-reduced-motion:no-preference){.ds-button:active{transform:translateY(1px)}}@media(prefers-reduced-motion:reduce){.ds-button{transition:none;transform:none}}.ds-primary{background:var(--primary);color:var(--primary-foreground)}.ds-primary:hover,.ds-primary[data-pressed]{background:color-mix(in oklab,var(--primary) 90%,transparent)}"
+    },
+    {
+      "name": "Outline button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "Shared Button default size; label is an illustrative static preview.",
+      "html": "<button class=\"ds-button ds-outline\">导入历史</button>",
+      "css": ".ds-button{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:8px;white-space:nowrap;cursor:pointer;border:1px solid transparent;border-radius:var(--radius);font-family:var(--font-ui-family);font-size:var(--app-font-size-ui);font-weight:500;height:36px;padding:0 11px;outline:none;transition:background-color 200ms ease-out,border-color 200ms ease-out,color 200ms ease-out,opacity 200ms ease-out,transform 200ms ease-out}.ds-button:focus-visible{box-shadow:0 0 0 1px var(--background),0 0 0 2px color-mix(in oklab,var(--ring) 60%,transparent)}.ds-button:disabled{pointer-events:none;opacity:.64}@media(min-width:40rem){.ds-button{height:32px}}@media(pointer:coarse){.ds-button::after{content:\"\";position:absolute;width:100%;height:100%;min-width:44px;min-height:44px}}@media(prefers-reduced-motion:no-preference){.ds-button:active{transform:translateY(1px)}}@media(prefers-reduced-motion:reduce){.ds-button{transition:none;transform:none}}.ds-outline{background:transparent;border-color:var(--color-border);color:var(--color-text-foreground)}.ds-outline:hover,.ds-outline[data-pressed]{background:var(--color-background-elevated-secondary)}.ds-outline:focus-visible{box-shadow:0 0 0 1px var(--background),0 0 0 2px color-mix(in oklab,var(--color-border-focus) 60%,transparent)}"
+    },
+    {
+      "name": "Ghost button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Shared Button default size; label is an illustrative static preview.",
+      "html": "<button class=\"ds-button ds-ghost\">显示更多任务</button>",
+      "css": ".ds-button{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:8px;white-space:nowrap;cursor:pointer;border:1px solid transparent;border-radius:var(--radius);font-family:var(--font-ui-family);font-size:var(--app-font-size-ui);font-weight:500;height:36px;padding:0 11px;outline:none;transition:background-color 200ms ease-out,border-color 200ms ease-out,color 200ms ease-out,opacity 200ms ease-out,transform 200ms ease-out}.ds-button:focus-visible{box-shadow:0 0 0 1px var(--background),0 0 0 2px color-mix(in oklab,var(--ring) 60%,transparent)}.ds-button:disabled{pointer-events:none;opacity:.64}@media(min-width:40rem){.ds-button{height:32px}}@media(pointer:coarse){.ds-button::after{content:\"\";position:absolute;width:100%;height:100%;min-width:44px;min-height:44px}}@media(prefers-reduced-motion:no-preference){.ds-button:active{transform:translateY(1px)}}@media(prefers-reduced-motion:reduce){.ds-button{transition:none;transform:none}}.ds-ghost{background:transparent;color:var(--color-text-foreground-secondary)}.ds-ghost:hover{background:var(--color-background-button-secondary-hover);color:var(--color-text-foreground)}.ds-ghost[data-pressed]{background:var(--color-background-button-secondary);color:var(--color-text-foreground)}.ds-ghost:focus-visible{box-shadow:0 0 0 1px color-mix(in oklab,var(--color-border-focus) 60%,transparent)}"
+    },
+    {
+      "name": "Text input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Shared Input default wrapper and field; runtime theme and typography variables are inherited.",
+      "html": "<span class=\"ds-input-control\"><input class=\"ds-input\" aria-label=\"搜索任务或项目\" placeholder=\"搜索任务或项目\"></span>",
+      "css": ".ds-input-control{display:inline-flex;width:100%;min-height:36px;border:1px solid var(--border);border-radius:var(--radius);background:var(--background);color:var(--foreground)}.ds-input{width:100%;min-width:0;border:0;border-radius:inherit;background:transparent;padding:6px 12px;font-family:var(--font-ui-family);font-size:var(--app-font-size-ui);line-height:1.5;outline:none}.ds-input::placeholder{color:color-mix(in oklab,var(--muted-foreground) 72%,transparent)}.ds-input-control:has(:focus-visible){border-color:color-mix(in oklab,var(--foreground) 30%,transparent)}.ds-input-control:has([aria-invalid=true]){border-color:color-mix(in oklab,var(--destructive) 30%,transparent)}.ds-input-control:has([aria-invalid=true]:focus-visible){border-color:color-mix(in oklab,var(--destructive) 50%,transparent)}.ds-input-control:has(:disabled){opacity:.64}@media(min-width:40rem){.ds-input-control{min-height:32px}}:host-context(.dark) .ds-input-control{background:color-mix(in oklab,var(--input) 32%,transparent)}"
+    },
+    {
+      "name": "Sidebar navigation item",
+      "kind": "nav",
+      "refersTo": "navigation-item",
+      "description": "Shared sidebar default navigation style; selected state is supplied by application routing.",
+      "html": "<nav aria-label=\"Preview\"><a class=\"ds-navigation\" href=\"#\" aria-current=\"page\">任务看板</a></nav>",
+      "css": ".ds-navigation{display:flex;align-items:center;gap:8px;height:32px;padding:8px;border-radius:calc(var(--radius)*1.4);font-family:var(--font-ui-family);font-size:var(--app-font-size-ui-lg);line-height:1.375;color:var(--sidebar-foreground);text-decoration:none;outline:none}.ds-navigation:hover{background:var(--sidebar-accent)}.ds-navigation[aria-current=page]{background:var(--sidebar-selected);color:var(--sidebar-accent-foreground)}.ds-navigation:active{background:var(--sidebar-accent-active);color:var(--sidebar-accent-foreground)}.ds-navigation:focus-visible{box-shadow:0 0 0 1px color-mix(in oklab,var(--ring) 60%,transparent)}"
+    },
+    {
+      "name": "Outline badge",
+      "kind": "chip",
+      "refersTo": "badge-outline",
+      "description": "Shared Badge outline style; this is not the home page status treatment.",
+      "html": "<span class=\"ds-badge\">标签</span>",
+      "css": ".ds-badge{display:inline-flex;align-items:center;justify-content:center;gap:4px;white-space:nowrap;height:22px;min-width:22px;padding:0 3px;border:1px solid var(--color-border);border-radius:calc(var(--radius)*.6);background:var(--color-background-elevated-primary-opaque);color:var(--color-text-foreground);font-family:var(--font-ui-family);font-size:var(--app-font-size-ui-sm);font-weight:500;outline:none;transition:box-shadow 150ms}button.ds-badge:hover,a.ds-badge:hover{background:var(--color-background-button-secondary-hover)}.ds-badge:focus-visible{box-shadow:0 0 0 1px var(--background),0 0 0 3px var(--ring)}@media(min-width:40rem){.ds-badge{height:18px;min-width:18px;font-size:var(--app-font-size-ui-xs)}}"
+    },
+    {
+      "name": "Home empty-state container",
+      "kind": "card",
+      "description": "Observed WorkbenchHome empty state, kept distinct from elevated dialogs or universal card primitives.",
+      "html": "<section class=\"ds-empty\"><h3 class=\"ds-empty-title\">从已有的工作开始</h3><p class=\"ds-empty-copy\">导入 Codex 或 Claude Code 的本地历史，或者新建一段对话。</p></section>",
+      "css": ".ds-empty{border:1px dashed var(--border);border-radius:calc(var(--radius)*1.4);padding:48px 24px;font-family:var(--font-ui-family);color:var(--foreground)}.ds-empty-title{margin:0;font-size:var(--app-font-size-ui-lg);font-weight:500}.ds-empty-copy{margin:8px 0 0;max-width:65ch;font-size:var(--app-font-size-ui);line-height:1.625;color:var(--muted-foreground)}"
+    },
+    {
+      "name": "Settings group",
+      "kind": "card",
+      "refersTo": "settings-card",
+      "description": "Shared SettingsCard and SettingsListRow, illustrated with the unconfigured Connections state; no live connection is implied.",
+      "html": "<section class=\"ds-settings-card\"><div class=\"ds-settings-row\"><div class=\"ds-settings-content\"><div class=\"ds-settings-title\">目前仅供本机使用</div><div class=\"ds-settings-description\">开启 HTTPS 远程入口后，即可在其他网络的手机上继续任务。</div></div></div></section>",
+      "css": ".ds-settings-card{overflow:hidden;border:1px solid var(--color-border);border-radius:calc(var(--radius)*1.4);background:color-mix(in oklab,var(--foreground) 2%,transparent);font-family:var(--font-ui-family);font-size:var(--app-font-size-ui)}.ds-settings-row{padding:var(--app-density-settings-row-padding-y,.625rem) .75rem}.ds-settings-row+.ds-settings-row{border-top:1px solid var(--color-border)}.ds-settings-content{min-width:0;flex:1}.ds-settings-title{overflow:hidden;white-space:nowrap;text-overflow:ellipsis;color:var(--foreground);font-weight:500}.ds-settings-description{margin-top:2px;color:var(--muted-foreground)}"
+    }
+  ],
+  "narrative": {
+    "overview": "Metis extends Synara's existing desktop workspace. Preserve its compact controls, theme-aware surfaces, shared icon geometry, and user-scaled typography. The user selected Metis as the product name. The user selected the Folded Volume cube in Blue as the current logo on 2026-09-23. Use the original PNG through the shared branding primitive; keep the existing UI tokens and primary-button palette. See docs/workbench/branding.md for assets and native integration scope.",
+    "keyCharacteristics": [
+      "Dense application chrome with a readable, row-based work overview.",
+      "Neutral surfaces and restrained state feedback; provider identity and status carry functional color.",
+      "Shared primitives and server-backed project, thread, and provider information."
+    ],
+    "rules": [
+      {
+        "name": "The Theme Binding Rule",
+        "body": "Keep color roles live-bound to the inherited theme; the fallback palette is not a second brand specification.",
+        "section": "colors"
+      },
+      {
+        "name": "The User Scale Rule",
+        "body": "Ordinary interface text follows Settings. The home page's large heading is an explicit heading exception, not permission to give labels or controls fixed sizes.",
+        "section": "typography"
+      }
+    ],
+    "dos": [
+      "Do reuse shared components, existing icons, theme roles, and Settings-driven text sizes.",
+      "Do retain distinct loading, unavailable, disabled, approval, and retry states from actual application data.",
+      "Do preserve focus feedback, coarse-pointer affordances, and the shared button's reduced-motion behavior.",
+      "Do label simulated tasks, devices, connections, and files as examples on preview surfaces."
+    ],
+    "donts": [
+      "Don't substitute a new primary palette or decorative provider/status colors.",
+      "Don't turn the home page's column arrangement or large heading into a rule for every application screen.",
+      "Don't claim rendered contrast, responsive fit, or live provider success from this source-only record.",
+      "Don't equate a generated pairing link or remote-URL field with a deployed cloud service, working tunnel, QR flow, or native phone app."
+    ]
+  }
+}

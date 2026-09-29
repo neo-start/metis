@@ -97,7 +97,7 @@ function localInactiveResponse(message) {
     {
       jsonrpc: "2.0",
       id,
-      error: { code: -32601, message: "Synara is not active for this Antigravity session." },
+      error: { code: -32601, message: "Metis is not active for this Antigravity session." },
     },
   ];
 }
@@ -121,11 +121,11 @@ async function resolveToken() {
         signal: controller.signal,
       });
       if (!response.ok) {
-        throw new Error("Synara gateway bootstrap failed with HTTP " + response.status);
+        throw new Error("Metis gateway bootstrap failed with HTTP " + response.status);
       }
       const payload = await response.json();
       if (!isRecord(payload) || typeof payload.bearerToken !== "string") {
-        throw new Error("Synara gateway bootstrap returned an invalid response");
+        throw new Error("Metis gateway bootstrap returned an invalid response");
       }
       token = payload.bearerToken;
       bootstrapToken = undefined;
@@ -179,7 +179,7 @@ async function forwardMessage(message, controller) {
       {
         jsonrpc: "2.0",
         id,
-        error: { code: -32603, message: "Synara gateway request failed: " + String(error) },
+        error: { code: -32603, message: "Metis gateway request failed: " + String(error) },
       },
     ];
   }

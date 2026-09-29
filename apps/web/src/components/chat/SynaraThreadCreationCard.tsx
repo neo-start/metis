@@ -37,7 +37,7 @@ export const SynaraThreadCreationCard = memo(function SynaraThreadCreationCard({
     >
       <div className="flex min-w-0 items-center gap-3 px-3 py-2.5">
         <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-[var(--color-background-elevated-secondary)] text-foreground">
-          <SynaraLogo className="h-[22px] w-auto" aria-label="Synara" />
+          <SynaraLogo className="h-[22px] w-auto" aria-label="Metis" />
         </span>
         <div className="min-w-0 flex-1">
           <p className="truncate font-system-ui text-ui-lg font-medium text-foreground/95">
@@ -46,7 +46,7 @@ export const SynaraThreadCreationCard = memo(function SynaraThreadCreationCard({
           <p className="truncate font-system-ui text-ui-sm text-muted-foreground/65">{summary}</p>
           {singleThread ? (
             <div className="mt-1 flex min-w-0 items-center gap-1.5 text-ui-xs text-muted-foreground/52">
-              <ProviderIcon provider={singleThread.provider} className="size-3 shrink-0" />
+              <ProviderIcon provider={singleThread.provider} className="size-3 shrink-0" tooltip />
               <span className="truncate">{threadMeta(singleThread)}</span>
             </div>
           ) : null}
@@ -71,7 +71,7 @@ export const SynaraThreadCreationCard = memo(function SynaraThreadCreationCard({
               key={thread.threadId}
               className="flex min-w-0 items-center gap-2.5 border-t border-[color:var(--color-border-light)] px-3 py-2 first:border-t-0"
             >
-              <ProviderIcon provider={thread.provider} className="size-4 shrink-0" />
+              <ProviderIcon provider={thread.provider} className="size-4 shrink-0" tooltip />
               <div className="min-w-0 flex-1">
                 <p className="truncate font-system-ui text-ui font-medium text-foreground/90">
                   {thread.title}

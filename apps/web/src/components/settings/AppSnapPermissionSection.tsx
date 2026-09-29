@@ -34,13 +34,13 @@ export const APP_SNAP_PERMISSION_PANES: readonly AppSnapPermissionPaneDescriptor
     pane: "input-monitoring",
     title: "Input Monitoring",
     description:
-      "Lets Synara notice the double-Option chord while another app owns the keyboard. Nothing you type is recorded.",
+      "Lets Metis notice the double-Option chord while another app owns the keyboard. Nothing you type is recorded.",
   },
   {
     pane: "screen-recording",
     title: "Screen Recording",
     description:
-      "Lets Synara capture an image of the frontmost window. Only the single window you snap is captured, only at the moment you press the chord.",
+      "Lets Metis capture an image of the frontmost window. Only the single window you snap is captured, only at the moment you press the chord.",
   },
 ];
 
@@ -54,19 +54,19 @@ export const COMPUTER_PERMISSION_PANES: readonly AppSnapPermissionPaneDescriptor
     pane: "accessibility",
     title: "Accessibility",
     description:
-      "Lets Synara move the pointer, click, and type on your behalf. Nothing is driven unless you authorize a Computer task.",
+      "Lets Metis move the pointer, click, and type on your behalf. Nothing is driven unless you authorize a Computer task.",
   },
   {
     pane: "screen-recording",
     title: "Screen Recording",
     description:
-      "Lets Synara capture windows and the desktop so the agent can see what it is driving.",
+      "Lets Metis capture windows and the desktop so the agent can see what it is driving.",
   },
   {
     pane: "input-monitoring",
     title: "Input Monitoring",
     description:
-      "Lets Synara detect Escape and pause when you take over during a Computer task. This does not enable the AppSnap shortcut.",
+      "Lets Metis detect Escape and pause when you take over during a Computer task. This does not enable the AppSnap shortcut.",
   },
 ];
 

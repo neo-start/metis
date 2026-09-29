@@ -158,11 +158,9 @@ export function ComposerModelPicker(props: ComposerModelPickerProps) {
   const usesEffortSlider = effortControl === "slider";
 
   const { starredModels, toggleStarredModel, unstarModel } = useStarredModels();
-  // A locked thread can only ever run its own provider's presets.
-  const usableStarredModels =
-    lockedProvider === null
-      ? starredModels
-      : starredModels.filter((entry) => entry.provider === lockedProvider);
+  // Presets of other providers stay usable on a started chat: picking one
+  // switches provider (the chat is handed off and continues there).
+  const usableStarredModels = starredModels;
 
   const [tab, setTab] = useState<ComposerModelPickerTab>(activeProvider);
   const [query, setQuery] = useState("");
@@ -247,9 +245,14 @@ export function ComposerModelPicker(props: ComposerModelPickerProps) {
       providers: props.providers,
       hiddenProviders: props.hiddenProviders,
       providerOrder: props.providerOrder,
-    }).filter((option) => lockedProvider === null || option.value === lockedProvider),
+    }),
     props.providers,
   );
+  // On a started chat, models of another provider are a provider switch.
+  const switchTargetLabel =
+    lockedProvider !== null && tab !== STARRED_TAB && tab !== lockedProvider
+      ? (providerTabs.find((entry) => entry.provider === tab)?.label ?? null)
+      : null;
 
   const rows =
     tab === STARRED_TAB
@@ -458,6 +461,15 @@ export function ComposerModelPicker(props: ComposerModelPickerProps) {
             {discoveryError ? (
               <div className="px-2 py-1.5 text-ui leading-snug text-destructive">
                 {discoveryError}
+              </div>
+            ) : null}
+            {switchTargetLabel !== null ? (
+              <div
+                data-provider-switch-hint="true"
+                className="px-2 py-1.5 text-ui leading-snug text-muted-foreground"
+              >
+                Picking a model here hands this chat off to {switchTargetLabel}; if it is working,
+                it stops and continues there.
               </div>
             ) : null}
             {isTabLoading ? (

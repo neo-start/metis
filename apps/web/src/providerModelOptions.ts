@@ -29,6 +29,7 @@ import {
   type PiModelSelection,
   type ProviderKind,
   type ProviderModelOptions,
+  isCodexProviderKind,
 } from "@synara/contracts";
 import { normalizeCursorModelVariantBaseId } from "./cursorModelVariants";
 
@@ -250,7 +251,7 @@ export function mergeDynamicModelOptions(input: {
     (model) => !("isCustom" in model) || model.isCustom !== true,
   );
   const hasAuthoritativeCatalog =
-    input.provider === "codex" ||
+    isCodexProviderKind(input.provider) ||
     (normalizedDynamicOptions.length > 0 &&
       (input.provider === "antigravity" ||
         input.provider === "opencode" ||
@@ -367,7 +368,7 @@ export function buildNextProviderOptions(
   modelOptions: ProviderOptions | null | undefined,
   patch: Record<string, unknown>,
 ): ProviderOptions {
-  if (provider === "codex") {
+  if (isCodexProviderKind(provider)) {
     return { ...(modelOptions as CodexModelOptions | undefined), ...patch } as CodexModelOptions;
   }
   if (provider === "claudeAgent") {
@@ -488,6 +489,7 @@ export function buildModelSelection(
           }
         : { provider, model };
     case "codex":
+    case "codexSecondary":
       return options
         ? {
             provider,

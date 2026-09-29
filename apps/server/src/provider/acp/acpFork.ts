@@ -40,7 +40,7 @@ export function forkViaAcpRuntime(input: {
       return yield* new ProviderAdapterValidationError({
         provider: input.provider,
         operation: "forkThread",
-        issue: `This ${input.provider} ACP version advertises session/fork but cannot reopen the forked session; Synara will rebuild the fork from its retained transcript.`,
+        issue: `This ${input.provider} ACP version advertises session/fork but cannot reopen the forked session; Metis will rebuild the fork from its retained transcript.`,
       });
     }
     yield* input.runtime.awaitLoadReplayReady;

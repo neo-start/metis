@@ -1,5 +1,6 @@
 import type { PendingClaudeCacheReview } from "@synara/contracts";
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
+import { Checkbox } from "~/components/ui/checkbox";
 import { formatContextWindowTokens } from "~/lib/contextWindow";
 import { cn } from "~/lib/utils";
 import { ComposerChoiceRow } from "./ComposerChoiceRow";
@@ -18,6 +19,7 @@ export function ComposerClaudeCacheReviewPanel({
   compactDisabledReason,
   isCompactionRequest = false,
   onRespond,
+  onRememberDecision,
 }: {
   review: PendingClaudeCacheReview;
   compactDisabledReason: string | null;
@@ -26,7 +28,11 @@ export function ComposerClaudeCacheReviewPanel({
     review: PendingClaudeCacheReview,
     decision: ClaudeCacheReviewDecision,
   ) => Promise<void>;
+  /** Saves continue/compact as the automatic answer for later reviews. */
+  onRememberDecision?: (decision: Exclude<ClaudeCacheReviewDecision, "cancel">) => void;
 }) {
+  const rememberId = useId();
+  const [remember, setRemember] = useState(false);
   const submittedReviewRef = useRef<PendingClaudeCacheReview | null>(null);
   const [submittedReview, setSubmittedReview] = useState<PendingClaudeCacheReview | null>(null);
   const [dispatchError, setDispatchError] = useState<string | null>(null);
@@ -46,6 +52,11 @@ export function ComposerClaudeCacheReviewPanel({
     submittedReviewRef.current = review;
     setSubmittedReview(review);
     setDispatchError(null);
+    // A compaction request's "continue" compacts; remembering it would also
+    // skip later ordinary sends, so only ordinary reviews are remembered.
+    if (remember && decision !== "cancel" && !isCompactionRequest) {
+      onRememberDecision?.(decision);
+    }
     void onRespond(review, decision).catch((error: unknown) => {
       if (submittedReviewRef.current !== review) return;
       submittedReviewRef.current = null;
@@ -112,6 +123,20 @@ export function ComposerClaudeCacheReviewPanel({
           onSelect={() => respondOnce("cancel")}
         />
       </div>
+      {actionable && onRememberDecision && !isCompactionRequest ? (
+        <label
+          htmlFor={rememberId}
+          className="mt-2 flex cursor-pointer items-center gap-2 px-2.5 py-1 text-ui-sm text-muted-foreground"
+        >
+          <Checkbox
+            id={rememberId}
+            checked={remember}
+            disabled={disabled}
+            onCheckedChange={(checked) => setRemember(checked === true)}
+          />
+          <span>Remember this choice. Change it in Settings → Models.</span>
+        </label>
+      ) : null}
     </section>
   );
 }

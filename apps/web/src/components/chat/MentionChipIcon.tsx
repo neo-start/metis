@@ -68,6 +68,7 @@ export const MentionChipIcon = function MentionChipIcon(props: {
         provider={threadProvider}
         className={className}
         fallback={<MessageCircleIcon className={className} />}
+        tooltip
       />
     );
   }

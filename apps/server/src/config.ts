@@ -81,6 +81,10 @@ export interface ServerDerivedPaths {
   readonly serverLogPath: string;
   readonly serverRuntimeStatePath: string;
   readonly quitResumeStatePath: string;
+  /** Server-written snapshot of chats in flight at a graceful shutdown (restart resume). */
+  readonly restartResumeStatePath: string;
+  /** Per-thread crash-loop guard for automatic continuation after a restart. */
+  readonly restartResumeLedgerPath: string;
   readonly providerLogsDir: string;
   readonly providerEventLogPath: string;
   readonly terminalLogsDir: string;
@@ -161,6 +165,8 @@ export const deriveServerPaths = Effect.fn(function* (
     serverLogPath: join(logsDir, "server.log"),
     serverRuntimeStatePath: join(stateDir, "server-runtime.json"),
     quitResumeStatePath: join(stateDir, "quit-resume.json"),
+    restartResumeStatePath: join(stateDir, "restart-resume.json"),
+    restartResumeLedgerPath: join(stateDir, "restart-resume-ledger.json"),
     providerLogsDir,
     providerEventLogPath: join(providerLogsDir, "events.log"),
     terminalLogsDir: join(logsDir, "terminals"),

@@ -85,7 +85,7 @@ export const GrokExitPlanModeRequest = Schema.Struct({
 });
 
 const SYNARA_PLAN_REVIEW_FEEDBACK =
-  "Synara captured this plan for user review. Do not revise or implement it now. End this turn and wait for the user's next message.";
+  "Metis captured this plan for user review. Do not revise or implement it now. End this turn and wait for the user's next message.";
 
 export function extractGrokExitPlanMarkdown(
   request: typeof GrokExitPlanModeRequest.Type,

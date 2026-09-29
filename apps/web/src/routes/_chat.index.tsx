@@ -6,6 +6,7 @@
 
 import { SpaceId, type ProjectId } from "@synara/contracts";
 import { createFileRoute } from "@tanstack/react-router";
+import { WorkbenchHome } from "../components/WorkbenchHome";
 
 import {
   RestoreOrCreateChatRoute,
@@ -89,6 +90,10 @@ function ChatIndexRouteView() {
       landingSpace,
     });
   };
+
+  if (landingSpaceKey === undefined && !readSidebarUiState().lastThreadRoute) {
+    return <WorkbenchHome />;
+  }
 
   return (
     <RestoreOrCreateChatRoute

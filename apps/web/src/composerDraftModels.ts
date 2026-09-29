@@ -31,6 +31,7 @@ import { classifyProviderReasoningEffortSupport } from "./lib/codexReasoningEffo
 
 export const COMPOSER_PROVIDER_KINDS = [
   "codex",
+  "codexSecondary",
   "claudeAgent",
   "cursor",
   "devin",
@@ -152,6 +153,7 @@ export function makeModelSelection(
           : {}),
       };
     case "codex":
+    case "codexSecondary":
       return {
         provider,
         model,
@@ -231,6 +233,10 @@ export function normalizeProviderModelOptions(
     candidate?.codex && typeof candidate.codex === "object"
       ? (candidate.codex as Record<string, unknown>)
       : null;
+  const codexSecondaryCandidate =
+    candidate?.codexSecondary && typeof candidate.codexSecondary === "object"
+      ? (candidate.codexSecondary as Record<string, unknown>)
+      : null;
   const claudeCandidate =
     candidate?.claudeAgent && typeof candidate.claudeAgent === "object"
       ? (candidate.claudeAgent as Record<string, unknown>)
@@ -281,6 +287,20 @@ export function normalizeProviderModelOptions(
       ? {
           ...(codexReasoningEffort !== undefined ? { reasoningEffort: codexReasoningEffort } : {}),
           ...(codexFastMode !== undefined ? { fastMode: codexFastMode } : {}),
+        }
+      : undefined;
+
+  const codexSecondaryReasoningEffort = trimStringOrUndefined(
+    codexSecondaryCandidate?.reasoningEffort,
+  );
+  const codexSecondaryFastMode = booleanOrUndefined(codexSecondaryCandidate?.fastMode);
+  const codexSecondary =
+    codexSecondaryReasoningEffort !== undefined || codexSecondaryFastMode !== undefined
+      ? {
+          ...(codexSecondaryReasoningEffort !== undefined
+            ? { reasoningEffort: codexSecondaryReasoningEffort }
+            : {}),
+          ...(codexSecondaryFastMode !== undefined ? { fastMode: codexSecondaryFastMode } : {}),
         }
       : undefined;
 
@@ -391,6 +411,7 @@ export function normalizeProviderModelOptions(
       : undefined;
   if (
     !codex &&
+    !codexSecondary &&
     !claude &&
     !cursor &&
     !devin &&
@@ -404,6 +425,7 @@ export function normalizeProviderModelOptions(
   }
   return {
     ...(codex ? { codex } : {}),
+    ...(codexSecondary ? { codexSecondary } : {}),
     ...(claude ? { claudeAgent: claude } : {}),
     ...(cursor ? { cursor } : {}),
     ...(devin ? { devin } : {}),
@@ -461,23 +483,25 @@ export function normalizeModelSelection(
   const options =
     provider === "codex"
       ? modelOptions?.codex
-      : provider === "claudeAgent"
-        ? modelOptions?.claudeAgent
-        : provider === "antigravity"
-          ? modelOptions?.antigravity
-          : provider === "grok"
-            ? normalizeGrokModelOptions(model, modelOptions?.grok)
-            : provider === "droid"
-              ? modelOptions?.droid
-              : provider === "cursor"
-                ? modelOptions?.cursor
-                : provider === "opencode"
-                  ? modelOptions?.opencode
-                  : provider === "pi"
-                    ? modelOptions?.pi
-                    : provider === "devin"
-                      ? modelOptions?.devin
-                      : undefined;
+      : provider === "codexSecondary"
+        ? modelOptions?.codexSecondary
+        : provider === "claudeAgent"
+          ? modelOptions?.claudeAgent
+          : provider === "antigravity"
+            ? modelOptions?.antigravity
+            : provider === "grok"
+              ? normalizeGrokModelOptions(model, modelOptions?.grok)
+              : provider === "droid"
+                ? modelOptions?.droid
+                : provider === "cursor"
+                  ? modelOptions?.cursor
+                  : provider === "opencode"
+                    ? modelOptions?.opencode
+                    : provider === "pi"
+                      ? modelOptions?.pi
+                      : provider === "devin"
+                        ? modelOptions?.devin
+                        : undefined;
   const normalizedOptions =
     provider === "antigravity" && hasLegacyAntigravityEffort
       ? {
@@ -514,7 +538,7 @@ export function reconcileProviderScopedModelSelection(
     );
   }
   if (
-    current.provider !== "codex" &&
+    !(current.provider === "codex" || current.provider === "codexSecondary") &&
     current.provider !== "cursor" &&
     current.provider !== "claudeAgent"
   ) {
@@ -524,7 +548,9 @@ export function reconcileProviderScopedModelSelection(
   const effort =
     current.provider === "claudeAgent"
       ? current.options?.effort
-      : current.provider === "codex" || current.provider === "cursor"
+      : current.provider === "codex" ||
+          current.provider === "codexSecondary" ||
+          current.provider === "cursor"
         ? current.options?.reasoningEffort
         : undefined;
   if (
@@ -538,7 +564,11 @@ export function reconcileProviderScopedModelSelection(
     if (current.provider === "claudeAgent") {
       const { effort: _effort, ...remainingOptions } = current.options ?? {};
       preservedOptions = Object.keys(remainingOptions).length > 0 ? remainingOptions : undefined;
-    } else if (current.provider === "codex" || current.provider === "cursor") {
+    } else if (
+      current.provider === "codex" ||
+      current.provider === "codexSecondary" ||
+      current.provider === "cursor"
+    ) {
       const { reasoningEffort: _reasoningEffort, ...remainingOptions } = current.options ?? {};
       preservedOptions = Object.keys(remainingOptions).length > 0 ? remainingOptions : undefined;
     }

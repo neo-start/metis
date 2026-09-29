@@ -15,6 +15,7 @@ import { useCallback, useMemo, useState } from "react";
 
 import {
   CUSTOM_MODEL_EDITOR_PROVIDER_SETTINGS,
+  type AppSettings,
   type AppSettingsBinding,
   MAX_CUSTOM_MODEL_LENGTH,
   getCustomModelsForProvider,
@@ -68,6 +69,15 @@ export function validateCustomModelInput(input: {
   }
   return { model: normalized };
 }
+
+const CLAUDE_CACHE_REVIEW_OPTIONS = [
+  { value: "ask", label: "Ask every time" },
+  { value: "continue", label: "Continue with full context" },
+  { value: "compact", label: "Compact, then send" },
+] as const satisfies ReadonlyArray<{
+  readonly value: AppSettings["claudeCacheReviewDecision"];
+  readonly label: string;
+}>;
 
 function isCustomModelEditorProvider(value: string | null): value is ProviderKind {
   return CUSTOM_MODEL_EDITOR_PROVIDER_SETTINGS.some((config) => config.provider === value);
@@ -278,6 +288,42 @@ export function ModelsSettingsPanel({
                   value={`${option.provider}:${option.slug}`}
                 >
                   {PROVIDER_DISPLAY_NAMES[option.provider]} / {option.name}
+                </SelectItem>
+              ))}
+            </SettingsSelectControl>
+          }
+        />
+        <SettingsRow
+          title="When Claude's prompt cache expires"
+          description="Held messages can resume without asking. Remembering a choice in the review panel also sets this."
+          resetAction={
+            settings.claudeCacheReviewDecision !== defaults.claudeCacheReviewDecision ? (
+              <SettingResetButton
+                label="Claude cache review choice"
+                onClick={() =>
+                  updateSettings({ claudeCacheReviewDecision: defaults.claudeCacheReviewDecision })
+                }
+              />
+            ) : null
+          }
+          control={
+            <SettingsSelectControl
+              value={settings.claudeCacheReviewDecision}
+              onValueChange={(value) => {
+                const option = CLAUDE_CACHE_REVIEW_OPTIONS.find((entry) => entry.value === value);
+                if (option) updateSettings({ claudeCacheReviewDecision: option.value });
+              }}
+              ariaLabel="When Claude's prompt cache expires"
+              triggerClassName="w-full sm:w-52"
+              valueContent={
+                CLAUDE_CACHE_REVIEW_OPTIONS.find(
+                  (option) => option.value === settings.claudeCacheReviewDecision,
+                )?.label
+              }
+            >
+              {CLAUDE_CACHE_REVIEW_OPTIONS.map((option) => (
+                <SelectItem hideIndicator key={option.value} value={option.value}>
+                  {option.label}
                 </SelectItem>
               ))}
             </SettingsSelectControl>

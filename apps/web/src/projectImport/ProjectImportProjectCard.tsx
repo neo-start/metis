@@ -146,7 +146,7 @@ export function ProjectImportProjectCard(props: {
                   onCheckedChange={(checked) => props.onSelectionChange([key], checked)}
                   aria-label={`Import ${thread.title || "Untitled conversation"}`}
                 />
-                <ProviderIcon provider={thread.provider} className="size-3.5 shrink-0" />
+                <ProviderIcon provider={thread.provider} className="size-3.5 shrink-0" tooltip />
                 <span className="min-w-0 flex-1 truncate" title={thread.title}>
                   {thread.title || "Untitled conversation"}
                 </span>

@@ -28,3 +28,16 @@ export interface CodexAdapterShape extends ProviderAdapterShape<ProviderAdapterE
 export class CodexAdapter extends ServiceMap.Service<CodexAdapter, CodexAdapterShape>()(
   "synara/provider/Services/CodexAdapter",
 ) {}
+
+/**
+ * CodexSecondaryAdapterShape - The second Codex account. Same runtime as
+ * `CodexAdapter`, but its own app-server processes and CODEX_HOME.
+ */
+export interface CodexSecondaryAdapterShape extends ProviderAdapterShape<ProviderAdapterError> {
+  readonly provider: "codexSecondary";
+}
+
+export class CodexSecondaryAdapter extends ServiceMap.Service<
+  CodexSecondaryAdapter,
+  CodexSecondaryAdapterShape
+>()("synara/provider/Services/CodexSecondaryAdapter") {}

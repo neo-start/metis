@@ -35,7 +35,7 @@ export function FeedbackDialog({ open, context, onOpenChange }: FeedbackDialogPr
       toastManager.add({
         type: "success",
         title: "Feedback sent",
-        description: "Thanks for helping make Synara better.",
+        description: "Thanks for helping make Metis better.",
       });
     } catch (error) {
       setIsSending(false);

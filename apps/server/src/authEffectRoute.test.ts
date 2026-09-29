@@ -198,6 +198,50 @@ function mutationRequest(input: {
 }
 
 describe("authEffectRouteLayer", () => {
+  it("allows desktop bearer preflight and includes CORS on auth errors", async () => {
+    const sideEffects = { count: 0 };
+    const config = { host: "127.0.0.1", publicUrl: undefined } as ServerConfigShape;
+    await withAuthEffectServer(config, makeServerAuth(sideEffects), async (origin) => {
+      const preflight = await fetch(`${origin}/api/auth/clients`, {
+        method: "OPTIONS",
+        headers: {
+          Origin: "synara://app",
+          "Access-Control-Request-Method": "GET",
+          "Access-Control-Request-Headers": "authorization",
+        },
+      });
+      expect(preflight.status).toBe(204);
+      expect(preflight.headers.get("Access-Control-Allow-Origin")).toBe("synara://app");
+      expect(preflight.headers.get("Access-Control-Allow-Headers")).toContain("Authorization");
+      const denied = await fetch(`${origin}/api/auth/clients`, {
+        headers: { Origin: "synara://app" },
+      });
+      expect(denied.status).toBe(401);
+      expect(denied.headers.get("Access-Control-Allow-Origin")).toBe("synara://app");
+      const allowed = await fetch(`${origin}/api/auth/clients`, {
+        headers: { Origin: "synara://app", Authorization: "Bearer bearer-token" },
+      });
+      expect(allowed.status).toBe(200);
+      expect(sideEffects.count).toBe(0);
+    });
+  });
+  it.each(["https://untrusted.example", "null"])(
+    "blocks bootstrap from %s before exchanging credentials",
+    async (requestOrigin) => {
+      const sideEffects = { count: 0 };
+      const config = { host: "127.0.0.1", publicUrl: undefined } as ServerConfigShape;
+      await withAuthEffectServer(config, makeServerAuth(sideEffects), async (origin) => {
+        const response = await fetch(`${origin}/api/auth/bootstrap/bearer`, {
+          method: "POST",
+          headers: { Origin: requestOrigin, "Content-Type": "application/json" },
+          body: JSON.stringify({ credential: "PAIRINGTOKEN" }),
+        });
+        expect(response.status).toBe(403);
+        expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
+        expect(sideEffects.count).toBe(0);
+      });
+    },
+  );
   it("rejects declared and chunked oversized bootstrap JSON before auth exchange", async () => {
     const sideEffects = { count: 0 };
     const config = { host: "127.0.0.1", publicUrl: undefined } as ServerConfigShape;

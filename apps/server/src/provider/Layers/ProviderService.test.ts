@@ -303,6 +303,10 @@ function makeFakeCodexAdapter(
   const prepareSessionReplacement = vi.fn<
     NonNullable<ProviderAdapterShape<ProviderAdapterError>["prepareSessionReplacement"]>
   >(() => Effect.succeed(undefined));
+  // Defaults to "cannot vouch", which leaves the service's own task tracking alone.
+  const getLiveTaskIds = vi.fn<
+    NonNullable<ProviderAdapterShape<ProviderAdapterError>["getLiveTaskIds"]>
+  >(() => Effect.succeed(undefined));
   const adapter: ProviderAdapterShape<ProviderAdapterError> = {
     provider,
     capabilities: {
@@ -329,6 +333,7 @@ function makeFakeCodexAdapter(
     compactThread,
     forkThread,
     stopAll,
+    getLiveTaskIds,
     streamEvents: Stream.fromPubSub(runtimeEventPubSub),
   };
 
@@ -358,6 +363,7 @@ function makeFakeCodexAdapter(
   return {
     adapter,
     prepareSessionReplacement,
+    getLiveTaskIds,
     emit,
     waitForRuntimeSubscribers,
     updateSession,
@@ -5408,6 +5414,244 @@ idleCleanup.layer("ProviderServiceLive idle cleanup", (it) => {
         "idle runtime stop after background task settlement",
       );
       assert.deepEqual(idleCleanup.claude.stopSession.mock.calls[0]?.[0], session.threadId);
+    }),
+  );
+
+  it.effect("does not let late progress resurrect a settled background task", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService;
+      const threadId = asThreadId("thread-idle-late-task-progress");
+
+      idleCleanup.claude.stopSession.mockClear();
+      const session = yield* provider.startSession(threadId, {
+        provider: "claudeAgent",
+        threadId,
+        runtimeMode: "full-access",
+      });
+      yield* idleCleanup.claude.waitForRuntimeSubscribers();
+      idleCleanup.claude.emit({
+        type: "task.started",
+        eventId: asEventId("runtime-late-progress-started"),
+        provider: "claudeAgent",
+        createdAt: "2026-09-29T01:00:00.000Z",
+        threadId,
+        payload: { taskId: "late-progress-task" },
+      });
+      idleCleanup.claude.emit({
+        type: "task.completed",
+        eventId: asEventId("runtime-late-progress-completed"),
+        provider: "claudeAgent",
+        createdAt: "2026-09-29T01:00:01.000Z",
+        threadId,
+        payload: { taskId: "late-progress-task", status: "completed" },
+      });
+      // Poller output and metadata-only patches can trail the terminal event.
+      idleCleanup.claude.emit({
+        type: "task.progress",
+        eventId: asEventId("runtime-late-progress-progress"),
+        provider: "claudeAgent",
+        createdAt: "2026-09-29T01:00:02.000Z",
+        threadId,
+        payload: { taskId: "late-progress-task", description: "Workflow agents" },
+      });
+      idleCleanup.claude.emit({
+        type: "task.updated",
+        eventId: asEventId("runtime-late-progress-metadata"),
+        provider: "claudeAgent",
+        createdAt: "2026-09-29T01:00:03.000Z",
+        threadId,
+        payload: { taskId: "late-progress-task", isBackgrounded: false },
+      });
+      idleCleanup.claude.emit({
+        type: "turn.completed",
+        eventId: asEventId("runtime-late-progress-turn-completed"),
+        provider: "claudeAgent",
+        createdAt: "2026-09-29T01:00:04.000Z",
+        threadId,
+        payload: { state: "completed" },
+      });
+
+      yield* waitUntil(
+        () => idleCleanup.claude.stopSession.mock.calls.length > 0,
+        1000,
+        20,
+        "idle runtime stop after the settled task",
+      );
+      assert.deepEqual(idleCleanup.claude.stopSession.mock.calls[0]?.[0], session.threadId);
+      assert.equal(yield* provider.hasLiveRuntimeTasks!({ threadId }), false);
+    }),
+  );
+
+  it.effect("revives a settled task id when the provider starts it again", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService;
+      const threadId = asThreadId("thread-idle-resumed-task");
+
+      idleCleanup.claude.stopSession.mockClear();
+      yield* provider.startSession(threadId, {
+        provider: "claudeAgent",
+        threadId,
+        runtimeMode: "full-access",
+      });
+      yield* idleCleanup.claude.waitForRuntimeSubscribers();
+      idleCleanup.claude.emit({
+        type: "task.updated",
+        eventId: asEventId("runtime-resumed-task-failed"),
+        provider: "claudeAgent",
+        createdAt: "2026-09-29T01:10:00.000Z",
+        threadId,
+        payload: { taskId: "resumed-agent-task", status: "failed" },
+      });
+      // Resuming a stopped agent reuses its task id with a fresh task_started.
+      idleCleanup.claude.emit({
+        type: "task.started",
+        eventId: asEventId("runtime-resumed-task-restarted"),
+        provider: "claudeAgent",
+        createdAt: "2026-09-29T01:10:01.000Z",
+        threadId,
+        payload: { taskId: "resumed-agent-task", description: "Sandbox image and Docker provider" },
+      });
+
+      yield* waitUntilEffect(
+        () => provider.hasLiveRuntimeTasks!({ threadId }),
+        500,
+        20,
+        "resumed task registration",
+      );
+      assert.deepEqual(yield* provider.listLiveRuntimeTasks!({ threadId }), [
+        { taskId: "resumed-agent-task", description: "Sandbox image and Docker provider" },
+      ]);
+      idleCleanup.claude.emit({
+        type: "task.completed",
+        eventId: asEventId("runtime-resumed-task-completed"),
+        provider: "claudeAgent",
+        createdAt: "2026-09-29T01:10:02.000Z",
+        threadId,
+        payload: { taskId: "resumed-agent-task", status: "completed" },
+      });
+      yield* waitUntilEffect(
+        () => provider.hasLiveRuntimeTasks!({ threadId }).pipe(Effect.map((live) => !live)),
+        500,
+        20,
+        "resumed task settlement",
+      );
+    }),
+  );
+
+  it.effect("settles a tracked task the adapter no longer tracks, but keeps real ones", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService;
+      const threadId = asThreadId("thread-idle-adapter-reconciled-task");
+      let adapterTaskIds: ReadonlySet<string> | undefined;
+      idleCleanup.claude.getLiveTaskIds.mockImplementation(() => Effect.succeed(adapterTaskIds));
+
+      yield* Effect.gen(function* () {
+        idleCleanup.claude.stopSession.mockClear();
+        const session = yield* provider.startSession(threadId, {
+          provider: "claudeAgent",
+          threadId,
+          runtimeMode: "full-access",
+        });
+        yield* idleCleanup.claude.waitForRuntimeSubscribers();
+        for (const [taskId, description] of [
+          ["lost-terminal-task", "Agent whose notification never arrived"],
+          ["still-running-bash", "Wait for community agent upload result"],
+        ] as const) {
+          idleCleanup.claude.emit({
+            type: "task.started",
+            eventId: asEventId(`runtime-reconciled-${taskId}`),
+            provider: "claudeAgent",
+            createdAt: "2026-09-29T01:20:00.000Z",
+            threadId,
+            payload: { taskId, description },
+          });
+        }
+        idleCleanup.claude.emit({
+          type: "turn.completed",
+          eventId: asEventId("runtime-reconciled-turn-completed"),
+          provider: "claudeAgent",
+          createdAt: "2026-09-29T01:20:01.000Z",
+          threadId,
+          payload: { state: "completed" },
+        });
+        yield* waitUntilEffect(
+          () =>
+            provider.listLiveRuntimeTasks!({ threadId }).pipe(
+              Effect.map((tasks) => tasks.length === 2),
+            ),
+          500,
+          20,
+          "both tasks registered",
+        );
+
+        // An adapter that cannot vouch for its task set changes nothing.
+        adapterTaskIds = undefined;
+        assert.equal((yield* provider.listLiveRuntimeTasks!({ threadId })).length, 2);
+
+        // The adapter still runs the background Bash but no longer knows the
+        // agent task: only the lost one settles, and the runtime stays alive.
+        adapterTaskIds = new Set(["still-running-bash"]);
+        assert.deepEqual(yield* provider.listLiveRuntimeTasks!({ threadId }), [
+          { taskId: "still-running-bash", description: "Wait for community agent upload result" },
+        ]);
+        assert.equal(yield* provider.hasLiveRuntimeTasks!({ threadId }), true);
+        yield* sleep(150);
+        assert.equal(idleCleanup.claude.stopSession.mock.calls.length, 0);
+
+        // Once the adapter reports nothing running, the stale id stops pinning
+        // the runtime and the idle stop proceeds.
+        adapterTaskIds = new Set();
+        assert.equal(yield* provider.hasLiveRuntimeTasks!({ threadId }), false);
+        yield* waitUntil(
+          () => idleCleanup.claude.stopSession.mock.calls.length > 0,
+          1000,
+          20,
+          "idle runtime stop after reconciliation",
+        );
+        assert.deepEqual(idleCleanup.claude.stopSession.mock.calls[0]?.[0], session.threadId);
+      }).pipe(
+        Effect.ensuring(
+          Effect.sync(() =>
+            idleCleanup.claude.getLiveTaskIds.mockImplementation(() => Effect.succeed(undefined)),
+          ),
+        ),
+      );
+    }),
+  );
+
+  it.effect("does not idle-stop a runtime whose adapter still tracks background work", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService;
+      const threadId = asThreadId("thread-idle-adapter-owned-task");
+      idleCleanup.claude.getLiveTaskIds.mockImplementation(() =>
+        Effect.succeed(new Set(["untracked-background-bash"])),
+      );
+
+      yield* Effect.gen(function* () {
+        idleCleanup.claude.stopSession.mockClear();
+        yield* provider.startSession(threadId, {
+          provider: "claudeAgent",
+          threadId,
+          runtimeMode: "full-access",
+        });
+        yield* idleCleanup.claude.waitForRuntimeSubscribers();
+        idleCleanup.claude.emit({
+          type: "turn.completed",
+          eventId: asEventId("runtime-adapter-owned-turn-completed"),
+          provider: "claudeAgent",
+          createdAt: "2026-09-29T01:30:00.000Z",
+          threadId,
+          payload: { state: "completed" },
+        });
+        yield* sleep(250);
+        assert.equal(idleCleanup.claude.stopSession.mock.calls.length, 0);
+      }).pipe(
+        Effect.ensuring(
+          Effect.sync(() =>
+            idleCleanup.claude.getLiveTaskIds.mockImplementation(() => Effect.succeed(undefined)),
+          ),
+        ),
+      );
     }),
   );
 

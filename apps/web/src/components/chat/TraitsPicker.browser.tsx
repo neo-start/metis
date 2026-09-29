@@ -41,6 +41,7 @@ function ClaudeTraitsPickerHarness(props: {
     projectModelSelection: null,
     customModelsByProvider: {
       codex: [],
+      codexSecondary: [],
       claudeAgent: [],
       cursor: [],
       devin: [],
@@ -671,6 +672,7 @@ function OpenCodeTraitsPickerHarness(props: {
     projectModelSelection: null,
     customModelsByProvider: {
       codex: [],
+      codexSecondary: [],
       claudeAgent: [],
       cursor: [],
       devin: [],

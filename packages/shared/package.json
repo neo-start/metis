@@ -367,6 +367,14 @@
     "./asyncUserInput": {
       "types": "./src/asyncUserInput.ts",
       "import": "./src/asyncUserInput.ts"
+    },
+    "./workbenchThreadSort": {
+      "types": "./src/workbenchThreadSort.ts",
+      "import": "./src/workbenchThreadSort.ts"
+    },
+    "./workbenchRemote": {
+      "types": "./src/workbenchRemote.ts",
+      "import": "./src/workbenchRemote.ts"
     }
   },
   "scripts": {

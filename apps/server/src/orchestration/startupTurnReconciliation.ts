@@ -48,6 +48,7 @@ import {
   type PendingThreadRequestKind,
 } from "@synara/shared/threadSummary";
 import { Array as Arr, Effect, Option } from "effect";
+import { randomUUID } from "node:crypto";
 import type { ProjectionPendingInteraction } from "../persistence/Services/ProjectionPendingInteractions.ts";
 import { ProjectionPendingInteractionRepository } from "../persistence/Services/ProjectionPendingInteractions.ts";
 import {
@@ -63,6 +64,7 @@ import {
 } from "./stalePendingInteractions.ts";
 import { OrchestrationEngineService } from "./Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "./Services/ProjectionSnapshotQuery.ts";
+import { captureRestartResumeCandidates, type RestartResumeCapture } from "./restartResume.ts";
 
 /** The `thread.session.set` variant of the internal orchestration command union. */
 type ThreadSessionSetCommand = Extract<
@@ -363,9 +365,12 @@ export function planRestartTurnReconciliation(input: {
  * untouched, which is what keeps this safe to run while reactors are already
  * live: nothing in the snapshot can become answerable again, and nothing
  * answerable can enter the snapshot.
+ *
+ * Returns the chats that were still in flight, captured before they are
+ * settled here, so `restartResume` can continue them (null when none were).
  */
 export const reconcileRestartStuckTurns: Effect.Effect<
-  void,
+  RestartResumeCapture | null,
   never,
   OrchestrationEngineService | ProjectionSnapshotQuery | ProjectionPendingInteractionRepository
 > = Effect.gen(function* () {
@@ -385,6 +390,14 @@ export const reconcileRestartStuckTurns: Effect.Effect<
     );
   const unsettledByThread = new Map(Object.entries(Arr.groupBy(unsettled, (row) => row.threadId)));
   const now = new Date().toISOString();
+  const orphanedChats = captureRestartResumeCandidates({
+    threads: readModel.threads,
+    threadIdsWithUnsettledRequests: new Set(unsettledByThread.keys()),
+  });
+  const orphanCapture: RestartResumeCapture | null =
+    orphanedChats.length > 0
+      ? { version: 1, recordId: randomUUID(), recordedAt: now, threads: orphanedChats }
+      : null;
   const threadsNeedingRestartCleanup = readModel.threads.filter(
     (thread) =>
       needsRestartReconciliation(thread) ||
@@ -394,7 +407,7 @@ export const reconcileRestartStuckTurns: Effect.Effect<
       unsettledByThread.has(thread.id),
   );
   if (threadsNeedingRestartCleanup.length === 0) {
-    return;
+    return orphanCapture;
   }
 
   const reconcilableThreads = yield* Effect.forEach(
@@ -421,7 +434,7 @@ export const reconcileRestartStuckTurns: Effect.Effect<
     now,
   });
   if (commands.length === 0) {
-    return;
+    return orphanCapture;
   }
 
   yield* Effect.logInfo("reconciling restart-stuck turns", {
@@ -443,4 +456,5 @@ export const reconcileRestartStuckTurns: Effect.Effect<
       ),
     { discard: true },
   );
+  return orphanCapture;
 });

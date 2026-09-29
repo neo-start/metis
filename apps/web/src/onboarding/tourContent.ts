@@ -33,7 +33,7 @@ export const TOUR_CARDS: ReadonlyArray<TourCard> = [
     label: "Any agent",
     title: "Run every coding agent in one workspace",
     description:
-      "Synara sits around the agent runtimes you already trust: Claude Code, Codex, Cursor, Devin, Antigravity, Grok, Factory Droid, OpenCode, and Pi. The provider keeps its account, models, and limits. Synara owns the durable task, environment, transcript, and delivery workflow around it.",
+      "Metis sits around the agent runtimes you already trust: Claude Code, Codex, Cursor, Devin, Antigravity, Grok, Factory Droid, OpenCode, and Pi. The provider keeps its account, models, and limits. Metis owns the durable task, environment, transcript, and delivery workflow around it.",
     highlights: [
       "Switch models mid-thread",
       "Hand a thread to another provider",
@@ -81,7 +81,7 @@ export const TOUR_CARDS: ReadonlyArray<TourCard> = [
     label: "Automations & goals",
     title: "Hand off work that should keep moving",
     description:
-      "Schedule recurring runs, attach a persistent goal to a thread so it keeps going after each clean turn, and let Synara bring you back when something needs attention. Scheduled does not mean autonomous approval.",
+      "Schedule recurring runs, attach a persistent goal to a thread so it keeps going after each clean turn, and let Metis bring you back when something needs attention. Scheduled does not mean autonomous approval.",
     highlights: [
       "Interval, daily, cron schedules",
       "Natural-language stop conditions",
@@ -93,7 +93,7 @@ export const TOUR_CARDS: ReadonlyArray<TourCard> = [
   {
     id: "gateway",
     label: "Agent Gateway",
-    title: "Let agents operate Synara itself",
+    title: "Let agents operate Metis itself",
     description:
       "A built-in MCP surface lets a supported provider session create tasks, wait on them, read transcripts, and steer other threads. Pair Codex, Claude Code, or Claude Desktop from outside with scoped, revocable credentials.",
     highlights: ["Parallel task batches", "External MCP pairing", "Approval boundaries"],

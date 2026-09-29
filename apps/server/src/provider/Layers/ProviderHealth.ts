@@ -10,6 +10,7 @@
  */
 import * as OS from "node:os";
 import type {
+  CodexProviderKind,
   ProviderKind,
   ServerSettings,
   ServerProviderAuthStatus,
@@ -17,7 +18,7 @@ import type {
   ServerProviderStatusState,
   ServerProviderUpdateState,
 } from "@synara/contracts";
-import { ServerProviderUpdateError } from "@synara/contracts";
+import { CODEX_SECONDARY_DEFAULT_HOME_PATH, ServerProviderUpdateError } from "@synara/contracts";
 import { parseCodexConfigModelProvider } from "@synara/shared/codexConfig";
 import { decodeJsonResult } from "@synara/shared/schemaJson";
 import { expandHomePath } from "@synara/shared/synaraHome";
@@ -109,6 +110,7 @@ import {
 } from "../providerMaintenance";
 import { isClaudeAutoModeCliVersionSupported } from "../claudeCliVersion.ts";
 import { collectUint8StreamText } from "../../stream/collectUint8StreamText";
+import { readCodexAccountEmail } from "../../codexAccountIdentity.ts";
 import { buildCodexProcessEnv } from "../../codexProcessEnv.ts";
 
 export { parseClaudeAuthStatusFromOutput } from "../claudeAuthStatus";
@@ -119,6 +121,7 @@ const CLAUDE_HEALTH_TIMEOUT_MS = 20_000;
 const OPENCODE_HEALTH_TIMEOUT_MS = 20_000;
 const CODEX_AUTH_STATUS_ARGS = ["-c", "mcp_servers={}", "login", "status"] as const;
 const CODEX_PROVIDER = "codex" as const;
+const CODEX_SECONDARY_PROVIDER = "codexSecondary" as const;
 const CLAUDE_AGENT_PROVIDER = "claudeAgent" as const;
 const CURSOR_PROVIDER = "cursor" as const;
 const ANTIGRAVITY_PROVIDER = "antigravity" as const;
@@ -128,11 +131,12 @@ const DEVIN_PROVIDER = "devin" as const;
 const OPENCODE_PROVIDER = "opencode" as const;
 const PI_PROVIDER = "pi" as const;
 type ProviderStatuses = ReadonlyArray<ServerProviderStatus>;
-const DISABLED_PROVIDER_STATUS_MESSAGE = "Provider is disabled in Synara settings.";
+const DISABLED_PROVIDER_STATUS_MESSAGE = "Provider is disabled in Metis settings.";
 const MINIMUM_ANTIGRAVITY_CLI_VERSION = "1.0.12";
 
 const PROVIDERS = [
   CODEX_PROVIDER,
+  CODEX_SECONDARY_PROVIDER,
   CLAUDE_AGENT_PROVIDER,
   CURSOR_PROVIDER,
   ANTIGRAVITY_PROVIDER,
@@ -144,7 +148,11 @@ const PROVIDERS = [
 ] as const satisfies ReadonlyArray<ProviderKind>;
 
 const providerChildKind = (provider: ProviderKind): ProviderChildKind =>
-  provider === CLAUDE_AGENT_PROVIDER ? "claude" : provider;
+  provider === CLAUDE_AGENT_PROVIDER
+    ? "claude"
+    : provider === CODEX_SECONDARY_PROVIDER
+      ? "codex"
+      : provider;
 
 const providerCommandEnv = (provider: ProviderKind): NodeJS.ProcessEnv =>
   provider === OPENCODE_PROVIDER
@@ -756,7 +764,7 @@ function parseCursorAuthStatusFromOutput(result: CommandResult): {
     return {
       status: "warning",
       authStatus: "unknown",
-      message: "Cursor Agent is installed, but Synara could not verify authentication status.",
+      message: "Cursor Agent is installed, but Metis could not verify authentication status.",
     };
   }
 
@@ -831,6 +839,7 @@ const hasCustomModelProviderForEnv = (env: NodeJS.ProcessEnv) =>
 export const makeCheckCodexProviderStatus = (
   binaryPath?: string,
   homePath?: string,
+  provider: CodexProviderKind = CODEX_PROVIDER,
 ): Effect.Effect<
   ServerProviderStatus,
   never,
@@ -989,9 +998,26 @@ export const makeCheckCodexProviderStatus = (
       ...(parsed.message ? { message: parsed.message } : {}),
     } satisfies ServerProviderStatus;
   }).pipe(
+    Effect.flatMap((status) =>
+      status.authStatus === "authenticated"
+        ? Effect.promise(() => readCodexAccountEmail(homePath)).pipe(
+            Effect.map((accountEmail) => (accountEmail ? { ...status, accountEmail } : status)),
+          )
+        : Effect.succeed(status),
+    ),
     Effect.map((status) => ({
       ...status,
+      provider,
       autoRuntimeModeBinaryPath: executable,
+      // A second account signs in against its own home, not the default ~/.codex.
+      ...(provider !== CODEX_PROVIDER && status.message && nonEmptyTrimmed(homePath)
+        ? {
+            message: status.message.replaceAll(
+              "`codex login`",
+              `\`CODEX_HOME=${nonEmptyTrimmed(homePath)} codex login\``,
+            ),
+          }
+        : {}),
     })),
   );
 };
@@ -1342,7 +1368,7 @@ export const makeCheckDroidProviderStatus = (
         ? { authType: "apiKey", authLabel: "Factory API Key" }
         : {
             message:
-              "Droid CLI is installed. Synara can use the CLI's cached device-pairing login; run `droid` to authenticate locally if needed, or set FACTORY_API_KEY.",
+              "Droid CLI is installed. Metis can use the CLI's cached device-pairing login; run `droid` to authenticate locally if needed, or set FACTORY_API_KEY.",
           }),
     } satisfies ServerProviderStatus;
   });
@@ -1445,7 +1471,7 @@ export const checkPiProviderStatus = (
         checkedAt,
         message:
           versionProbe.outcome === "missing"
-            ? "Pi SDK is bundled, but the Pi CLI (`pi`) is not on PATH, so Synara could not verify the installed CLI version."
+            ? "Pi SDK is bundled, but the Pi CLI (`pi`) is not on PATH, so Metis could not verify the installed CLI version."
             : `Pi SDK is bundled, but the CLI health check failed: ${error instanceof Error ? error.message : String(error)}.`,
       } satisfies ServerProviderStatus;
     }
@@ -1458,7 +1484,7 @@ export const checkPiProviderStatus = (
         authStatus: "unknown" as const,
         checkedAt,
         message:
-          "Pi SDK is bundled, but the CLI health check timed out before Synara could verify the installed version.",
+          "Pi SDK is bundled, but the CLI health check timed out before Metis could verify the installed version.",
       } satisfies ServerProviderStatus;
     }
 
@@ -1488,7 +1514,7 @@ export const checkPiProviderStatus = (
       version: parsedVersion,
       checkedAt,
       message: configuredAgentDir
-        ? `Pi CLI is installed. Synara will use Pi agent dir ${configuredAgentDir}.`
+        ? `Pi CLI is installed. Metis will use Pi agent dir ${configuredAgentDir}.`
         : "Pi CLI is installed. Configure provider credentials inside Pi as needed.",
     } satisfies ServerProviderStatus;
   });
@@ -1552,7 +1578,7 @@ export const checkAntigravityProviderStatus = (
         authStatus: "unknown",
         version: parsedVersion,
         checkedAt,
-        message: `Antigravity CLI ${parsedVersion} is too old for Synara. Upgrade to ${MINIMUM_ANTIGRAVITY_CLI_VERSION} or newer.`,
+        message: `Antigravity CLI ${parsedVersion} is too old for Metis. Upgrade to ${MINIMUM_ANTIGRAVITY_CLI_VERSION} or newer.`,
       } satisfies ServerProviderStatus;
     }
     const models = yield* runAntigravityCommand(["models"], executable).pipe(
@@ -1582,7 +1608,7 @@ export const checkAntigravityProviderStatus = (
       authStatus: "unknown",
       version: parsedVersion,
       checkedAt,
-      message: "Antigravity CLI is installed, but Synara could not verify login by listing models.",
+      message: "Antigravity CLI is installed, but Metis could not verify login by listing models.",
     } satisfies ServerProviderStatus;
   });
 
@@ -1721,7 +1747,7 @@ export const makeCheckCursorProviderStatus = (
         version: parsedVersion,
         checkedAt,
         message:
-          "Cursor Agent is authenticated, but model discovery timed out before Synara could verify available models.",
+          "Cursor Agent is authenticated, but model discovery timed out before Metis could verify available models.",
       } satisfies ServerProviderStatus;
     }
 
@@ -2141,6 +2167,8 @@ export function makeProviderHealthLive(options?: { readonly providerUpdateTimeou
         switch (provider) {
           case "codex":
             return settings.providers.codex.binaryPath;
+          case "codexSecondary":
+            return settings.providers.codexSecondary.binaryPath;
           case "claudeAgent":
             return settings.providers.claudeAgent.binaryPath;
           case "cursor":
@@ -2321,6 +2349,16 @@ export function makeProviderHealthLive(options?: { readonly providerUpdateTimeou
                   makeCheckCodexProviderStatus(
                     settings.providers.codex.binaryPath,
                     settings.providers.codex.homePath,
+                  ),
+                ),
+                checkProviderWhenEnabled(
+                  settings,
+                  CODEX_SECONDARY_PROVIDER,
+                  makeCheckCodexProviderStatus(
+                    settings.providers.codexSecondary.binaryPath,
+                    // Like the adapter, never probe the primary ~/.codex for this account.
+                    settings.providers.codexSecondary.homePath || CODEX_SECONDARY_DEFAULT_HOME_PATH,
+                    CODEX_SECONDARY_PROVIDER,
                   ),
                 ),
                 checkProviderWhenEnabled(
@@ -2599,7 +2637,7 @@ export function makeProviderHealthLive(options?: { readonly providerUpdateTimeou
         const disabledError = () =>
           new ServerProviderUpdateError({
             provider,
-            reason: "Provider is disabled in Synara settings.",
+            reason: "Provider is disabled in Metis settings.",
           });
         if (!(yield* providerIsEnabled)) {
           return yield* disabledError();
@@ -2722,7 +2760,7 @@ export function makeProviderHealthLive(options?: { readonly providerUpdateTimeou
               startedAt,
               finishedAt,
               message: stillOutdated
-                ? `Update command completed, but Synara still detects an outdated provider version${stillOutdatedVersions}.`
+                ? `Update command completed, but Metis still detects an outdated provider version${stillOutdatedVersions}.`
                 : "Provider updated.",
               output: output ? output.slice(0, UPDATE_OUTPUT_MAX_BYTES) : null,
             }),

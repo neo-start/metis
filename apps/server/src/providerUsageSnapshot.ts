@@ -14,6 +14,7 @@ import type {
 } from "@synara/contracts";
 import { Effect } from "effect";
 
+import { expandCodexHomePath } from "./codexHomePaths";
 import { ServerConfig } from "./config";
 
 const LOOKBACK_DAYS = 30;
@@ -626,8 +627,10 @@ async function loadCodexUsageSnapshot(input: {
   homeDir: string;
   homePath?: string;
 }): Promise<UsageSnapshot | null> {
-  const codexHomeDir =
-    input.homePath?.trim() || process.env.CODEX_HOME || nodePath.join(input.homeDir, ".codex");
+  const configuredHome = input.homePath?.trim() || process.env.CODEX_HOME;
+  const codexHomeDir = configuredHome
+    ? expandCodexHomePath(configuredHome)
+    : nodePath.join(input.homeDir, ".codex");
   const sessionsRoot = nodePath.join(codexHomeDir, "sessions");
   const sessionFiles = await listRecentCodexSessionFiles(sessionsRoot);
   if (sessionFiles.length === 0) {
@@ -726,6 +729,11 @@ async function loadProviderUsageSnapshot(input: {
   homePath?: string;
 }): Promise<ServerGetProviderUsageSnapshotResult> {
   switch (input.provider) {
+    case "codexSecondary":
+      // The second account never falls back to the default ~/.codex archive.
+      return input.homePath
+        ? loadCodexUsageSnapshot({ homeDir: input.homeDir, homePath: input.homePath })
+        : null;
     case "codex":
       return loadCodexUsageSnapshot({
         homeDir: input.homeDir,

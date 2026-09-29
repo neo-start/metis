@@ -19,6 +19,7 @@ import {
   SPACES_MAX_COUNT,
   THREAD_GOAL_ACHIEVEMENTS_MAX_COUNT,
   TurnId,
+  isCodexProviderKind,
 } from "@synara/contracts";
 import {
   deriveAssociatedWorktreeMetadata,
@@ -1146,7 +1147,8 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           ...resolveCreatedThreadWorkspaceMetadata(project.kind, command),
           createBranchFlowCompleted:
             project.kind === "studio" ? false : command.createBranchFlowCompleted,
-          isPinned: false,
+          // A provider switch replaces the source thread, so its pin carries over.
+          isPinned: sourceThread.isPinned === true,
           parentThreadId: null,
           subagentAgentId: null,
           subagentNickname: null,
@@ -1746,10 +1748,11 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         if (
           !questionMessage?.asyncUserInput ||
           questionMessage.role !== "assistant" ||
-          targetThread.modelSelection.provider !== "codex" ||
+          !isCodexProviderKind(targetThread.modelSelection.provider) ||
           (targetThread.session?.providerName != null &&
-            targetThread.session.providerName !== "codex") ||
-          (command.modelSelection && command.modelSelection.provider !== "codex") ||
+            targetThread.session.providerName !== targetThread.modelSelection.provider) ||
+          (command.modelSelection &&
+            command.modelSelection.provider !== targetThread.modelSelection.provider) ||
           targetThread.parentThreadId !== null
         ) {
           return yield* new OrchestrationCommandInvariantError({

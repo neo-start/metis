@@ -60,7 +60,7 @@ function ProviderAvatarWithTerminal({
     </span>
   ) : (
     <span className={containerClass}>
-      <ProviderIcon provider={provider} className="size-3" />
+      <ProviderIcon provider={provider} className="size-3" tooltip />
     </span>
   );
 
@@ -218,12 +218,6 @@ export function SidebarThreadRowContent({
         </span>
       ) : terminalEntryPoint ? (
         <SidebarGlyph icon={TerminalIcon} variant="chrome" />
-      ) : showThreadProviderAvatar ? (
-        <ProviderAvatarWithTerminal
-          thread={thread}
-          terminalStatus={terminalStatus}
-          terminalCount={terminalCount}
-        />
       ) : null}
       <div
         className={cn(
@@ -259,6 +253,15 @@ export function SidebarThreadRowContent({
           </span>
         ) : null}
       </div>
+      {showThreadProviderAvatar ? (
+        <span className="ml-auto flex shrink-0 items-center">
+          <ProviderAvatarWithTerminal
+            thread={thread}
+            terminalStatus={terminalStatus}
+            terminalCount={terminalCount}
+          />
+        </span>
+      ) : null}
       {suffix}
     </>
   );

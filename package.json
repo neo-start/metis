@@ -24,6 +24,13 @@
   },
   "type": "module",
   "scripts": {
+    "metis": "node scripts/workbench.mjs",
+    "metis:web": "node scripts/workbench.mjs --web",
+    "metis:serve": "npm exec --yes --package=bun@1.4.2 -- bun scripts/workbench-remote.ts --local",
+    "metis:remote": "npm exec --yes --package=bun@1.4.2 -- bun scripts/workbench-remote.ts",
+    "workbench": "node scripts/workbench.mjs",
+    "workbench:web": "node scripts/workbench.mjs --web",
+    "workbench:remote": "npm exec --yes --package=bun@1.4.2 -- bun scripts/workbench-remote.ts",
     "dev": "node scripts/dev-runner.ts dev",
     "dev:server": "node scripts/dev-runner.ts dev:server",
     "dev:web": "node scripts/dev-runner.ts dev:web",

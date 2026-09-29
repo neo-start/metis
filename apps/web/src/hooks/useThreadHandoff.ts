@@ -5,7 +5,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { type ProviderKind } from "@synara/contracts";
+import { type ModelSelection, type ProviderKind } from "@synara/contracts";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { useProviderStatusesForLocalConfig } from "./useProviderStatusesForLocalConfig";
 import { useRefreshProviderStatusesNow } from "./useProviderStatusRefresh";
@@ -35,6 +35,10 @@ export function useThreadHandoff() {
   const createThreadHandoff = async (
     thread: Thread,
     targetProvider: ProviderKind,
+    options?: {
+      /** The exact model the user picked for the new provider (composer provider switch). */
+      readonly modelSelection?: ModelSelection;
+    },
   ): Promise<Thread["id"]> => {
     const api = readNativeApi();
     if (!api) {
@@ -83,12 +87,15 @@ export function useThreadHandoff() {
       sourceThreadId: thread.id,
       projectId: thread.projectId,
       title: resolveThreadHandoffTitle(thread),
-      modelSelection: resolveThreadHandoffModelSelection({
-        sourceThread: thread,
-        targetProvider,
-        projectDefaultModelSelection: project.defaultModelSelection,
-        stickyModelSelectionByProvider,
-      }),
+      modelSelection:
+        options?.modelSelection?.provider === targetProvider
+          ? options.modelSelection
+          : resolveThreadHandoffModelSelection({
+              sourceThread: thread,
+              targetProvider,
+              projectDefaultModelSelection: project.defaultModelSelection,
+              stickyModelSelectionByProvider,
+            }),
       runtimeMode: thread.runtimeMode,
       interactionMode: thread.interactionMode,
       envMode: thread.envMode ?? (thread.worktreePath ? "worktree" : "local"),

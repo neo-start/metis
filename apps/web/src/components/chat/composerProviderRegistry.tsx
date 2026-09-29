@@ -8,6 +8,7 @@ import {
   type ProviderKind,
   type ProviderModelDescriptor,
   type ProviderModelOptions,
+  isCodexProviderKind,
 } from "@synara/contracts";
 import {
   getDefaultContextWindow,
@@ -52,8 +53,9 @@ export function getComposerProviderState(input: ComposerProviderStateInput): Com
   let normalizedOptions: ProviderModelOptions[ProviderKind] | undefined;
 
   switch (provider) {
-    case "codex": {
-      const providerOptions = modelOptions?.codex;
+    case "codex":
+    case "codexSecondary": {
+      const providerOptions = modelOptions?.[provider];
       rawEffort = trimOrNull(providerOptions?.reasoningEffort);
       const defaultReasoningEffort = getDefaultEffort(caps);
       const reasoningEffortSupport = classifyCodexReasoningEffortSupport({
@@ -204,7 +206,7 @@ export function getComposerProviderState(input: ComposerProviderStateInput): Com
       ? resolveLabeledOptionValue(caps.variantOptions, draftEffort)
       : draftEffort &&
           !isPromptInjected &&
-          (provider === "codex"
+          (isCodexProviderKind(provider)
             ? classifyCodexReasoningEffortSupport({
                 model,
                 effort: draftEffort,

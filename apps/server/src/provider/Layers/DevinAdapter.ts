@@ -1815,7 +1815,7 @@ export function makeDevinAdapter(
               if (!gatewaySessionLease || !agentGatewayCredentials) return undefined;
               const bootstrapToken = gatewaySessionLease.issueStdioBootstrapToken?.();
               if (!bootstrapToken)
-                throw new Error("Synara gateway bootstrap token was unavailable.");
+                throw new Error("Metis gateway bootstrap token was unavailable.");
               return createDevinSessionConfig({
                 connection: gatewaySessionLease.connection,
                 stdioProxy: agentGatewayCredentials.stdioProxy,

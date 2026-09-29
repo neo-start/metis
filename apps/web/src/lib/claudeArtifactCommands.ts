@@ -25,7 +25,7 @@ export function getClaudeArtifactCommandNotice(input: {
     case "disabled":
       return {
         summary: "Artifacts are off. Turn them on in Settings → Providers → Claude.",
-        detail: `/${input.command} needs Claude Artifacts, which are off in Synara sessions by default. Turn on "Artifacts, /design and /slides" in Settings → Providers → Claude, then start a new session.`,
+        detail: `/${input.command} needs Claude Artifacts, which are off in Metis sessions by default. Turn on "Artifacts, /design and /slides" in Settings → Providers → Claude, then start a new session.`,
       };
     case "unavailable":
       return {

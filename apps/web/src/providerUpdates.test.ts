@@ -56,12 +56,20 @@ function serverSettings(overrides: Partial<ServerSettings["providers"]> = {}): S
   return {
     enableAssistantStreaming: false,
     enableProviderUpdateChecks: true,
+    resumeChatsAfterRestart: true,
     defaultThreadEnvMode: "local",
     addProjectBaseDirectory: "",
     textGenerationModelSelection: { provider: "codex", model: "gpt-5.4-mini" },
     providers: {
       codex: { ...provider, binaryPath: "codex", homePath: "" },
-      claudeAgent: { ...provider, binaryPath: "claude", launchArgs: "", enableArtifacts: false },
+      codexSecondary: { ...provider, binaryPath: "codex", homePath: "" },
+      claudeAgent: {
+        ...provider,
+        binaryPath: "claude",
+        launchArgs: "",
+        enableArtifacts: false,
+        cacheReviewDecision: "ask",
+      },
       cursor: { ...provider, binaryPath: "cursor-agent", apiEndpoint: "" },
       devin: { ...provider, binaryPath: "devin" },
       antigravity: { ...provider, binaryPath: "agy" },

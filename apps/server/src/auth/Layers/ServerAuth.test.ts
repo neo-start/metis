@@ -2,7 +2,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect, Layer } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { ServerConfig } from "../../config";
+import { ServerConfig, type ServerConfigShape } from "../../config";
 import { SqlitePersistenceMemory } from "../../persistence/Layers/Sqlite";
 import { AuthControlPlaneLive } from "./AuthControlPlane";
 import { BootstrapCredentialServiceLive } from "./BootstrapCredentialService";
@@ -21,20 +21,33 @@ const authControlPlaneLayer = AuthControlPlaneLive.pipe(
   Layer.provide(BootstrapCredentialServiceLive),
   Layer.provide(sessionCredentialLayer),
 );
-const testLayer = ServerAuthLive.pipe(
-  Layer.provide(ServerAuthPolicyLive),
-  Layer.provide(BootstrapCredentialServiceLive),
-  Layer.provide(sessionCredentialLayer),
-  Layer.provide(authControlPlaneLayer),
-  Layer.provide(SqlitePersistenceMemory),
-  Layer.provide(ServerSecretStoreLive),
-  Layer.provide(
-    ServerConfig.layerTest(process.cwd(), {
-      prefix: "synara-auth-server-test-",
-    }),
-  ),
-  Layer.provide(NodeServices.layer),
-);
+const makeTestLayer = (overrides: Partial<ServerConfigShape> = {}) =>
+  ServerAuthLive.pipe(
+    Layer.provide(ServerAuthPolicyLive),
+    Layer.provide(BootstrapCredentialServiceLive),
+    Layer.provide(sessionCredentialLayer),
+    Layer.provide(authControlPlaneLayer),
+    Layer.provide(SqlitePersistenceMemory),
+    Layer.provide(ServerSecretStoreLive),
+    Layer.provide(
+      Layer.effect(
+        ServerConfig,
+        Effect.gen(function* () {
+          const base = yield* ServerConfig;
+          return { ...base, ...overrides };
+        }),
+      ).pipe(
+        Layer.provide(
+          ServerConfig.layerTest(process.cwd(), {
+            prefix: "synara-auth-server-test-",
+          }),
+        ),
+      ),
+    ),
+    Layer.provide(NodeServices.layer),
+  );
+
+const testLayer = makeTestLayer();
 
 const requestMetadata = {
   deviceType: "desktop" as const,
@@ -56,6 +69,68 @@ const runServerAuthTest = (effect: Effect.Effect<void, AuthError, ServerAuth>) =
   effect.pipe(Effect.provide(testLayer), Effect.scoped, Effect.runPromise);
 
 describe("ServerAuthLive", () => {
+  it("exchanges the local desktop startup credential for revocable owner sessions", async () => {
+    await Effect.gen(function* () {
+      const serverAuth = yield* ServerAuth;
+      const owner = yield* serverAuth.exchangeBootstrapCredentialForBearerSession(
+        "desktop-startup",
+        requestMetadata,
+      );
+      const verified = yield* serverAuth.authenticateHttpRequest({
+        headers: { authorization: `Bearer ${owner.sessionToken}` },
+        cookies: {},
+      });
+      expect(verified.role).toBe("owner");
+      expect(verified.subject).toBe("desktop-bootstrap");
+      yield* serverAuth.logoutSession(verified.sessionId);
+      const rejected = yield* serverAuth
+        .authenticateHttpRequest({
+          headers: { authorization: `Bearer ${owner.sessionToken}` },
+          cookies: {},
+        })
+        .pipe(Effect.flip);
+      expect(rejected.status).toBe(401);
+      const renewed = yield* serverAuth.exchangeBootstrapCredential(
+        "desktop-startup",
+        requestMetadata,
+      );
+      expect(renewed.response.role).toBe("owner");
+      const wrong = yield* serverAuth
+        .exchangeBootstrapCredentialForBearerSession("wrong-secret", requestMetadata)
+        .pipe(Effect.flip);
+      expect(wrong.status).toBe(401);
+    }).pipe(
+      Effect.provide(
+        makeTestLayer({ mode: "desktop", host: "127.0.0.1", authToken: "desktop-startup" }),
+      ),
+      Effect.scoped,
+      Effect.runPromise,
+    );
+  });
+
+  it.each([
+    { mode: "web" as const, host: "127.0.0.1" },
+    { mode: "desktop" as const, host: "0.0.0.0" },
+    { mode: "desktop" as const, host: "192.168.1.20" },
+    {
+      mode: "desktop" as const,
+      host: "127.0.0.1",
+      publicUrl: new URL("https://workbench.example.test"),
+    },
+  ])("refuses reusable startup credentials outside local desktop mode (%j)", async (overrides) => {
+    await Effect.gen(function* () {
+      const serverAuth = yield* ServerAuth;
+      const rejected = yield* serverAuth
+        .exchangeBootstrapCredentialForBearerSession("desktop-startup", requestMetadata)
+        .pipe(Effect.flip);
+      expect(rejected.status).toBe(401);
+    }).pipe(
+      Effect.provide(makeTestLayer({ ...overrides, authToken: "desktop-startup" })),
+      Effect.scoped,
+      Effect.runPromise,
+    );
+  });
+
   it("maps invalid bootstrap credential failures to 401", () => {
     const error = toBootstrapExchangeAuthError(
       new BootstrapCredentialError({

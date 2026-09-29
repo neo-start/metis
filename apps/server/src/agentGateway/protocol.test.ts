@@ -77,7 +77,7 @@ describe("agent gateway MCP protocol", () => {
     assert.equal(result.instructions, "use the tools");
     assert.deepEqual(result.serverInfo, {
       name: "synara",
-      title: "Synara App Control",
+      title: "Metis App Control",
       version: "1.2.3",
     });
   });
@@ -88,13 +88,13 @@ describe("agent gateway MCP protocol", () => {
       description: "Inspect the current Synara harness context.",
       inputSchema: { type: "object" },
       annotations: {
-        title: "Synara context",
+        title: "Metis context",
         readOnlyHint: true,
         destructiveHint: false,
         idempotentHint: true,
         openWorldHint: false,
       },
     };
-    assert.equal(tool.annotations?.title, "Synara context");
+    assert.equal(tool.annotations?.title, "Metis context");
   });
 });

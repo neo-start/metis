@@ -6,6 +6,7 @@ import {
   type ProviderRuntimeEvent,
   ThreadId,
   TurnId,
+  isCodexProviderKind,
 } from "@synara/contracts";
 import { nonEmptyTrimmed } from "@synara/shared/text";
 
@@ -621,7 +622,7 @@ export function projectProviderRuntimeActivities(
   // transcript rows. Waiting for the authoritative completion also avoids
   // per-token activity writes and transcript height churn.
   if (
-    (event.provider === "codex" || event.provider === "antigravity") &&
+    (isCodexProviderKind(event.provider) || event.provider === "antigravity") &&
     event.type === "item.completed" &&
     event.payload.itemType === "reasoning" &&
     event.itemId !== undefined &&

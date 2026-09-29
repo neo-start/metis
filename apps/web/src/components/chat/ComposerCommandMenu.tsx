@@ -74,7 +74,7 @@ function commandMenuTitle(
     case "subagents":
       return "Subagents";
     case "feedback":
-      return "Feedback Synara";
+      return "Feedback Metis";
     default:
       return humanizeProviderCommandName(item.command);
   }
@@ -478,7 +478,7 @@ function commandMenuItemGlyph(item: ComposerCommandItem, theme: "light" | "dark"
     case "plugin":
       return <PluginIcon className={cls} />;
     case "thread":
-      return <ProviderIcon provider={item.provider} className={cls} />;
+      return <ProviderIcon provider={item.provider} className={cls} tooltip />;
     case "skill":
       return <SkillCubeIcon className={cls} />;
     default:

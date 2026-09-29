@@ -106,6 +106,7 @@ import { OrchestrationProjectionPipelineLive } from "./ProjectionPipeline.ts";
 import { OrchestrationProjectionSnapshotQueryLive } from "./ProjectionSnapshotQuery.ts";
 import {
   awaitInflightClaimSettlement,
+  claudeCacheCompactionBlocker,
   classifyProviderAttemptOutcome,
   isSafeLegacyProviderBlocker,
   makeProviderCommandReactorLive,
@@ -141,6 +142,61 @@ const asApprovalRequestId = (value: string): ApprovalRequestId =>
 const asEventId = (value: string): EventId => EventId.makeUnsafe(value);
 const asMessageId = (value: string): MessageId => MessageId.makeUnsafe(value);
 const asTurnId = (value: string): TurnId => TurnId.makeUnsafe(value);
+
+describe("claudeCacheCompactionBlocker", () => {
+  const ready = {
+    compactionSupported: true,
+    messageText: "Continue with the plan",
+    busyTasks: false,
+    liveTasks: [],
+    pendingApprovalCount: 0,
+    pendingUserInputCount: 0,
+  } as const;
+
+  it("allows compaction when nothing blocks it", () => {
+    expect(claudeCacheCompactionBlocker(ready)).toBeUndefined();
+  });
+
+  it("names the actual blocker", () => {
+    expect(claudeCacheCompactionBlocker({ ...ready, compactionSupported: false })).toBe(
+      "Native compaction is unavailable for this Claude runtime.",
+    );
+    expect(claudeCacheCompactionBlocker({ ...ready, messageText: undefined })).toBe(
+      "The saved message is no longer available.",
+    );
+    expect(claudeCacheCompactionBlocker({ ...ready, messageText: "  /compact keep notes" })).toBe(
+      "The saved message is already a /compact command.",
+    );
+    expect(claudeCacheCompactionBlocker({ ...ready, pendingApprovalCount: 1 })).toBe(
+      "Claude is waiting for an approval. Resolve it before compacting.",
+    );
+    expect(claudeCacheCompactionBlocker({ ...ready, pendingUserInputCount: 2 })).toBe(
+      "Claude is waiting for your answer to a question. Answer it before compacting.",
+    );
+    expect(
+      claudeCacheCompactionBlocker({
+        ...ready,
+        busyTasks: true,
+        liveTasks: [{ taskId: "bg-1", description: "Run full server test suite" }],
+      }),
+    ).toBe(
+      'Claude is still running 1 background task: "Run full server test suite". Wait for it to finish or stop it before compacting.',
+    );
+  });
+
+  it("keeps long task lists short", () => {
+    const liveTasks = [
+      { taskId: "t1", description: "x".repeat(80) },
+      { taskId: "t2", description: "second" },
+      { taskId: "t3", description: "third" },
+      { taskId: "t4", description: "fourth" },
+      { taskId: "t5" },
+    ];
+    expect(claudeCacheCompactionBlocker({ ...ready, busyTasks: true, liveTasks })).toBe(
+      `Claude is still running 5 background tasks: "${"x".repeat(59)}…", "second", "third" and 2 more. Wait for them to finish or stop them before compacting.`,
+    );
+  });
+});
 
 describe("legacy provider blocker recovery", () => {
   it("rejects a startup failure only when process cleanup was confirmed", () => {
@@ -299,6 +355,7 @@ describe("ProviderCommandReactor", () => {
       ProviderServiceShape["getClaudeCacheObservation"]
     >;
     readonly startClaudeCompaction?: NonNullable<ProviderServiceShape["startClaudeCompaction"]>;
+    readonly listLiveRuntimeTasks?: NonNullable<ProviderServiceShape["listLiveRuntimeTasks"]>;
   }) {
     const now = new Date().toISOString();
     const baseDir = input?.baseDir ?? fs.mkdtempSync(path.join(os.tmpdir(), "synara-reactor-"));
@@ -640,6 +697,7 @@ describe("ProviderCommandReactor", () => {
       ...(input?.getClaudeCacheObservation
         ? { getClaudeCacheObservation: input.getClaudeCacheObservation }
         : {}),
+      ...(input?.listLiveRuntimeTasks ? { listLiveRuntimeTasks: input.listLiveRuntimeTasks } : {}),
       ...(input?.startClaudeCompaction
         ? { startClaudeCompaction: input.startClaudeCompaction }
         : {}),
@@ -1319,7 +1377,9 @@ describe("ProviderCommandReactor", () => {
       return command;
     }
 
-    async function createCompactionHarness() {
+    async function createCompactionHarness(options?: {
+      readonly listLiveRuntimeTasks?: NonNullable<ProviderServiceShape["listLiveRuntimeTasks"]>;
+    }) {
       let observation = expiredCacheObservation();
       const startClaudeCompaction = vi.fn<
         NonNullable<ProviderServiceShape["startClaudeCompaction"]>
@@ -1328,6 +1388,9 @@ describe("ProviderCommandReactor", () => {
         threadModelSelection: { provider: "claudeAgent", model: "claude-opus-4-6" },
         getClaudeCacheObservation: () => Effect.sync(() => observation),
         startClaudeCompaction,
+        ...(options?.listLiveRuntimeTasks
+          ? { listLiveRuntimeTasks: options.listLiveRuntimeTasks }
+          : {}),
       });
       return {
         harness,
@@ -1946,7 +2009,53 @@ describe("ProviderCommandReactor", () => {
 
       expect(startClaudeCompaction).not.toHaveBeenCalled();
       expect(harness.sendTurn).not.toHaveBeenCalled();
-      expect((await readHarnessThread(harness))?.claudeCacheReview?.status).toBe("failed");
+      expect((await readHarnessThread(harness))?.claudeCacheReview).toMatchObject({
+        status: "failed",
+        error:
+          "Claude is still running background tasks. Wait for them to finish or stop them before compacting. The saved message was not sent.",
+      });
+    });
+
+    it("names the background tasks that block compaction", async () => {
+      const listLiveRuntimeTasks = vi.fn<NonNullable<ProviderServiceShape["listLiveRuntimeTasks"]>>(
+        () =>
+          Effect.succeed([
+            {
+              taskId: "bowy2abki",
+              description: "Wait for community agent upload confirmation, then fetch",
+            },
+            { taskId: "b5gsvmhu5", description: "Wait properly for community agent upload result" },
+          ]),
+      );
+      const { harness, startClaudeCompaction } = await createCompactionHarness({
+        listLiveRuntimeTasks,
+      });
+      const review = await sendHeldMessage(harness);
+
+      await respondToReview(harness, review, "compact");
+
+      expect(listLiveRuntimeTasks).toHaveBeenCalledWith({ threadId: "thread-1" });
+      expect(startClaudeCompaction).not.toHaveBeenCalled();
+      expect(harness.sendTurn).not.toHaveBeenCalled();
+      expect((await readHarnessThread(harness))?.claudeCacheReview).toMatchObject({
+        status: "failed",
+        error:
+          'Claude is still running 2 background tasks: "Wait for community agent upload confirmation, then fetch", "Wait properly for community agent upload result". Wait for them to finish or stop them before compacting. The saved message was not sent.',
+      });
+    });
+
+    it("compacts when the provider reports no live tasks", async () => {
+      const { harness, startClaudeCompaction } = await createCompactionHarness({
+        listLiveRuntimeTasks: () => Effect.succeed([]),
+      });
+      // The legacy boolean must not override the authoritative list.
+      harness.hasLiveRuntimeTasks.mockImplementation(() => Effect.succeed(true));
+      const review = await sendHeldMessage(harness);
+
+      await respondToReview(harness, review, "compact");
+
+      await waitFor(() => startClaudeCompaction.mock.calls.length === 1);
+      expect((await readHarnessThread(harness))?.claudeCacheReview?.status).toBe("compacting");
     });
 
     it("does not compact before an original message that already requests /compact", async () => {

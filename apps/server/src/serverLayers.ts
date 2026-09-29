@@ -2,12 +2,14 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Layer } from "effect";
 
 import { AgentGatewayLive } from "./agentGateway/Layers/AgentGateway";
+import { MetisMemoryLive } from "./metisMemory/Layers/MetisMemory";
 import { AgentGatewayOperationRepositoryLive } from "./agentGateway/Layers/AgentGatewayOperationRepository";
 import { AgentGatewayCredentialsWithSecretsLive } from "./agentGateway/Layers/AgentGatewayCredentials";
 import { BrowserAutomationHostLive } from "./browserAutomation/Layers/BrowserAutomationHost";
 import { AutomationRunReactorLive } from "./automation/Layers/AutomationRunReactor";
 import { AutomationSchedulerLive } from "./automation/Layers/AutomationScheduler";
 import { AutomationServiceLive } from "./automation/Layers/AutomationService";
+import { FeishuBridgeLive } from "./feishu/Layers/FeishuBridge";
 import { CheckpointDiffQueryLive } from "./checkpointing/Layers/CheckpointDiffQuery";
 import { CheckpointStoreLive } from "./checkpointing/Layers/CheckpointStore";
 import { CheckpointReactorLive } from "./orchestration/Layers/CheckpointReactor";
@@ -183,6 +185,7 @@ export function makeServerRuntimeServicesLayer(
   const automationRunReactorLayer = AutomationRunReactorLive.pipe(
     Layer.provideMerge(automationServiceLayer),
   );
+  const feishuBridgeLayer = FeishuBridgeLive.pipe(Layer.provideMerge(runtimeServicesLayer));
   const externalMcpServiceLayer = ExternalMcpServiceLive.pipe(
     Layer.provideMerge(ExternalMcpRepositoryLive),
     Layer.provideMerge(runtimeServicesLayer),
@@ -197,7 +200,11 @@ export function makeServerRuntimeServicesLayer(
     Layer.provideMerge(ServerSettingsLive),
     Layer.provideMerge(providerHealthLayer),
   );
+  // Installs the process-wide memory context source that provider adapters
+  // read when they deliver the host policy, and backs the synara_memory_* tools.
+  const metisMemoryLayer = MetisMemoryLive.pipe(Layer.provideMerge(runtimeServicesLayer));
   const agentGatewayLayer = AgentGatewayLive.pipe(
+    Layer.provideMerge(metisMemoryLayer),
     Layer.provideMerge(agentGatewayCredentialsLayer),
     Layer.provideMerge(automationServiceLayer),
     Layer.provideMerge(runtimeServicesLayer),
@@ -223,11 +230,13 @@ export function makeServerRuntimeServicesLayer(
 
   return Layer.mergeAll(
     agentGatewayCredentialsLayer,
+    metisMemoryLayer,
     agentGatewayLayer,
     BrowserAutomationHostLive,
     automationServiceLayer,
     automationSchedulerLayer,
     automationRunReactorLayer,
+    feishuBridgeLayer,
     managedAttachmentCleanupLayer,
     AutomationRepositoryLive,
     AgentGatewayOperationRepositoryLive,

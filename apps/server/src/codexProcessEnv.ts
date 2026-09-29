@@ -750,7 +750,10 @@ export async function buildCodexProcessEnv(
   });
   const configuredEnv =
     overlayHomePath || input.homePath
-      ? { ...baseEnv, CODEX_HOME: overlayHomePath ?? input.homePath }
+      ? {
+          ...baseEnv,
+          CODEX_HOME: overlayHomePath ?? resolveBaseCodexHomePath(baseEnv, input.homePath),
+        }
       : baseEnv;
   if (overlayHomePath && !configuredEnv.CODEX_SQLITE_HOME?.trim()) {
     // Keep every Codex process (Synara's app-server, the user's own `codex`

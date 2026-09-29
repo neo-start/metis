@@ -26,7 +26,7 @@ export function ProjectImportDialog() {
         <DialogHeader className="gap-1 px-5 pb-0 pt-5">
           <DialogTitle>Import projects</DialogTitle>
           <DialogDescription className="text-ui">
-            Continue your Codex and Claude Code projects in Synara.
+            Continue your Codex and Claude Code projects in Metis.
           </DialogDescription>
         </DialogHeader>
         <div className="flex min-h-0 flex-1 flex-col px-5 pt-3.5 pb-3">

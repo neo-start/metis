@@ -11,6 +11,7 @@ import { AGENT_GATEWAY_TARGET_OPTIONS_DESCRIPTION } from "./targetResolver.ts";
 
 export const PROVIDER_KINDS: ReadonlyArray<ProviderKind> = [
   "codex",
+  "codexSecondary",
   "claudeAgent",
   "cursor",
   "antigravity",
@@ -189,7 +190,7 @@ export function decodeCreateThreadsInput(value: unknown) {
   try {
     return Schema.decodeUnknownSync(SynaraCreateThreadsInput)(value);
   } catch (error) {
-    throw new ToolInputError(`Invalid Synara creation plan: ${errorText(error)}`);
+    throw new ToolInputError(`Invalid Metis creation plan: ${errorText(error)}`);
   }
 }
 
@@ -197,6 +198,6 @@ export function decodeWaitForThreadsInput(value: unknown) {
   try {
     return Schema.decodeUnknownSync(SynaraWaitForThreadsInput)(value);
   } catch (error) {
-    throw new ToolInputError(`Invalid Synara wait request: ${errorText(error)}`);
+    throw new ToolInputError(`Invalid Metis wait request: ${errorText(error)}`);
   }
 }

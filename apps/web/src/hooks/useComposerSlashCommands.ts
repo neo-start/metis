@@ -9,7 +9,9 @@ import {
   type ProviderNativeCommandDescriptor,
   type ProviderModelOptions,
   type RuntimeMode,
+  type ThreadEnvironmentMode,
   type ThreadId,
+  isCodexProviderKind,
 } from "@synara/contracts";
 import { deriveAssociatedWorktreeMetadata } from "@synara/shared/threadWorkspace";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -455,15 +457,19 @@ export function useComposerSlashCommands(input: {
       target?: ForkSlashCommandTarget;
       /** Fork from a specific turn: imports the transcript up to (and including) this message. */
       throughMessageId?: MessageId | null;
-    }) => {
+      /** Runs as soon as the fork command is accepted, before navigating (seed drafts/queues here). */
+      beforeNavigate?: (forkedThreadId: ThreadId, envMode: ThreadEnvironmentMode) => void;
+      /** "throw" lets an inline surface show the unavailability where the user typed. */
+      unavailableHandling?: "toast" | "throw";
+    }): Promise<ThreadId | null> => {
       const api = readNativeApi();
       if (!api || !activeProject || !activeThread || !isServerThread) {
-        toastManager.add({
-          type: "warning",
-          title: "Fork is unavailable",
-          description: "Only existing server-backed threads can be forked right now.",
-        });
-        return true;
+        const description = "Only existing server-backed threads can be forked right now.";
+        if (inputOptions?.unavailableHandling === "throw") {
+          throw new Error(description);
+        }
+        toastManager.add({ type: "warning", title: "Fork is unavailable", description });
+        return null;
       }
 
       const importedMessages = buildThreadHandoffImportedMessages(activeThread, {
@@ -499,10 +505,28 @@ export function useComposerSlashCommands(input: {
         importedMessages: [...importedMessages],
         createdAt,
       });
-      const snapshot = await api.orchestration.getShellSnapshot();
-      syncServerShellSnapshot(snapshot);
-      await navigateToThread(nextThreadId);
-      return true;
+      // The fork exists from here on. Seed it first so a failure in the shell
+      // refresh or navigation below cannot strand it without its queued turn, and
+      // never let those follow-up failures read as "the fork was not created"
+      // (a retry would create a second fork).
+      inputOptions?.beforeNavigate?.(nextThreadId, resolvedTarget.envMode);
+      try {
+        const snapshot = await api.orchestration.getShellSnapshot();
+        syncServerShellSnapshot(snapshot);
+      } catch (error) {
+        console.warn("Fork created but the shell snapshot refresh failed", error);
+      }
+      try {
+        await navigateToThread(nextThreadId);
+      } catch (error) {
+        console.warn("Fork created but navigation failed", error);
+        toastManager.add({
+          type: "warning",
+          title: "Forked thread created",
+          description: "Open it from the sidebar; navigation did not complete.",
+        });
+      }
+      return nextThreadId;
     },
     [
       activeProject,
@@ -734,7 +758,7 @@ export function useComposerSlashCommands(input: {
 
   const handleReviewTargetSelection = useCallback(
     async (target: "changes" | "base-branch") => {
-      if (selectedProvider === "codex") {
+      if (isCodexProviderKind(selectedProvider)) {
         await runCodexReviewStart(target);
       } else {
         const replacement = buildSlashReviewComposerPrompt(target === "base-branch" ? "base" : "");
@@ -780,6 +804,24 @@ export function useComposerSlashCommands(input: {
       void runForkThread({ target: "local", throughMessageId: messageId });
     },
     [runForkThread],
+  );
+
+  // Inline reply: same fork as the footer action, but the caller seeds the forked
+  // thread's queue before navigation so the reply dispatches through the normal
+  // first-send path of the destination view. Throws instead of toasting so the
+  // inline composer can show the error where the user typed.
+  const createForkThreadFromMessage = useCallback(
+    (
+      messageId: MessageId,
+      beforeNavigate: (forkedThreadId: ThreadId, envMode: ThreadEnvironmentMode) => void,
+    ) =>
+      createForkThreadFromSlashCommand({
+        target: "local",
+        throughMessageId: messageId,
+        beforeNavigate,
+        unavailableHandling: "throw",
+      }),
+    [createForkThreadFromSlashCommand],
   );
 
   const checkClaudeFastSlashCommandAvailability = useCallback(async (): Promise<boolean> => {
@@ -967,7 +1009,7 @@ export function useComposerSlashCommands(input: {
         return true;
       }
       if (slashInvocation.command === "review") {
-        if (selectedProvider === "codex") {
+        if (isCodexProviderKind(selectedProvider)) {
           const normalizedArgs = slashInvocation.args.trim().toLowerCase();
           if (normalizedArgs.length === 0) {
             editorActions.clearComposerSlashDraft();
@@ -1247,7 +1289,7 @@ export function useComposerSlashCommands(input: {
       }
 
       if (item.command === "review") {
-        if (selectedProvider === "codex") {
+        if (isCodexProviderKind(selectedProvider)) {
           const applied = clearSlashCommandFromComposer();
           if (!wasPromptReplacementApplied(applied)) {
             return;
@@ -1329,6 +1371,7 @@ export function useComposerSlashCommands(input: {
   );
 
   return {
+    createForkThreadFromMessage,
     handleForkFromMessage,
     handleForkTargetSelection,
     handleReviewTargetSelection,

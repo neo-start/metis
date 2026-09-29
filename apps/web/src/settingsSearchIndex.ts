@@ -57,6 +57,13 @@ export function settingsSearchEntryTarget(entry: SettingsSearchEntry): string | 
 // null while inactive, so the sidebar cannot read every row at runtime; keep this list in sync
 // when rows are added, renamed, hidden conditionally, or represented as panel-level results.
 export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
+  {
+    id: "connections:devices",
+    section: "connections",
+    title: "手机与远程连接",
+    keywords: "手机 远程 设备 配对 撤销 mobile remote pairing devices",
+    target: null,
+  },
   // ── General ────────────────────────────────────────────────────────────────
   {
     id: "general:default-provider",
@@ -174,13 +181,13 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
     id: "appearance:theme",
     section: "appearance",
     title: "Theme",
-    keywords: "Choose how Synara looks across the app. dark light system color",
+    keywords: "Choose how Metis looks across the app. dark light system color",
   },
   {
     id: "appearance:app-icon",
     section: "appearance",
     title: "App icon",
-    keywords: "Choose the icon Synara uses in the dock or taskbar desktop application logo.",
+    keywords: "Choose the icon Metis uses in the dock or taskbar desktop application logo.",
     target: null,
   },
   {
@@ -195,7 +202,7 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
     id: "appearance:system-ui-font",
     section: "appearance",
     title: "Use system UI font",
-    keywords: "Use the operating system interface font throughout Synara.",
+    keywords: "Use the operating system interface font throughout Metis.",
   },
   {
     id: "appearance:ui-density",
@@ -371,6 +378,13 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
       "Disable automatic iOS Simulator device pane opening. Use Simulator.app without the mirrored panel reopening. background launch",
   },
   {
+    id: "behavior:resume-after-restart",
+    section: "behavior",
+    title: "Resume after restart",
+    keywords:
+      "Continue chats that were still running when the app crashed, updated, or restarted. auto resume continue interrupted crash relaunch",
+  },
+  {
     id: "behavior:diff-line-wrapping",
     section: "behavior",
     title: "Diff line wrapping",
@@ -401,7 +415,7 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
     section: "shortcuts",
     title: "Keybindings",
     keywords:
-      "Every keyboard shortcut available in Synara, grouped by context. keybindings hotkeys key combo cmd ctrl reference",
+      "Every keyboard shortcut available in Metis, grouped by context. keybindings hotkeys key combo cmd ctrl reference",
     target: null,
   },
 
@@ -410,7 +424,7 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
     id: "worktrees:managed-worktrees",
     section: "worktrees",
     title: "Managed worktrees",
-    keywords: "Review and clean up the worktrees created by Synara. git branch remove",
+    keywords: "Review and clean up the worktrees created by Metis. git branch remove",
     target: null,
   },
 
@@ -456,7 +470,7 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
     id: "providers:provider-updates",
     section: "providers",
     title: "Provider updates",
-    keywords: "Update installed provider tools that Synara can safely update. upgrade cli",
+    keywords: "Update installed provider tools that Metis can safely update. upgrade cli",
   },
   {
     id: "providers:installed-clis",
@@ -471,6 +485,16 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
     section: "skills",
     title: "Skills",
     keywords: "Every skill found across providers, with toggles to control availability. agent",
+    target: null,
+  },
+
+  // ── Memory ────────────────────────────────────────────────────────────────────
+  {
+    id: "memory:memory",
+    section: "memory",
+    title: "Memory",
+    keywords:
+      "Soul and long-term memories shared by every provider session. soul.md identity preferences remember global project agent notes",
     target: null,
   },
 
@@ -510,6 +534,13 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
     section: "advanced",
     title: "Version",
     keywords: "Current application version. about",
+  },
+  {
+    id: "advanced:build",
+    section: "advanced",
+    title: "Build",
+    keywords:
+      "Which local change this window was built from, and every local change. restart rebuild about",
   },
   {
     id: "advanced:release-history",

@@ -71,7 +71,7 @@ function EntryIcon(props: { entry: RecentViewDisplayEntry }) {
     case "terminal":
       return <TerminalIdentityIcon className={className} iconKey={props.entry.icon.iconKey} />;
     case "provider":
-      return <ProviderIcon provider={props.entry.icon.provider} className={className} />;
+      return <ProviderIcon provider={props.entry.icon.provider} className={className} tooltip />;
     case "chat":
       return <MessageCircleIcon className={className} aria-hidden="true" />;
     case "settings":

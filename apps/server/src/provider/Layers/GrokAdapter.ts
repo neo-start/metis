@@ -195,7 +195,7 @@ const GROK_TURN_SETTLE_DRAIN_POLL_MS = 25;
 const GROK_EXIT_PLAN_RESPONSE_GRACE_MS = 25;
 const XAI_API_BASE_URL = "https://api.x.ai/v1";
 const GROK_PLAN_MODE_PROMPT_PREFIX = [
-  "Synara requested Grok's native plan mode.",
+  "Metis requested Grok's native plan mode.",
   "Do not implement or mutate files in this turn.",
   "Do not ask follow-up questions or wait for confirmation; if scope is ambiguous, choose a reasonable default and state the assumption in the plan.",
   "When ready, create the final implementation plan.",
@@ -295,7 +295,7 @@ export function resolveGrokPlanHookResponse(
   }
   return {
     decision: "deny",
-    systemMessage: `Synara Plan mode blocks the mutating or unknown Grok tool "${toolName || "unknown"}".`,
+    systemMessage: `Metis Plan mode blocks the mutating or unknown Grok tool "${toolName || "unknown"}".`,
   };
 }
 
@@ -2510,7 +2510,7 @@ export function makeGrokAdapter(
             runtime,
             targetCwd,
             unsupportedIssue:
-              "This Grok ACP version does not advertise session/fork; Synara will rebuild the fork from its retained transcript.",
+              "This Grok ACP version does not advertise session/fork; Metis will rebuild the fork from its retained transcript.",
             requestTimeoutMs: GROK_ACP_FORK_TIMEOUT_MS,
             timeoutError: grokForkTimeoutError,
           });
@@ -2523,7 +2523,7 @@ export function makeGrokAdapter(
             provider: PROVIDER,
             operation: "forkThread",
             issue:
-              "The source Grok session has a turn in flight; Synara will rebuild the fork from its retained transcript.",
+              "The source Grok session has a turn in flight; Metis will rebuild the fork from its retained transcript.",
           });
         }
         const forked = activeSource

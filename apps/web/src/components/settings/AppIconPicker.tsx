@@ -5,6 +5,7 @@
 import { useState } from "react";
 
 import type { DesktopAppIcon } from "@synara/contracts";
+import { APP_ICON_URL } from "~/branding";
 import { Spinner } from "~/components/ui/spinner";
 import { cn, isMacPlatform } from "~/lib/utils";
 
@@ -78,7 +79,7 @@ export function AppIconPicker({
             }}
           >
             <img
-              src={option.src}
+              src={icon === "default" && isMacPlatform(platform) ? APP_ICON_URL : option.src}
               alt=""
               draggable={false}
               className={cn("size-10 object-contain", applying && "opacity-40")}

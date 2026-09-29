@@ -359,16 +359,19 @@ describe("wsNativeApi", () => {
       settings: {
         enableAssistantStreaming: true,
         enableProviderUpdateChecks: true,
+        resumeChatsAfterRestart: true,
         defaultThreadEnvMode: "local",
         addProjectBaseDirectory: "",
         textGenerationModelSelection: { provider: "codex", model: "gpt-5.4-mini" },
         providers: {
           codex: { enabled: true, binaryPath: "codex", homePath: "", customModels: [] },
+          codexSecondary: { enabled: false, binaryPath: "codex", homePath: "", customModels: [] },
           claudeAgent: {
             enabled: true,
             binaryPath: "claude",
             launchArgs: "",
             enableArtifacts: false,
+            cacheReviewDecision: "ask",
             customModels: [],
           },
           cursor: { enabled: false, binaryPath: "agent", apiEndpoint: "", customModels: [] },

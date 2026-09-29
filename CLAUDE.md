@@ -7,3 +7,5 @@
 This file stays because Claude Code reads `AGENTS.md` on its own only from v2.1.277, and the Claude Agent SDK that Synara embeds still bundles an older version.
 
 Two rules from that policy are broken often enough to repeat here: reuse the components, hooks, and functions that already exist instead of writing new ones from scratch, and size UI text with the font size chosen in Settings (`--app-font-size-ui*`), with titles as the only exception.
+
+Current Metis development handoff (2026-09-24): read [docs/workbench/CLAUDE_HANDOFF.md](docs/workbench/CLAUDE_HANDOFF.md) before continuing this task. It records the unresolved mobile pairing failure, implemented work, runtime snapshot, verification limits, and next steps. Recheck live processes before operations; the handoff does not replace AGENTS.md policy.

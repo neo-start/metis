@@ -11,7 +11,7 @@ import { renderSynaraHarnessPolicy } from "./harnessPolicy.ts";
 describe("computer guidance", () => {
   it("keeps core guidance concise and explains the callable batch route", () => {
     const notes = computerToolInstructions();
-    expect(notes.startsWith("## Synara computer use\n")).toBe(true);
+    expect(notes.startsWith("## Metis computer use\n")).toBe(true);
     for (const heading of [
       "### Working loop",
       "### Background first",

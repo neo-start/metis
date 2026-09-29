@@ -108,6 +108,8 @@ export const PanelCollapseIcon: LucideIcon = centralIconWrapper("minimize-45");
 export const BackToParentIcon: LucideIcon = centralIconWrapper("arrow-share-left");
 export const WorkflowIcon: LucideIcon = centralIconWrapper("agents");
 export const SteerIcon: LucideIcon = centralIconWrapper("arrow-corner-down-right");
+// Reply-from-turn reuses the steer glyph: same corner-down-right geometry, no new shape.
+export const ReplyIcon: LucideIcon = SteerIcon;
 export const ComposerSendArrowIcon: LucideIcon = centralIconWrapper("arrow-up");
 export const HANDOFF_ICON_NAME = "arrow-left-right";
 export const HandoffIcon: LucideIcon = centralIconWrapper(HANDOFF_ICON_NAME);

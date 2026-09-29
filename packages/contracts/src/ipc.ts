@@ -28,6 +28,17 @@ import type {
   ExternalMcpRevokeIntegrationInput,
 } from "./externalMcp";
 import type {
+  MetisMemoryDeleteInput,
+  MetisMemoryDeleteResult,
+  MetisMemoryDocument,
+  MetisMemoryEntry,
+  MetisMemoryOverview,
+  MetisMemoryReadInput,
+  MetisMemorySoul,
+  MetisMemoryUpdateSoulInput,
+  MetisMemoryWriteInput,
+} from "./memory";
+import type {
   AutomationCancelRunInput,
   AutomationCancelRunResult,
   AutomationArchiveRunInput,
@@ -1081,6 +1092,14 @@ export interface NativeApi {
       input: AutomationResolveProposalInput,
     ) => Promise<AutomationResolveProposalResult>;
     onEvent: (callback: (event: AutomationStreamEvent) => void) => () => void;
+  };
+  /** Metis long-term memory: soul.md plus global and per-project memory files. */
+  memory: {
+    getOverview: () => Promise<MetisMemoryOverview>;
+    read: (input: MetisMemoryReadInput) => Promise<MetisMemoryDocument>;
+    write: (input: MetisMemoryWriteInput) => Promise<MetisMemoryEntry>;
+    delete: (input: MetisMemoryDeleteInput) => Promise<MetisMemoryDeleteResult>;
+    updateSoul: (input: MetisMemoryUpdateSoulInput) => Promise<MetisMemorySoul>;
   };
   browser: BrowserControlMethods & {
     annotations: BrowserAnnotationMethods;

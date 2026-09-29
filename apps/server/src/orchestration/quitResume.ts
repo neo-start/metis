@@ -60,6 +60,7 @@ import { ServerConfig } from "../config";
 import {
   threadHasInFlightTurn,
   threadResumePreconditionViolation,
+  type ThreadResumePrecondition,
   type ThreadResumePreconditionViolation,
 } from "./commandInvariants.ts";
 import { OrchestrationEngineService } from "./Services/OrchestrationEngine.ts";
@@ -100,7 +101,10 @@ export type QuitResumeRecord = typeof QuitResumeRecord.Type;
 
 const decodeQuitResumeRecord = Schema.decodeUnknownEffect(Schema.fromJsonString(QuitResumeRecord));
 
-type ThreadTurnStartCommand = Extract<OrchestrationCommand, { readonly type: "thread.turn.start" }>;
+export type ThreadTurnStartCommand = Extract<
+  OrchestrationCommand,
+  { readonly type: "thread.turn.start" }
+>;
 type ThreadTurnInterruptCommand = Extract<
   OrchestrationCommand,
   { readonly type: "thread.turn.interrupt" }
@@ -217,59 +221,91 @@ export function planQuitResumeTurns(input: {
   readonly now: string;
 }): QuitResumePlan {
   const threadsById = new Map(input.threads.map((thread) => [thread.id, thread] as const));
-  const liveProjectIds = new Set(
-    input.projects.filter((project) => project.deletedAt === null).map((project) => project.id),
-  );
+  const liveProjectIds = liveResumeProjectIds(input.projects);
   const commands: ThreadTurnStartCommand[] = [];
   const skipped: Array<{ threadId: ThreadId; reason: QuitResumeSkipReason }> = [];
-  const skip = (threadId: ThreadId, reason: QuitResumeSkipReason) => {
-    skipped.push({ threadId, reason });
-  };
 
   for (const entry of input.record.threads) {
-    const thread = threadsById.get(entry.threadId);
-    if (!thread) {
-      skip(entry.threadId, "thread-missing");
-      continue;
-    }
-    if (thread.deletedAt !== null) {
-      skip(entry.threadId, "thread-deleted");
-      continue;
-    }
-    if (!liveProjectIds.has(thread.projectId)) {
-      skip(entry.threadId, "project-missing");
-      continue;
-    }
-    const resumePrecondition = {
-      recordedTurnId: entry.turnId,
-      recordedAt: input.record.recordedAt,
-    };
-    const violation = threadResumePreconditionViolation(thread, resumePrecondition);
-    if (violation) {
-      skip(entry.threadId, violation);
-      continue;
-    }
-    const key = `quit-resume:${input.record.recordId}:${entry.threadId}`;
-    commands.push({
-      type: "thread.turn.start",
-      commandId: CommandId.makeUnsafe(key),
+    const planned = planResumeTurn({
+      commandKey: `quit-resume:${input.record.recordId}:${entry.threadId}`,
       threadId: entry.threadId,
+      thread: threadsById.get(entry.threadId),
+      liveProjectIds,
+      resumePrecondition: { recordedTurnId: entry.turnId, recordedAt: input.record.recordedAt },
+      continuationPrompt: input.record.continuationPrompt,
+      now: input.now,
+    });
+    if (planned.kind === "skip") {
+      skipped.push({ threadId: entry.threadId, reason: planned.reason });
+    } else {
+      commands.push(planned.command);
+    }
+  }
+
+  return { commands, skipped };
+}
+
+export function liveResumeProjectIds(
+  projects: ReadonlyArray<QuitResumeProject>,
+): ReadonlySet<QuitResumeProject["id"]> {
+  return new Set(
+    projects.filter((project) => project.deletedAt === null).map((project) => project.id),
+  );
+}
+
+/**
+ * Pure, one thread: the shared resume rule behind quit-resume and restart-resume.
+ * The thread must still exist, not be deleted, belong to a live project, and pass
+ * `threadResumePreconditionViolation`; the continuation is an ordinary queued user
+ * turn on the thread's own runtime/interaction settings, carrying the same
+ * precondition for the decider. `commandKey` must be deterministic per record so a
+ * replay collides with the engine's receipt dedup.
+ */
+export function planResumeTurn(input: {
+  readonly commandKey: string;
+  readonly threadId: ThreadId;
+  readonly thread: QuitResumeThread | undefined;
+  readonly liveProjectIds: ReadonlySet<QuitResumeProject["id"]>;
+  readonly resumePrecondition: ThreadResumePrecondition;
+  readonly continuationPrompt: string;
+  readonly now: string;
+}):
+  | { readonly kind: "skip"; readonly reason: QuitResumeSkipReason }
+  | { readonly kind: "command"; readonly command: ThreadTurnStartCommand } {
+  const thread = input.thread;
+  if (!thread) {
+    return { kind: "skip", reason: "thread-missing" };
+  }
+  if (thread.deletedAt !== null) {
+    return { kind: "skip", reason: "thread-deleted" };
+  }
+  if (!input.liveProjectIds.has(thread.projectId)) {
+    return { kind: "skip", reason: "project-missing" };
+  }
+  const violation = threadResumePreconditionViolation(thread, input.resumePrecondition);
+  if (violation) {
+    return { kind: "skip", reason: violation };
+  }
+  return {
+    kind: "command",
+    command: {
+      type: "thread.turn.start",
+      commandId: CommandId.makeUnsafe(input.commandKey),
+      threadId: input.threadId,
       message: {
-        messageId: MessageId.makeUnsafe(key),
+        messageId: MessageId.makeUnsafe(input.commandKey),
         role: "user",
-        text: input.record.continuationPrompt,
+        text: input.continuationPrompt,
         attachments: [],
       },
       dispatchMode: "queue",
       dispatchOrigin: "automation",
       runtimeMode: thread.runtimeMode,
       interactionMode: thread.interactionMode,
-      resumePrecondition,
+      resumePrecondition: input.resumePrecondition,
       createdAt: input.now,
-    });
-  }
-
-  return { commands, skipped };
+    },
+  };
 }
 
 export const persistQuitResumeRecord = (input: {
@@ -306,26 +342,37 @@ export const readQuitResumeRecord = (
       return { kind: "absent" } as const;
     }
     const raw = yield* fs.readFileString(path).pipe(Effect.orElseSucceed(() => ""));
-    const trimmed = raw.trim();
-    if (trimmed.length === 0) {
-      return { kind: "invalid" } as const;
-    }
-    return yield* decodeQuitResumeRecord(trimmed).pipe(
-      Effect.map((record) => ({ kind: "record", record }) as const),
-      Effect.orElseSucceed(() => ({ kind: "invalid" }) as const),
-    );
+    return yield* decodeQuitResumeRecordContents(raw);
   });
 
+const decodeQuitResumeRecordContents = (raw: string): Effect.Effect<QuitResumeRecordRead> => {
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) {
+    return Effect.succeed({ kind: "invalid" } as const);
+  }
+  return decodeQuitResumeRecord(trimmed).pipe(
+    Effect.map((record) => ({ kind: "record", record }) as const),
+    Effect.orElseSucceed(() => ({ kind: "invalid" }) as const),
+  );
+};
+
+export type ClaimedStateFile =
+  | { readonly kind: "absent" }
+  | { readonly kind: "claimed"; readonly contents: string };
+
 /**
- * Take exclusive ownership of whatever record is at `path`: an atomic rename to a
+ * Take exclusive ownership of whatever file is at `path`: an atomic rename to a
  * claimant-unique private path (so a second process claiming the same state dir
  * can win at most once without deleting the first claimant's file), read it,
- * then remove the private copy. `absent` when there was nothing to claim. A
- * private copy left behind by a crash is never mistaken for a fresh record.
+ * then remove the private copy. `absent` when there was nothing to claim; an
+ * unreadable file is claimed with empty contents. A private copy left behind by
+ * a crash is never mistaken for a fresh file. Shared by the quit-resume record
+ * and the restart-resume shutdown snapshot.
  */
-export const claimQuitResumeRecord = (
+export const claimStateFile = (
   path: string,
-): Effect.Effect<QuitResumeRecordRead, never, FileSystem.FileSystem> =>
+  label: string,
+): Effect.Effect<ClaimedStateFile, never, FileSystem.FileSystem> =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
     const claimedPath = `${path}.${process.pid}.${randomUUID()}.claimed`;
@@ -336,7 +383,7 @@ export const claimQuitResumeRecord = (
     const claimed = yield* fs.rename(path, claimedPath).pipe(
       Effect.as(true),
       Effect.catchCause((cause) =>
-        Effect.logWarning("quit-resume record could not be claimed; skipping resume", {
+        Effect.logWarning(`${label} could not be claimed; skipping resume`, {
           path,
           cause,
         }).pipe(Effect.as(false)),
@@ -345,17 +392,29 @@ export const claimQuitResumeRecord = (
     if (!claimed) {
       return { kind: "absent" } as const;
     }
-    const read = yield* readQuitResumeRecord(claimedPath);
-    yield* clearQuitResumeRecord(claimedPath).pipe(
+    const contents = yield* fs.readFileString(claimedPath).pipe(Effect.orElseSucceed(() => ""));
+    yield* fs.remove(claimedPath, { force: true }).pipe(
       Effect.catchCause((cause) =>
-        Effect.logWarning("claimed quit-resume record could not be removed", {
+        Effect.logWarning(`claimed ${label} could not be removed`, {
           path: claimedPath,
           cause,
         }),
       ),
     );
-    return read;
+    return { kind: "claimed", contents } as const;
   });
+
+/** Claim (consume) the quit-resume record at `path`; see `claimStateFile`. */
+export const claimQuitResumeRecord = (
+  path: string,
+): Effect.Effect<QuitResumeRecordRead, never, FileSystem.FileSystem> =>
+  claimStateFile(path, "quit-resume record").pipe(
+    Effect.flatMap((claimed) =>
+      claimed.kind === "absent"
+        ? Effect.succeed({ kind: "absent" } as const)
+        : decodeQuitResumeRecordContents(claimed.contents),
+    ),
+  );
 
 /**
  * Remove the record only if it is still the one with `recordId`: a newer quit

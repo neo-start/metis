@@ -8,6 +8,7 @@ import type {
   ProviderListSkillsResult,
   ProviderSkillsCatalogResult,
 } from "@synara/contracts";
+import { isCodexProviderKind } from "@synara/contracts";
 import { queryOptions } from "@tanstack/react-query";
 import { ensureNativeApi } from "~/nativeApi";
 
@@ -223,7 +224,7 @@ function requireDiscoveredModels(
       (result.source === "opencode" || result.source === "opencode-cli")) ||
     (provider === "pi" && result.source?.startsWith("pi.sdk") === true);
   if (
-    provider !== "codex" &&
+    !isCodexProviderKind(provider) &&
     provider !== "claudeAgent" &&
     result.models.length === 0 &&
     !isAuthoritativeEmptyCatalog

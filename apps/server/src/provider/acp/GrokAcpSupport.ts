@@ -158,7 +158,7 @@ export const resolveGrokAcpAuthMethodId = (
       return yield* new AcpErrors.AcpRequestError({
         code: -32602,
         errorMessage:
-          "Grok ACP requires API-key authentication, but XAI_API_KEY is not set. Set XAI_API_KEY and restart Synara, or run `grok login` to create a cached login.",
+          "Grok ACP requires API-key authentication, but XAI_API_KEY is not set. Set XAI_API_KEY and restart Metis, or run `grok login` to create a cached login.",
         data: { authMethods: [...authMethodIds], reason: "credentials_missing" },
       });
     }
@@ -176,13 +176,13 @@ export const resolveGrokAcpAuthMethodId = (
     if (hasApiKey && !authMethodIds.has(GROK_API_KEY_AUTH_METHOD_ID)) {
       return yield* new AcpErrors.AcpRequestError({
         code: -32602,
-        errorMessage: `Grok did not advertise API-key authentication even though XAI_API_KEY is set (advertised: ${advertised}). Update Grok or check its login policy, then restart Synara.`,
+        errorMessage: `Grok did not advertise API-key authentication even though XAI_API_KEY is set (advertised: ${advertised}). Update Grok or check its login policy, then restart Metis.`,
         data: { authMethods: [...authMethodIds], reason: "compatibility_mismatch" },
       });
     }
     return yield* new AcpErrors.AcpRequestError({
       code: -32602,
-      errorMessage: `Grok ACP advertised no supported headless authentication method (advertised: ${advertised}). Synara supports cached_token and xai.api_key; update Grok and retry.`,
+      errorMessage: `Grok ACP advertised no supported headless authentication method (advertised: ${advertised}). Metis supports cached_token and xai.api_key; update Grok and retry.`,
       data: {
         authMethods: [...authMethodIds],
         reason: "compatibility_mismatch",

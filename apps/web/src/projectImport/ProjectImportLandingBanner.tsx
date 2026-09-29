@@ -30,7 +30,7 @@ export function ProjectImportLandingBanner(props: { className?: string }) {
             Import your Claude Code and Codex projects
           </span>
           <span className="truncate text-ui text-muted-foreground">
-            Bring your chats and continue them in Synara
+            Bring your chats and continue them in Metis
           </span>
         </span>
       </button>

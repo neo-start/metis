@@ -21,6 +21,20 @@ export const CodexServerProviderSettings = Schema.Struct({
 });
 export type CodexServerProviderSettings = typeof CodexServerProviderSettings.Type;
 
+// The second Codex account defaults to its own home so it never silently
+// falls back to the primary account's ~/.codex credentials.
+export const CODEX_SECONDARY_DEFAULT_HOME_PATH = "~/.codex-secondary";
+
+export const CodexSecondaryServerProviderSettings = Schema.Struct({
+  ...CodexServerProviderSettings.fields,
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(() => false)),
+  homePath: StringSetting.pipe(Schema.withDecodingDefault(() => CODEX_SECONDARY_DEFAULT_HOME_PATH)),
+});
+export type CodexSecondaryServerProviderSettings = typeof CodexSecondaryServerProviderSettings.Type;
+
+export const ClaudeCacheReviewDefault = Schema.Literals(["ask", "continue", "compact"]);
+export type ClaudeCacheReviewDefault = typeof ClaudeCacheReviewDefault.Type;
+
 export const ClaudeServerProviderSettings = Schema.Struct({
   ...ProviderSettingsBase,
   binaryPath: StringSetting.pipe(Schema.withDecodingDefault(() => "claude")),
@@ -30,6 +44,9 @@ export const ClaudeServerProviderSettings = Schema.Struct({
   // Claude Code keeps Artifact publishing (and `/design`, `/slides`) off for
   // Agent SDK sessions unless the host opts in.
   enableArtifacts: Schema.Boolean.pipe(Schema.withDecodingDefault(() => false)),
+  // How an open thread answers a held cache-expiry review. "ask" keeps the
+  // review panel; the others dispatch that same choice automatically.
+  cacheReviewDecision: ClaudeCacheReviewDefault.pipe(Schema.withDecodingDefault(() => "ask")),
 });
 export type ClaudeServerProviderSettings = typeof ClaudeServerProviderSettings.Type;
 
@@ -94,6 +111,11 @@ export type SkillsServerSettings = typeof SkillsServerSettings.Type;
 export const ServerSettings = Schema.Struct({
   enableAssistantStreaming: Schema.Boolean.pipe(Schema.withDecodingDefault(() => true)),
   enableProviderUpdateChecks: Schema.Boolean.pipe(Schema.withDecodingDefault(() => true)),
+  // Read by the server at boot, before any client connects: continue chats whose
+  // turn was still running when the previous server process stopped (crash,
+  // update install, relaunch, restart). The desktop quit dialog keeps its own
+  // client-side choice for quits it mediates.
+  resumeChatsAfterRestart: Schema.Boolean.pipe(Schema.withDecodingDefault(() => true)),
   defaultThreadEnvMode: ThreadEnvironmentMode.pipe(Schema.withDecodingDefault(() => "local")),
   addProjectBaseDirectory: StringSetting.pipe(Schema.withDecodingDefault(() => "")),
   textGenerationModelSelection: ModelSelection.pipe(
@@ -104,6 +126,9 @@ export const ServerSettings = Schema.Struct({
   ),
   providers: Schema.Struct({
     codex: CodexServerProviderSettings.pipe(Schema.withDecodingDefault(() => ({}))),
+    codexSecondary: CodexSecondaryServerProviderSettings.pipe(
+      Schema.withDecodingDefault(() => ({})),
+    ),
     claudeAgent: ClaudeServerProviderSettings.pipe(Schema.withDecodingDefault(() => ({}))),
     cursor: CursorServerProviderSettings.pipe(Schema.withDecodingDefault(() => ({}))),
     devin: DevinServerProviderSettings.pipe(Schema.withDecodingDefault(() => ({}))),
@@ -146,6 +171,7 @@ const ProviderSettingsBasePatch = {
 export const ServerSettingsPatch = Schema.Struct({
   enableAssistantStreaming: Schema.optionalKey(Schema.Boolean),
   enableProviderUpdateChecks: Schema.optionalKey(Schema.Boolean),
+  resumeChatsAfterRestart: Schema.optionalKey(Schema.Boolean),
   defaultThreadEnvMode: Schema.optionalKey(ThreadEnvironmentMode),
   addProjectBaseDirectory: Schema.optionalKey(StringSetting),
   textGenerationModelSelection: Schema.optionalKey(ModelSelectionPatch),
@@ -157,11 +183,18 @@ export const ServerSettingsPatch = Schema.Struct({
           homePath: Schema.optionalKey(StringSetting),
         }),
       ),
+      codexSecondary: Schema.optionalKey(
+        Schema.Struct({
+          ...ProviderSettingsBasePatch,
+          homePath: Schema.optionalKey(StringSetting),
+        }),
+      ),
       claudeAgent: Schema.optionalKey(
         Schema.Struct({
           ...ProviderSettingsBasePatch,
           launchArgs: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(4096))),
           enableArtifacts: Schema.optionalKey(Schema.Boolean),
+          cacheReviewDecision: Schema.optionalKey(ClaudeCacheReviewDefault),
         }),
       ),
       cursor: Schema.optionalKey(

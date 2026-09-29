@@ -76,6 +76,8 @@ type ProviderInstallTextKey =
   | "claudeBinaryPath"
   | "codexBinaryPath"
   | "codexHomePath"
+  | "codexSecondaryBinaryPath"
+  | "codexSecondaryHomePath"
   | "cursorBinaryPath"
   | "cursorApiEndpoint"
   | "devinBinaryPath"
@@ -153,6 +155,39 @@ const PROVIDER_INSTALL_SETTINGS: readonly ProviderInstallSettings[] = [
         label: "CODEX_HOME path",
         placeholder: "CODEX_HOME",
         description: "Optional custom Codex home and config directory.",
+      },
+    ],
+  },
+  {
+    provider: "codexSecondary",
+    docs: [
+      { label: "Install", href: "https://help.openai.com/en/articles/11096431" },
+      { label: "Config", href: "https://github.com/openai/codex/blob/main/docs/config.md" },
+    ],
+    fields: [
+      {
+        kind: "text",
+        settingsKey: "codexSecondaryHomePath",
+        label: "CODEX_HOME path",
+        placeholder: "~/.codex-secondary",
+        description: (
+          <>
+            A separate Codex home for a second ChatGPT account. Sign in once with{" "}
+            <code>CODEX_HOME=~/.codex-secondary codex login</code>; it never falls back to{" "}
+            <code>~/.codex</code>.
+          </>
+        ),
+      },
+      {
+        kind: "text",
+        settingsKey: "codexSecondaryBinaryPath",
+        label: "Codex binary path",
+        placeholder: "Codex binary path",
+        description: (
+          <>
+            Leave blank to use <code>codex</code> from your PATH.
+          </>
+        ),
       },
     ],
   },
@@ -771,14 +806,14 @@ function ProviderToolRow(props: {
                       <code className="font-mono">{updateAdvisory.updateCommand}</code>
                     </>
                   ) : (
-                    "A newer version is available, but Synara could not identify a safe one-click update command for this installation."
+                    "A newer version is available, but Metis could not identify a safe one-click update command for this installation."
                   )}
                 </div>
               ) : null}
               {showSelfManagedUpdate && props.providerStatus ? (
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0 text-ui leading-snug text-muted-foreground">
-                    {title} manages its own releases, so Synara cannot tell whether a newer version
+                    {title} manages its own releases, so Metis cannot tell whether a newer version
                     exists. Run the update to be sure.
                   </div>
                   <ProviderUpdateAction
@@ -1192,7 +1227,7 @@ export function ProvidersSettingsPanel({
 
           <SettingsRow
             title="Provider updates"
-            description="Review installed provider tools that Synara can safely update."
+            description="Review installed provider tools that Metis can safely update."
             status={
               !settings.enableProviderUpdateChecks
                 ? "Automatic checks off"

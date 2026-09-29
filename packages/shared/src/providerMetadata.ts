@@ -45,6 +45,17 @@ export const PROVIDER_DESCRIPTORS = defineProviderDescriptors([
     },
   },
   {
+    kind: "codexSecondary",
+    displayName: PROVIDER_DISPLAY_NAMES.codexSecondary,
+    available: true,
+    setupDocsHref: "https://trysynara.com/docs/providers/codex",
+    supportsNativeTurnSteering: true,
+    usage: {
+      signInCommand: "CODEX_HOME=~/.codex-secondary codex login",
+      learnMoreHref: "https://platform.openai.com/usage",
+    },
+  },
+  {
     kind: "claudeAgent",
     displayName: PROVIDER_DISPLAY_NAMES.claudeAgent,
     available: true,

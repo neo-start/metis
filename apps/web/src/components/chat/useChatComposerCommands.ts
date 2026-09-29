@@ -3,6 +3,7 @@ import {
   type ModelSlug,
   type ProviderKind,
   type ProviderSkillReference,
+  isCodexProviderKind,
 } from "@synara/contracts";
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import { useCallback } from "react";
@@ -213,7 +214,7 @@ export function useChatComposerCommands({
         return;
       }
       if (item.type === "provider-native-command") {
-        if (selectedProvider === "codex" && item.command.toLowerCase() === "review") {
+        if (isCodexProviderKind(selectedProvider) && item.command.toLowerCase() === "review") {
           setComposerCommandPicker("review-target");
           setComposerHighlightedItemId("review-target:changes");
           scheduleComposerFocus();

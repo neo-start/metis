@@ -9,6 +9,7 @@ import { Schema } from "effect";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 
+import { APP_BASE_NAME } from "../branding";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { useOnboardingDialogStore } from "../onboarding/onboardingDialogStore";
 import { CentralIcon } from "../lib/central-icons";
@@ -85,7 +86,7 @@ export function AppSnapWelcomeDialog() {
           <CentralIcon name="screen-capture" className="size-8" />
         </span>
       }
-      title="Synara AppSnaps are live!"
+      title={`${APP_BASE_NAME} AppSnaps are live!`}
       description={
         <>
           Press both Option keys (⌥&thinsp;⌥) to snap any app&rsquo;s window into the task

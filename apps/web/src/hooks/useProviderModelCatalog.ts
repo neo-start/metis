@@ -9,6 +9,7 @@ import type {
   ProviderKind,
   ProviderModelDescriptor,
 } from "@synara/contracts";
+import { isCodexProviderKind } from "@synara/contracts";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo } from "react";
 
@@ -124,6 +125,7 @@ export function useProviderModelCatalog(input: {
 
   const claudeModelDiscoveryEnabled = shouldDiscoverProvider("claudeAgent");
   const codexModelDiscoveryEnabled = shouldDiscoverProvider("codex");
+  const codexSecondaryModelDiscoveryEnabled = shouldDiscoverProvider("codexSecondary");
   const cursorModelDiscoveryEnabled = shouldDiscoverProvider("cursor");
   const antigravityModelDiscoveryEnabled = shouldDiscoverProvider("antigravity");
   const grokModelDiscoveryEnabled = shouldDiscoverProvider("grok");
@@ -143,6 +145,10 @@ export function useProviderModelCatalog(input: {
     codex: providerModelsQueryOptions({
       provider: "codex",
       enabled: codexModelDiscoveryEnabled,
+    }),
+    codexSecondary: providerModelsQueryOptions({
+      provider: "codexSecondary",
+      enabled: codexSecondaryModelDiscoveryEnabled,
     }),
     cursor: providerModelsQueryOptions({
       provider: "cursor",
@@ -192,6 +198,7 @@ export function useProviderModelCatalog(input: {
 
   const claudeDynamicModelsQuery = useQuery(modelQueryOptionsByProvider.claudeAgent);
   const codexDynamicModelsQuery = useQuery(modelQueryOptionsByProvider.codex);
+  const codexSecondaryDynamicModelsQuery = useQuery(modelQueryOptionsByProvider.codexSecondary);
   const cursorDynamicModelsQuery = useQuery(modelQueryOptionsByProvider.cursor);
   const antigravityModelsQuery = useQuery(modelQueryOptionsByProvider.antigravity);
   const grokDynamicModelsQuery = useQuery(modelQueryOptionsByProvider.grok);
@@ -302,6 +309,11 @@ export function useProviderModelCatalog(input: {
   const modelOptionsByProvider = useMemo(() => {
     const staticOptions: Record<ProviderKind, ReturnType<typeof getAppModelOptions>> = {
       codex: getAppModelOptions("codex", customModelsByProvider.codex, modelHintByProvider?.codex),
+      codexSecondary: getAppModelOptions(
+        "codexSecondary",
+        customModelsByProvider.codexSecondary,
+        modelHintByProvider?.codexSecondary,
+      ),
       claudeAgent: getAppModelOptions(
         "claudeAgent",
         customModelsByProvider.claudeAgent,
@@ -334,6 +346,7 @@ export function useProviderModelCatalog(input: {
     const dynamicSources: Record<ProviderKind, typeof claudeDynamicModelsQuery.data> = {
       claudeAgent: claudeDynamicModelsQuery.data,
       codex: codexDynamicModelsQuery.data,
+      codexSecondary: codexSecondaryDynamicModelsQuery.data,
       cursor:
         cursorDynamicModelsQuery.data === undefined
           ? undefined
@@ -348,6 +361,7 @@ export function useProviderModelCatalog(input: {
     for (const provider of [
       "claudeAgent",
       "codex",
+      "codexSecondary",
       "cursor",
       "antigravity",
       "grok",
@@ -359,7 +373,7 @@ export function useProviderModelCatalog(input: {
       const discovery = dynamicSources[provider];
       const dynamicModels = discovery?.models;
       const hasCodexCatalog =
-        provider === "codex" &&
+        isCodexProviderKind(provider) &&
         discovery?.source === "codex-app-server" &&
         discovery.error === undefined;
       if (dynamicModels && (dynamicModels.length > 0 || hasCodexCatalog)) {
@@ -375,6 +389,7 @@ export function useProviderModelCatalog(input: {
     antigravityModelsQuery.data,
     claudeDynamicModelsQuery.data,
     codexDynamicModelsQuery.data,
+    codexSecondaryDynamicModelsQuery.data,
     cursorDynamicModelsQuery.data,
     cursorRuntimeModels,
     customModelsByProvider,
@@ -411,6 +426,7 @@ export function useProviderModelCatalog(input: {
     () => ({
       claudeAgent: claudeDynamicModelsQuery.data?.models ?? [],
       codex: codexDynamicModelsQuery.data?.models ?? [],
+      codexSecondary: codexSecondaryDynamicModelsQuery.data?.models ?? [],
       cursor: cursorRuntimeModels,
       antigravity: antigravityModelsQuery.data?.models ?? [],
       grok: grokDynamicModelsQuery.data?.models ?? [],
@@ -423,6 +439,7 @@ export function useProviderModelCatalog(input: {
       antigravityModelsQuery.data?.models,
       claudeDynamicModelsQuery.data?.models,
       codexDynamicModelsQuery.data?.models,
+      codexSecondaryDynamicModelsQuery.data?.models,
       cursorRuntimeModels,
       droidDynamicModelsQuery.data?.models,
       grokDynamicModelsQuery.data?.models,
@@ -464,6 +481,7 @@ export function useProviderModelCatalog(input: {
     () => ({
       claudeAgent: claudeDynamicModelsQuery.data?.error,
       codex: codexDynamicModelsQuery.data?.error,
+      codexSecondary: codexSecondaryDynamicModelsQuery.data?.error,
       cursor: modelDiscoveryError(
         cursorDynamicModelsQuery.data?.error,
         cursorDynamicModelsQuery.error,
@@ -492,6 +510,7 @@ export function useProviderModelCatalog(input: {
       antigravityModelsQuery.error,
       claudeDynamicModelsQuery.data?.error,
       codexDynamicModelsQuery.data?.error,
+      codexSecondaryDynamicModelsQuery.data?.error,
       cursorDynamicModelsQuery.data?.error,
       cursorDynamicModelsQuery.error,
       devinDynamicModelsQuery.data?.error,
@@ -514,19 +533,21 @@ export function useProviderModelCatalog(input: {
       ? claudeDynamicModelsQuery
       : selectedProvider === "codex"
         ? codexDynamicModelsQuery
-        : selectedProvider === "cursor"
-          ? cursorDynamicModelsQuery
-          : selectedProvider === "antigravity"
-            ? antigravityModelsQuery
-            : selectedProvider === "grok"
-              ? grokDynamicModelsQuery
-              : selectedProvider === "droid"
-                ? droidDynamicModelsQuery
-                : selectedProvider === "opencode"
-                  ? openCodeDynamicModelsQuery
-                  : selectedProvider === "pi"
-                    ? piDynamicModelsQuery
-                    : devinDynamicModelsQuery;
+        : selectedProvider === "codexSecondary"
+          ? codexSecondaryDynamicModelsQuery
+          : selectedProvider === "cursor"
+            ? cursorDynamicModelsQuery
+            : selectedProvider === "antigravity"
+              ? antigravityModelsQuery
+              : selectedProvider === "grok"
+                ? grokDynamicModelsQuery
+                : selectedProvider === "droid"
+                  ? droidDynamicModelsQuery
+                  : selectedProvider === "opencode"
+                    ? openCodeDynamicModelsQuery
+                    : selectedProvider === "pi"
+                      ? piDynamicModelsQuery
+                      : devinDynamicModelsQuery;
   const selectedProviderModelsLoading =
     selectedProviderRuntimeModelDiscoveryPending ||
     (loadingModelProviders[selectedProvider] === undefined &&

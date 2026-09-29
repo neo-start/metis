@@ -10,6 +10,7 @@ import {
   linkOrCopyCodexOverlayEntry,
   prioritizeCodexOverlayEntries,
 } from "./codexProcessEnv";
+import { resolveSynaraCodexHomeOverlayPath } from "./codexHomePaths.ts";
 import { isProviderCredentialKey } from "./providerChildEnvironment.ts";
 import { buildCodexMcpConfigToml } from "./agentGateway/mcpInjection.ts";
 
@@ -170,7 +171,10 @@ describe("buildCodexProcessEnv", () => {
         platform: "win32",
       });
 
-      expect(env.CODEX_HOME).toBe(path.join(runtimeHome, "codex-home-overlay"));
+      // An explicit non-default home gets its own overlay (see codexHomePaths).
+      expect(env.CODEX_HOME).toBe(
+        resolveSynaraCodexHomeOverlayPath({ SYNARA_HOME: runtimeHome }, codexHome),
+      );
       expect(env.CODEX_SQLITE_HOME).toBe(sqliteHome);
     } finally {
       rmSync(codexHome, { recursive: true, force: true });

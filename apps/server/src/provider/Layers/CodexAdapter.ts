@@ -11,6 +11,7 @@ import {
   type ChatAttachment,
   type CanonicalItemType,
   type CanonicalRequestType,
+  type CodexProviderKind,
   type ModelSelection,
   type ProviderComposerCapabilities,
   type ProviderEvent,
@@ -18,6 +19,7 @@ import {
   type ProviderListPluginsResult,
   type ProviderReadPluginResult,
   type ProviderSendTurnInput,
+  type ProviderStartOptions,
   type ProviderListSkillsResult,
   type ProviderRuntimeEvent,
   type ServerVoiceTranscriptionResult,
@@ -42,7 +44,12 @@ import {
   ProviderAdapterValidationError,
   type ProviderAdapterError,
 } from "../Errors.ts";
-import { CodexAdapter, type CodexAdapterShape } from "../Services/CodexAdapter.ts";
+import {
+  CodexAdapter,
+  CodexSecondaryAdapter,
+  type CodexAdapterShape,
+} from "../Services/CodexAdapter.ts";
+import { aliasCodexAdapterAsSecondary } from "../codexSecondaryAlias.ts";
 import { PROVIDER_ADAPTER_RUNTIME_EVENT_BUFFER_CAPACITY } from "../Services/ProviderAdapter.ts";
 import {
   CodexAppServerManager,
@@ -98,6 +105,8 @@ import {
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
 
 const PROVIDER = "codex" as const;
+const CODEX_SECONDARY_PROVIDER = "codexSecondary" as const;
+type CodexProviderStartOptions = NonNullable<ProviderStartOptions["codex"]>;
 
 // Backstop for an alive-but-silent codex app-server: if a turn produces no
 // activity at all for this long, abort it instead of showing "Working" forever.
@@ -152,6 +161,10 @@ function compactCodexNativeEventForIngress(event: ProviderEvent): {
 }
 
 export interface CodexAdapterLiveOptions {
+  /** Provider identity used for thread-scoped agent-gateway leases. */
+  readonly gatewayProvider?: CodexProviderKind;
+  /** Launch options for discovery runtimes no caller scoped (see CodexAppServerManager). */
+  readonly resolveDefaultProviderOptions?: () => Promise<ProviderStartOptions | undefined>;
   readonly manager?: CodexAppServerManager;
   readonly makeManager?: (services?: ServiceMap.ServiceMap<never>) => CodexAppServerManager;
   readonly nativeEventLogPath?: string;
@@ -1950,6 +1963,9 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
           options?.makeManager?.(services) ??
           new CodexAppServerManager(services, {
             synaraSkillsDir: synaraSkillsDir(serverConfig.baseDir),
+            ...(options?.resolveDefaultProviderOptions
+              ? { resolveDefaultProviderOptions: options.resolveDefaultProviderOptions }
+              : {}),
             ...(agentGatewayCredentials
               ? {
                   agentGatewayMcp: {
@@ -1961,7 +1977,7 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
                       acquireAgentGatewaySessionLease(
                         agentGatewayCredentials,
                         threadId,
-                        PROVIDER,
+                        options?.gatewayProvider ?? PROVIDER,
                         capabilityInput ?? AGENT_GATEWAY_NO_CAPABILITIES,
                       )!,
                   },
@@ -2565,4 +2581,24 @@ export const CodexAdapterLive = Layer.effect(CodexAdapter, makeCodexAdapter());
 
 export function makeCodexAdapterLive(options?: CodexAdapterLiveOptions) {
   return Layer.effect(CodexAdapter, makeCodexAdapter(options));
+}
+
+/**
+ * The second Codex account: a separate Codex adapter (own manager, processes
+ * and CODEX_HOME) presented under the `codexSecondary` provider kind.
+ */
+export function makeCodexSecondaryAdapterLive(
+  options: Omit<CodexAdapterLiveOptions, "gatewayProvider" | "resolveDefaultProviderOptions"> & {
+    readonly resolveAccountOptions: () => Promise<CodexProviderStartOptions>;
+  },
+) {
+  const { resolveAccountOptions, ...adapterOptions } = options;
+  return Layer.effect(
+    CodexSecondaryAdapter,
+    makeCodexAdapter({
+      ...adapterOptions,
+      gatewayProvider: CODEX_SECONDARY_PROVIDER,
+      resolveDefaultProviderOptions: async () => ({ codex: await resolveAccountOptions() }),
+    }).pipe(Effect.map((base) => aliasCodexAdapterAsSecondary(base, resolveAccountOptions))),
+  );
 }

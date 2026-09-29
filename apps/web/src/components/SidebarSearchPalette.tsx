@@ -844,6 +844,7 @@ export function SidebarSearchPalette(props: SidebarSearchPaletteProps) {
                             key={provider}
                             provider={provider}
                             className={PALETTE_ICON_CLASS}
+                            tooltip
                           />
                         ))}
                       </span>
@@ -999,6 +1000,7 @@ export function SidebarSearchPalette(props: SidebarSearchPaletteProps) {
                               <SharedProviderIcon
                                 provider={thread.provider}
                                 className={PALETTE_ICON_CLASS}
+                                tooltip
                               />
                             )}
                           </span>

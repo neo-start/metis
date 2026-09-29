@@ -30,7 +30,7 @@ import {
   type ComputerPermission,
   type ComputerSetupRequiredPayload,
   type ModelSelection,
-  type ProjectId,
+  ProjectId,
   type ProviderKind,
   type RuntimeMode,
   type ServerProviderStatus,
@@ -82,6 +82,8 @@ import { deliverGatewayCompletions } from "../completionDelivery.ts";
 import { recoverInterruptedAgentGatewayOperations } from "../startupRecovery.ts";
 import { makeCreateThreadsHandler } from "../creationCoordinator.ts";
 import { makeAgentGatewayAutomationTools } from "../automationTools.ts";
+import { makeAgentGatewayMemoryTools } from "../memoryTools.ts";
+import { MetisMemory } from "../../metisMemory/Services/MetisMemory.ts";
 import { makeAgentGatewayBrowserTools } from "../browserTools.ts";
 import { makeAgentGatewayComputerBrowserTools } from "../computerBrowserTools.ts";
 import { makeAgentGatewayDeviceTools } from "../deviceTools.ts";
@@ -110,7 +112,7 @@ import { resolveThreadWorkspaceCwd } from "../../checkpointing/Utils.ts";
 // tool definition, so repeating the full policy here adds tens of thousands of
 // context characters per round without adding authority or safety.
 const AGENT_GATEWAY_INSTRUCTIONS =
-  "Synara tools are thread-scoped. Use browser_* only for Synara's shared in-app browser runtime; follow the provider-delivered <synara_host_context> for full policy.";
+  "Metis tools are thread-scoped. Use browser_* only for Metis's shared in-app browser runtime; follow the provider-delivered <synara_host_context> for full policy.";
 
 function readThreadGoalArg(args: Record<string, unknown>): string {
   if (!("goal" in args)) {
@@ -158,6 +160,9 @@ export const makeAgentGateway = Effect.gen(function* () {
   // offered eleven tools that can only report an unsupported platform.
   const deviceService = Option.getOrUndefined(yield* Effect.serviceOption(DeviceService));
   const computerService = Option.getOrUndefined(yield* Effect.serviceOption(ComputerService));
+  // Optional so gateway tests that do not mount Metis memory keep their exact
+  // tool catalog; the server runtime always provides it.
+  const metisMemory = Option.getOrUndefined(yield* Effect.serviceOption(MetisMemory));
   const loadProviderAvailabilities = Effect.gen(function* () {
     const [settings, statuses] = yield* Effect.all([
       serverSettings.getSettings,
@@ -313,7 +318,7 @@ export const makeAgentGateway = Effect.gen(function* () {
     definition: {
       name: "synara_create_threads",
       description:
-        "Create an exact batch of 1–20 standalone Synara threads. Worktree threads start on a Synara-managed temporary branch pinned at baseRef (or the selected checkout's HEAD) and copy local checkout changes plus .worktreeinclude files when the ref is that checkout's HEAD; on the first turn Synara may rename the branch after the prompt and publish it. Validation/preflight failures create nothing and may be corrected with the same requestId; durable retries replay the exact operation.",
+        "Create an exact batch of 1–20 standalone Metis threads. Worktree threads start on a Metis-managed temporary branch pinned at baseRef (or the selected checkout's HEAD) and copy local checkout changes plus .worktreeinclude files when the ref is that checkout's HEAD; on the first turn Metis may rename the branch after the prompt and publish it. Validation/preflight failures create nothing and may be corrected with the same requestId; durable retries replay the exact operation.",
       inputSchema: {
         type: "object",
         properties: {
@@ -360,7 +365,7 @@ export const makeAgentGateway = Effect.gen(function* () {
         additionalProperties: false,
       },
       annotations: {
-        title: "Create Synara threads",
+        title: "Create Metis threads",
         readOnlyHint: false,
         destructiveHint: true,
         idempotentHint: true,
@@ -382,7 +387,7 @@ export const makeAgentGateway = Effect.gen(function* () {
     definition: {
       name: "synara_create_thread",
       description:
-        "Create exactly one standalone Synara thread. Worktree threads start on a Synara-managed temporary branch pinned at baseRef; on the first turn Synara may rename the branch after the prompt and publish it. For two or more threads use one synara_create_threads call instead.",
+        "Create exactly one standalone Metis thread. Worktree threads start on a Metis-managed temporary branch pinned at baseRef; on the first turn Metis may rename the branch after the prompt and publish it. For two or more threads use one synara_create_threads call instead.",
       inputSchema: {
         type: "object",
         properties: {
@@ -419,7 +424,7 @@ export const makeAgentGateway = Effect.gen(function* () {
         additionalProperties: false,
       },
       annotations: {
-        title: "Create a Synara thread",
+        title: "Create a Metis thread",
         readOnlyHint: false,
         destructiveHint: true,
         idempotentHint: true,
@@ -491,7 +496,7 @@ export const makeAgentGateway = Effect.gen(function* () {
     definition: {
       name: "synara_send_message",
       description:
-        'Send a Synara follow-up message to an existing thread. mode "queue" (default) waits for the current turn; "steer" redirects a running turn where the provider supports it (otherwise it is queued).',
+        'Send a Metis follow-up message to an existing thread. mode "queue" (default) waits for the current turn; "steer" redirects a running turn where the provider supports it (otherwise it is queued).',
       inputSchema: {
         type: "object",
         properties: {
@@ -502,7 +507,7 @@ export const makeAgentGateway = Effect.gen(function* () {
         required: ["threadId", "message"],
         additionalProperties: false,
       },
-      annotations: { title: "Send a Synara message", ...WRITE_TOOL_ANNOTATIONS },
+      annotations: { title: "Send a Metis message", ...WRITE_TOOL_ANNOTATIONS },
     },
     handler: (args, context) =>
       Effect.gen(function* () {
@@ -547,7 +552,7 @@ export const makeAgentGateway = Effect.gen(function* () {
     requiresActiveTurn: true,
     definition: {
       name: "synara_interrupt_thread",
-      description: "Interrupt the running turn of a Synara thread.",
+      description: "Interrupt the running turn of a Metis thread.",
       inputSchema: {
         type: "object",
         properties: {
@@ -556,7 +561,7 @@ export const makeAgentGateway = Effect.gen(function* () {
         required: ["threadId"],
         additionalProperties: false,
       },
-      annotations: { title: "Interrupt a Synara thread", ...WRITE_TOOL_ANNOTATIONS },
+      annotations: { title: "Interrupt a Metis thread", ...WRITE_TOOL_ANNOTATIONS },
     },
     handler: (args, context) =>
       Effect.gen(function* () {
@@ -593,7 +598,7 @@ export const makeAgentGateway = Effect.gen(function* () {
     requiresActiveTurn: true,
     definition: {
       name: "synara_set_thread_title",
-      description: "Rename a Synara thread.",
+      description: "Rename a Metis thread.",
       inputSchema: {
         type: "object",
         properties: {
@@ -603,7 +608,7 @@ export const makeAgentGateway = Effect.gen(function* () {
         required: ["threadId", "title"],
         additionalProperties: false,
       },
-      annotations: { title: "Rename a Synara thread", ...WRITE_TOOL_ANNOTATIONS },
+      annotations: { title: "Rename a Metis thread", ...WRITE_TOOL_ANNOTATIONS },
     },
     handler: (args, context) =>
       Effect.gen(function* () {
@@ -630,7 +635,7 @@ export const makeAgentGateway = Effect.gen(function* () {
     definition: {
       name: "synara_set_thread_pull_request",
       description:
-        "Associate a pull request with a Synara thread. Use this after successfully creating the pull request that represents that thread's own deliverable. Do not associate pull requests that the thread only reviews, references, or discusses. Defaults to your own thread when threadId is omitted.",
+        "Associate a pull request with a Metis thread. Use this after successfully creating the pull request that represents that thread's own deliverable. Do not associate pull requests that the thread only reviews, references, or discusses. Defaults to your own thread when threadId is omitted.",
       inputSchema: {
         type: "object",
         properties: {
@@ -694,7 +699,7 @@ export const makeAgentGateway = Effect.gen(function* () {
     definition: {
       name: "synara_set_thread_archived",
       description:
-        "Archive or unarchive a Synara thread. Defaults to your own thread when threadId is omitted.",
+        "Archive or unarchive a Metis thread. Defaults to your own thread when threadId is omitted.",
       inputSchema: {
         type: "object",
         properties: {
@@ -704,7 +709,7 @@ export const makeAgentGateway = Effect.gen(function* () {
         required: ["archived"],
         additionalProperties: false,
       },
-      annotations: { title: "Update a Synara thread", ...WRITE_TOOL_ANNOTATIONS },
+      annotations: { title: "Update a Metis thread", ...WRITE_TOOL_ANNOTATIONS },
     },
     handler: (args, context) =>
       Effect.gen(function* () {
@@ -749,7 +754,7 @@ export const makeAgentGateway = Effect.gen(function* () {
     definition: {
       name: "synara_set_thread_goal",
       description:
-        "Set a persistent goal for a thread. Only set a goal when the user has explicitly asked for one (for example, 'keep working until X' or 'the goal of this thread is Y') or when dispatching a thread explicitly created to pursue a stated objective. Do NOT infer or invent goals from ordinary tasks or set one as a side effect of normal work. Clearing requires the same explicit user intent. When the active goal's objective has been accomplished, pass achieved: true instead of clearing: Synara records the achievement (with the time it took) and clears the goal. If the same external blocker prevents meaningful progress for three consecutive goal turns, pass blocked: true to pause the goal. Do not mark a goal blocked merely because the work is difficult, incomplete, or would benefit from clarification.",
+        "Set a persistent goal for a thread. Only set a goal when the user has explicitly asked for one (for example, 'keep working until X' or 'the goal of this thread is Y') or when dispatching a thread explicitly created to pursue a stated objective. Do NOT infer or invent goals from ordinary tasks or set one as a side effect of normal work. Clearing requires the same explicit user intent. When the active goal's objective has been accomplished, pass achieved: true instead of clearing: Metis records the achievement (with the time it took) and clears the goal. If the same external blocker prevents meaningful progress for three consecutive goal turns, pass blocked: true to pause the goal. Do not mark a goal blocked merely because the work is difficult, incomplete, or would benefit from clarification.",
       inputSchema: {
         type: "object",
         properties: {
@@ -777,7 +782,7 @@ export const makeAgentGateway = Effect.gen(function* () {
         required: [],
         additionalProperties: false,
       },
-      annotations: { title: "Set a Synara thread goal", ...WRITE_TOOL_ANNOTATIONS },
+      annotations: { title: "Set a Metis thread goal", ...WRITE_TOOL_ANNOTATIONS },
     },
     handler: (args, context) =>
       Effect.gen(function* () {
@@ -1177,6 +1182,19 @@ export const makeAgentGateway = Effect.gen(function* () {
         })
       : [];
 
+  const memoryTools =
+    metisMemory === undefined
+      ? []
+      : makeAgentGatewayMemoryTools({
+          memory: metisMemory,
+          requireThreadShell,
+          resolveProjectTitle: (projectId) =>
+            snapshotQuery.getProjectShellById(ProjectId.makeUnsafe(projectId)).pipe(
+              Effect.map((project) => Option.getOrNull(Option.map(project, (p) => p.title))),
+              Effect.catch(() => Effect.succeed(null)),
+            ),
+        });
+
   const tools: ReadonlyArray<ToolEntry> = [
     ...readTools,
     ...diagnosticTools,
@@ -1189,6 +1207,7 @@ export const makeAgentGateway = Effect.gen(function* () {
     setThreadArchived,
     setThreadGoal,
     ...automationTools,
+    ...memoryTools,
     ...browserTools,
     ...(deviceService?.supported === true
       ? makeAgentGatewayDeviceTools({ manager: deviceService.manager })

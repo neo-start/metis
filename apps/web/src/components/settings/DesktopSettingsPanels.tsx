@@ -42,7 +42,7 @@ import { toastManager } from "~/components/ui/toast";
 import { serverConfigQueryOptions } from "~/lib/serverReactQuery";
 
 function appSnapStatusText(state: DesktopAppSnapState | null): string {
-  if (!state) return "Available in the Synara desktop app";
+  if (!state) return "Available in the Metis desktop app";
   if (!state.supported) return state.message ?? "Available on macOS only";
   if (state.status === "ready") {
     const shortcut = state.shortcut;
@@ -258,7 +258,7 @@ export function AppSnapSettingsPanel({
       toastManager.add({
         type: "warning",
         title: "AppSnap unavailable",
-        description: "AppSnap requires the Synara desktop app on macOS.",
+        description: "AppSnap requires the Metis desktop app on macOS.",
       });
       return;
     }
@@ -314,15 +314,15 @@ export function AppSnapSettingsPanel({
             Take an AppSnap to show your agent another app's window
           </p>
           <p className={SETTINGS_CARD_ROW_DESCRIPTION_CLASS_NAME}>
-            Press your two-key shortcut while any app is frontmost. Synara captures that window as
-            an image, brings itself forward, and attaches the snap to a task composer — the capture
+            Press your two-key shortcut while any app is frontmost. Metis captures that window as an
+            image, brings itself forward, and attaches the snap to a task composer — the capture
             stays on this device until you send the message.
           </p>
           {!supported ? (
             <p className={cn(SETTINGS_CARD_ROW_DESCRIPTION_CLASS_NAME, "pt-0.5")}>
               {appSnapState
                 ? (appSnapState.message ?? "AppSnap is available only in the macOS desktop app.")
-                : "AppSnap requires the Synara desktop app on macOS."}
+                : "AppSnap requires the Metis desktop app on macOS."}
             </p>
           ) : null}
         </div>
@@ -331,7 +331,7 @@ export function AppSnapSettingsPanel({
       <SettingsSection title="Capture">
         <SettingsRow
           title="Enable AppSnap"
-          description="Run the capture listener in the background while Synara is open."
+          description="Run the capture listener in the background while Metis is open."
           status={appSnapStatusText(appSnapState)}
           resetAction={
             settings.enableAppSnap !== defaults.enableAppSnap ? (
@@ -353,7 +353,7 @@ export function AppSnapSettingsPanel({
 
         <SettingsRow
           title="Shortcut"
-          description="Choose exactly two keys: one modifier and one other key. Synara checks its own bindings and asks macOS whether another app already owns the shortcut before saving it."
+          description="Choose exactly two keys: one modifier and one other key. Metis checks its own bindings and asks macOS whether another app already owns the shortcut before saving it."
           control={
             <AppSnapShortcutControl
               key={
@@ -375,7 +375,7 @@ export function AppSnapSettingsPanel({
 
         <SettingsRow
           title="Destination"
-          description="Snaps join the task you interacted with in the last minute, and consecutive snaps stay together. Otherwise Synara opens a fresh task with the capture attached."
+          description="Snaps join the task you interacted with in the last minute, and consecutive snaps stay together. Otherwise Metis opens a fresh task with the capture attached."
           control={
             <span className="text-ui leading-snug font-medium text-muted-foreground">
               Automatic

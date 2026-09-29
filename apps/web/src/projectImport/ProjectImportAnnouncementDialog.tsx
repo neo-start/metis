@@ -16,7 +16,7 @@ export function ProjectImportAnnouncementDialog() {
       // Inset keeps the rotated tiles clear of the sheet edge.
       hero={<ProjectImportGlyph size="lg" className="ps-1" />}
       title="Import projects"
-      description="Bring your Claude Code and Codex projects into Synara and continue their chats right where you left off."
+      description="Bring your Claude Code and Codex projects into Metis and continue their chats right where you left off."
       dismissLabel="Not now"
       confirmLabel="Import projects"
       onDismiss={markSeen}

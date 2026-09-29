@@ -5,6 +5,7 @@
 
 export const SETTINGS_SECTION_IDS = [
   "general",
+  "connections",
   "profile",
   "appearance",
   "notifications",
@@ -17,6 +18,7 @@ export const SETTINGS_SECTION_IDS = [
   "models",
   "providers",
   "skills",
+  "memory",
   "usage",
   "integrations",
   "advanced",
@@ -64,6 +66,14 @@ export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
 
 export const SETTINGS_NAV_ITEMS: readonly SettingsNavItem[] = [
   {
+    id: "connections",
+    group: "integrations",
+    label: "手机与远程连接",
+    description: "配对手机，查看已授权设备，随时撤销访问。",
+    icon: "plugin-1",
+    eyebrow: "Remote access",
+  },
+  {
     id: "general",
     group: "personal",
     label: "General",
@@ -91,7 +101,7 @@ export const SETTINGS_NAV_ITEMS: readonly SettingsNavItem[] = [
     id: "notifications",
     group: "personal",
     label: "Notifications",
-    description: "Choose how Synara tells you when work finishes or needs attention.",
+    description: "Choose how Metis tells you when work finishes or needs attention.",
     icon: "bell",
     eyebrow: "Alerts",
   },
@@ -107,7 +117,7 @@ export const SETTINGS_NAV_ITEMS: readonly SettingsNavItem[] = [
     id: "shortcuts",
     group: "personal",
     label: "Keybindings",
-    description: "Capture, customize, and add shortcuts for every Synara command.",
+    description: "Capture, customize, and add shortcuts for every Metis command.",
     icon: "shortcut",
     eyebrow: "Key bindings",
   },
@@ -140,7 +150,7 @@ export const SETTINGS_NAV_ITEMS: readonly SettingsNavItem[] = [
     id: "integrations",
     group: "integrations",
     label: "MCP connections",
-    description: "Give Codex, Claude, and other local agents scoped access to Synara tasks.",
+    description: "Give Codex, Claude, and other local agents scoped access to Metis tasks.",
     icon: "plugin-1",
     eyebrow: "External agents",
   },
@@ -169,10 +179,19 @@ export const SETTINGS_NAV_ITEMS: readonly SettingsNavItem[] = [
     eyebrow: "Reusable workflows",
   },
   {
+    id: "memory",
+    group: "coding",
+    label: "Memory",
+    description:
+      "The soul and long-term memories every provider session reads, and agents keep current.",
+    icon: "brain-sideview",
+    eyebrow: "Long-term memory",
+  },
+  {
     id: "worktrees",
     group: "coding",
     label: "Managed worktrees",
-    description: "Review and clean up isolated workspaces created by Synara.",
+    description: "Review and clean up isolated workspaces created by Metis.",
     icon: "branch-simple",
     eyebrow: "Workspace management",
   },

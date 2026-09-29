@@ -154,7 +154,7 @@ export function makeThreadDiagnosticTools(input: {
         required: ["threadId"],
         additionalProperties: false,
       },
-      annotations: { title: "Diagnose a Synara thread", ...READ_ONLY_TOOL_ANNOTATIONS },
+      annotations: { title: "Diagnose a Metis thread", ...READ_ONLY_TOOL_ANNOTATIONS },
     },
     handler: (args, context) =>
       Effect.gen(function* () {

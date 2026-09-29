@@ -65,7 +65,7 @@ function MetaRow({ icon, children }: { icon: ReactNode; children: string }) {
 function ModelRow({ model }: { model: ThreadModelSummary }) {
   return (
     <span className={META_ROW_CLASS_NAME}>
-      <ProviderIcon provider={model.provider} className={META_ICON_CLASS_NAME} />
+      <ProviderIcon provider={model.provider} className={META_ICON_CLASS_NAME} tooltip />
       <span className="min-w-0 truncate">{model.modelLabel}</span>
       {model.fastMode ? (
         <FastModeIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground/75" />

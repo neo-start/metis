@@ -802,3 +802,79 @@ describe("reconcileRestartStuckTurns selection", () => {
     },
   );
 });
+
+describe("reconcileRestartStuckTurns orphan capture", () => {
+  it("returns the chats that were in flight before settling them, flagging open human requests", async () => {
+    const running = {
+      ...makeThread("running", { session: makeSession("running") }),
+      deletedAt: null,
+      activities: [],
+    };
+    const waiting = {
+      ...makeThread("waiting", { session: makeSession("waiting") }),
+      deletedAt: null,
+      activities: [],
+      hasPendingApprovals: true,
+    };
+    const idle = {
+      ...makeThread("idle", {
+        session: makeSession("idle", { status: "ready", activeTurnId: null }),
+        latestTurn: { state: "completed" },
+      }),
+      deletedAt: null,
+      activities: [],
+    };
+    const dispatched: OrchestrationCommandLike[] = [];
+    const capture = await Effect.runPromise(
+      reconcileRestartStuckTurns.pipe(
+        Effect.provideService(OrchestrationEngineService, {
+          getReadModel: () => Effect.succeed({ threads: [running, waiting, idle] }),
+          dispatch: (command: OrchestrationCommandLike) =>
+            Effect.sync(() => {
+              dispatched.push(command);
+            }),
+        } as never),
+        Effect.provideService(ProjectionSnapshotQuery, {
+          getThreadDetailById: () => Effect.succeed(Option.none()),
+        } as never),
+        Effect.provideService(ProjectionPendingInteractionRepository, {
+          listUnsettled: () => Effect.succeed([]),
+        } as never),
+      ),
+    );
+
+    expect(capture?.threads).toEqual([
+      { threadId: running.id, turnId: TurnId.makeUnsafe("running-turn"), hadPendingRequest: false },
+      { threadId: waiting.id, turnId: TurnId.makeUnsafe("waiting-turn"), hadPendingRequest: true },
+    ]);
+    // Captured at the same instant the orphans are settled.
+    expect(
+      dispatched.filter((command) => command.type === "thread.session.set").map((c) => c.threadId),
+    ).toEqual([running.id, waiting.id]);
+    expect(capture?.recordedAt).toEqual(
+      dispatched.find((command) => command.type === "thread.session.set")?.createdAt,
+    );
+  });
+
+  it("returns null when nothing was in flight", async () => {
+    const capture = await Effect.runPromise(
+      reconcileRestartStuckTurns.pipe(
+        Effect.provideService(OrchestrationEngineService, {
+          getReadModel: () => Effect.succeed({ threads: [] }),
+          dispatch: () => Effect.void,
+        } as never),
+        Effect.provideService(ProjectionSnapshotQuery, {} as never),
+        Effect.provideService(ProjectionPendingInteractionRepository, {
+          listUnsettled: () => Effect.succeed([]),
+        } as never),
+      ),
+    );
+    expect(capture).toBeNull();
+  });
+});
+
+type OrchestrationCommandLike = {
+  readonly type: string;
+  readonly threadId: string;
+  readonly createdAt: string;
+};

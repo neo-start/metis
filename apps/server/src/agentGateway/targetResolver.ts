@@ -146,17 +146,20 @@ function providerOptionRule(
   };
 }
 
+const CODEX_TARGET_OPTION_RULES = defineProviderOptionConfig<"codex">({
+  primaryOptionKey: "reasoningEffort",
+  options: {
+    reasoningEffort: providerOptionRule("string", CODEX_REASONING_EFFORT_OPTIONS),
+    fastMode: providerOptionRule("boolean", [], "model-discovery", {
+      advertised: false,
+      validation: { kind: "boolean-capability", capability: "supportsFastMode" },
+    }),
+  },
+});
+
 const PROVIDER_TARGET_OPTION_RULES = {
-  codex: defineProviderOptionConfig<"codex">({
-    primaryOptionKey: "reasoningEffort",
-    options: {
-      reasoningEffort: providerOptionRule("string", CODEX_REASONING_EFFORT_OPTIONS),
-      fastMode: providerOptionRule("boolean", [], "model-discovery", {
-        advertised: false,
-        validation: { kind: "boolean-capability", capability: "supportsFastMode" },
-      }),
-    },
-  }),
+  codex: CODEX_TARGET_OPTION_RULES,
+  codexSecondary: CODEX_TARGET_OPTION_RULES,
   cursor: defineProviderOptionConfig<"cursor">({
     primaryOptionKey: "reasoningEffort",
     options: {
@@ -271,7 +274,7 @@ export function loadAgentGatewayProviderCatalog(input: {
   const availability = input.availability ?? { enabled: true };
   const unavailableReason =
     availability.enabled === false
-      ? `Provider "${input.provider}" is disabled in Synara settings.`
+      ? `Provider "${input.provider}" is disabled in Metis settings.`
       : availability.available === false
         ? (availability.message ?? `Provider "${input.provider}" is not available.`)
         : availability.authStatus === "unauthenticated"

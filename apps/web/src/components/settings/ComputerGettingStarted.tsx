@@ -46,7 +46,7 @@ export function ComputerGettingStarted({
           />
           <SettingsRow
             title="Approve the task"
-            description="If asked, approve Computer for the task. Use the permission guide when desktop access is missing. Synara may still ask before consequential actions."
+            description="If asked, approve Computer for the task. Use the permission guide when desktop access is missing. Metis may still ask before consequential actions."
           />
           <SettingsRow
             title="Follow and stop"

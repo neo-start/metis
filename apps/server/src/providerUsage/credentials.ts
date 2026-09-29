@@ -107,6 +107,7 @@ export async function refreshOAuthAccessToken(input: {
   /** OAuth token endpoints commonly require form encoding; JSON stays for the ones that don't. */
   bodyFormat?: "json" | "form";
   timeoutMs?: number;
+  allowProxyFakeIp?: boolean;
 }): Promise<OAuthRefreshResult> {
   const body: Record<string, string> = {
     grant_type: "refresh_token",
@@ -136,6 +137,7 @@ export async function refreshOAuthAccessToken(input: {
       body,
       bodyFormat,
       timeoutMs: input.timeoutMs ?? DEFAULT_OAUTH_REFRESH_TIMEOUT_MS,
+      ...(input.allowProxyFakeIp === true ? { allowProxyFakeIp: true } : {}),
     });
   } catch {
     return { ok: false };

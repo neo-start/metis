@@ -20,8 +20,8 @@ const Decision = Schema.Literals(["unseen", "later", "continued"]);
 const SAFARI_ICON_SRC = "/app-icons/safari.png";
 
 const STATUS = {
-  settingsOpened: "System Settings is open. Once Synara is switched on, quit and reopen it.",
-  appRevealed: "Synara is selected in Finder. Drag it into the Full Disk Access list.",
+  settingsOpened: "System Settings is open. Once Metis is switched on, quit and reopen it.",
+  appRevealed: "Metis is selected in Finder. Drag it into the Full Disk Access list.",
   openFailed: "Couldn't open it automatically. It lives in System Settings › Privacy & Security.",
 } as const;
 
@@ -128,8 +128,8 @@ export function SafariAccessOnboarding({ children }: { children?: ReactNode }) {
               />
               <DialogTitle className="mt-1">Bring your Safari logins along?</DialogTitle>
               <DialogDescription className="text-balance leading-relaxed">
-                Synara's browser can pick up sites you're already signed into in Safari, so you
-                don't have to log in twice. It's optional, and nothing is copied until you ask.
+                Metis's browser can pick up sites you're already signed into in Safari, so you don't
+                have to log in twice. It's optional, and nothing is copied until you ask.
               </DialogDescription>
             </DialogHeader>
 
@@ -160,7 +160,7 @@ export function SafariAccessOnboarding({ children }: { children?: ReactNode }) {
                     </>
                   ) : null}
                 </Step>
-                <Step n={3}>Quit and reopen Synara.</Step>
+                <Step n={3}>Quit and reopen Metis.</Step>
               </ol>
             ) : null}
 

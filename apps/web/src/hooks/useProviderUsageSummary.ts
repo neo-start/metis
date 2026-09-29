@@ -8,6 +8,7 @@ import type {
   ServerCodexResetCredits,
   ServerGetProviderUsageSnapshotResult,
 } from "@synara/contracts";
+import { isCodexProviderKind } from "@synara/contracts";
 import { useQuery } from "@tanstack/react-query";
 
 import {
@@ -92,10 +93,9 @@ export function resolveProviderUsageSummary(input: {
     rateLimits,
     usageLines,
     usageNotice: detail ? detail : undefined,
-    resetCredits:
-      input.authoritativeLiveSnapshot?.provider === "codex"
-        ? input.authoritativeLiveSnapshot.resetCredits
-        : undefined,
+    resetCredits: isCodexProviderKind(input.authoritativeLiveSnapshot?.provider)
+      ? input.authoritativeLiveSnapshot?.resetCredits
+      : undefined,
   };
 }
 

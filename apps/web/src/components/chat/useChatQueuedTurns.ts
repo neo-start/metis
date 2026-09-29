@@ -12,7 +12,9 @@ import {
   clearQueuedComposerSteerGate,
   getQueuedComposerAutoDispatchRetryDelay,
   getQueuedComposerSteerGate,
+  hasQueuedComposerFirstSendGrant,
   isQueuedComposerAwaitingTurnStart,
+  revokeQueuedComposerFirstSendGrant,
   recordQueuedComposerAutoDispatchFailure,
   releaseQueuedComposerAutoDispatch,
   runLockedQueuedComposerAutoDispatch,
@@ -409,6 +411,18 @@ export function useChatQueuedTurns({
     threadId,
   ]);
 
+  const hasFirstSendGrant =
+    hasQueuedComposerFirstSendGrant(threadId) &&
+    activeThread?.session == null &&
+    queuedComposerTurns.length > 0;
+  useEffect(() => {
+    if (
+      hasQueuedComposerFirstSendGrant(threadId) &&
+      (activeThread?.session != null || queuedComposerTurns.length === 0)
+    ) {
+      revokeQueuedComposerFirstSendGrant(threadId);
+    }
+  }, [activeThread?.session, queuedComposerTurns.length, threadId]);
   useEffect(() => {
     if (hasPendingCacheReview) {
       clearQueuedComposerAutoDispatchRetry(threadId);
@@ -419,7 +433,9 @@ export function useChatQueuedTurns({
       resolveQueuedComposerAutoDispatchHold({
         localDispatch,
         // A mini-composer submission queues the first turn before the draft has a session.
-        phase: isLocalDraftThread ? "ready" : phase,
+        // An inline reply does the same on a freshly forked server thread (see
+        // grantQueuedComposerFirstSend); the grant lasts until the session exists.
+        phase: isLocalDraftThread || hasFirstSendGrant ? "ready" : phase,
         latestTurn: activeLatestTurn,
         session: activeThread?.session ?? null,
         messages: activeThread?.messages ?? EMPTY_MESSAGES,
@@ -498,6 +514,7 @@ export function useChatQueuedTurns({
     activeThread?.messages,
     activeThread?.session,
     dispatchQueuedComposerTurn,
+    hasFirstSendGrant,
     hasPendingCacheReview,
     isConnecting,
     isLocalDraftThread,

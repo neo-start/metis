@@ -108,8 +108,8 @@ export function computerProvisionStartToast(
     title: "Setting up computer control",
     description:
       labels.length > 0
-        ? `macOS may ask to allow ${labels} for Synara.`
-        : "Setting up the desktop may require installing a helper or allowing the permissions Synara needs.",
+        ? `macOS may ask to allow ${labels} for Metis.`
+        : "Setting up the desktop may require installing a helper or allowing the permissions Metis needs.",
   };
 }
 
@@ -152,7 +152,7 @@ export function computerProvisionNote(state: {
 }): string | undefined {
   if (state.isPending) {
     if (state.missing?.length) {
-      return `Checking ${listComputerPermissions(state.missing)}. Allow access in the macOS prompt or System Settings, then return to Synara.`;
+      return `Checking ${listComputerPermissions(state.missing)}. Allow access in the macOS prompt or System Settings, then return to Metis.`;
     }
     return (
       "Setting up the agent's desktop. This installs or builds whatever this machine still needs, " +

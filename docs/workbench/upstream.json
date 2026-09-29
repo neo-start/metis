@@ -1,0 +1,23 @@
+{
+  "synara": {
+    "url": "https://github.com/Emanuele-web04/synara",
+    "commit": "eaa61eded31b6755d4f30ba8eabc5d905cf817cb",
+    "role": "main implementation",
+    "desktopSharedServiceAdaptation": {
+      "source": "apps/server/src/externalMcp/bridge.ts",
+      "target": "apps/desktop/src/metisSharedService.ts",
+      "changes": "Reuse private file ownership/no-follow checks for Metis launcher state and the existing one-time pairing protocol; keep Windows attachment disabled until ACL checks are ported."
+    }
+  },
+  "t3code": {
+    "url": "https://github.com/pingdotgg/t3code",
+    "commit": "f5ef0ddb90a8c36584e181b1913e7b8a5df30ffc",
+    "role": "selective module reuse",
+    "referenceCheckout": ".upstream/t3code",
+    "pairingPageAdaptation": {
+      "source": "apps/web/src/components/auth/PairingRouteSurface.tsx",
+      "target": "apps/web/src/pairingBootstrap.ts",
+      "changes": "Manual pairing-code entry, fragment auto-submit and per-cause failure messages ported to Synara's pre-app DOM page; same /api/auth/bootstrap, no hosted pairing."
+    }
+  }
+}

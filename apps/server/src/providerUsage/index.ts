@@ -12,10 +12,12 @@ import type {
   ServerListProviderUsageResult,
   ServerProviderUsageSnapshot,
 } from "@synara/contracts";
+import { isCodexProviderKind, type CodexProviderKind } from "@synara/contracts";
 import { Effect } from "effect";
 
 import { PROVIDER_USAGE_PROVIDERS } from "@synara/shared/providerUsage";
 
+import { expandCodexHomePath } from "../codexHomePaths";
 import { ServerConfig } from "../config";
 import { consumeCodexResetCredit } from "./codexResetCredits";
 import { buildProviderChildEnvironment, type ProviderChildKind } from "../providerChildEnvironment";
@@ -26,10 +28,14 @@ import { PROVIDER_USAGE_FETCHERS } from "./registry";
 import type { ProviderUsageContext } from "./types";
 
 // Providers whose live snapshot is enriched with on-disk token-total lines (24h/7d/30d).
-const LOCAL_ARCHIVE_PROVIDERS: ReadonlySet<ProviderKind> = new Set(["codex", "claudeAgent"]);
+const LOCAL_ARCHIVE_PROVIDERS: ReadonlySet<ProviderKind> = new Set([
+  "codex",
+  "codexSecondary",
+  "claudeAgent",
+]);
 
 const providerChildKind = (provider: ProviderKind): ProviderChildKind =>
-  provider === "claudeAgent" ? "claude" : provider;
+  provider === "claudeAgent" ? "claude" : provider === "codexSecondary" ? "codex" : provider;
 
 function buildContext(): ProviderUsageContext {
   return {
@@ -61,16 +67,31 @@ async function fetchProviderUsage(
     );
 }
 
+type ProviderUsageBatchContext = ProviderUsageContext & {
+  /** Per-account CODEX_HOME/binary settings, applied to the matching Codex provider kind. */
+  readonly codexAccounts?: Partial<
+    Record<CodexProviderKind, { readonly homePath?: string; readonly binaryPath?: string }>
+  >;
+};
+
 function buildProviderContext(
   provider: ProviderKind,
-  ctx: ProviderUsageContext,
+  ctx: ProviderUsageBatchContext,
 ): ProviderUsageContext {
+  const { codexAccounts, ...base } = ctx;
+  const account = isCodexProviderKind(provider) ? codexAccounts?.[provider] : undefined;
+  const codexHomePath = account?.homePath?.trim()
+    ? expandCodexHomePath(account.homePath.trim())
+    : undefined;
+  const env = buildProviderChildEnvironment({
+    provider: providerChildKind(provider),
+    baseEnv: base.env,
+  });
   return {
-    ...ctx,
-    env: buildProviderChildEnvironment({
-      provider: providerChildKind(provider),
-      baseEnv: ctx.env,
-    }),
+    ...base,
+    env: codexHomePath ? { ...env, CODEX_HOME: codexHomePath } : env,
+    ...(codexHomePath ? { codexHomePath } : {}),
+    ...(account?.binaryPath ? { codexBinaryPath: account.binaryPath } : {}),
   };
 }
 
@@ -138,7 +159,7 @@ function invalidateProviderUsageSnapshots(providers: ReadonlyArray<ProviderKind>
 
 async function getProviderUsageSnapshot(
   provider: ProviderKind,
-  ctx: ProviderUsageContext,
+  ctx: ProviderUsageBatchContext,
   forceRefresh: boolean,
 ): Promise<ServerProviderUsageSnapshot | null> {
   const cacheGeneration = snapshotCacheGenerations.get(provider) ?? 0;
@@ -162,7 +183,7 @@ async function getProviderUsageSnapshot(
 
   const fetchPromise = (async () => {
     const snapshot = await fetchProviderUsage(provider, providerContext);
-    const enriched = snapshot ? await enrichWithLocalUsage(snapshot, ctx) : null;
+    const enriched = snapshot ? await enrichWithLocalUsage(snapshot, providerContext) : null;
     const refreshedCredentialKey = await resolveCredentialKey(provider, providerContext);
     if (
       enriched &&
@@ -209,6 +230,7 @@ async function enrichWithLocalUsage(
   const localLines = await loadLocalProviderUsageLines({
     provider: snapshot.provider,
     homeDir: ctx.homeDir,
+    ...(ctx.codexHomePath ? { homePath: ctx.codexHomePath } : {}),
   });
   if (localLines.length === 0) {
     return snapshot;
@@ -218,7 +240,7 @@ async function enrichWithLocalUsage(
 
 /** Plain async batch fetch for supported providers. Never throws. */
 export async function collectProviderUsageSnapshots(
-  ctx: ProviderUsageContext,
+  ctx: ProviderUsageBatchContext,
   options: {
     forceRefresh?: boolean;
     provider?: ProviderKind;
@@ -269,6 +291,10 @@ export const listProviderUsage = Effect.fn(function* (input: ServerListProviderU
           homeDir: serverConfig.homeDir,
           claudeBinaryPath: settings.providers.claudeAgent.binaryPath,
           codexBinaryPath: settings.providers.codex.binaryPath,
+          codexAccounts: {
+            codex: settings.providers.codex,
+            codexSecondary: settings.providers.codexSecondary,
+          },
         },
         {
           forceRefresh: input.forceRefresh === true,

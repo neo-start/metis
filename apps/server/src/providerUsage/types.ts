@@ -21,6 +21,11 @@ export interface ProviderUsageContext {
   readonly claudeBinaryPath?: string;
   /** Codex CLI binary (settings.providers.codex.binaryPath); defaults to "codex". */
   readonly codexBinaryPath?: string;
+  /**
+   * Explicit CODEX_HOME for the account being read. When set, only that home's auth.json is
+   * used — no ~/.codex or keychain fallback — so one Codex account never reports another's quota.
+   */
+  readonly codexHomePath?: string;
 }
 
 export interface ProviderUsageFetcher {

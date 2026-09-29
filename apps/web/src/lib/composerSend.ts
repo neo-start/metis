@@ -131,7 +131,7 @@ export async function prepareComposerImageAttachmentsFromFiles(input: {
       error =
         cause instanceof ComposerImagePreparationError
           ? cause.message
-          : `Synara could not prepare '${file.name || "image"}'.`;
+          : `Metis could not prepare '${file.name || "image"}'.`;
     }
   }
 
@@ -224,6 +224,7 @@ export function resolvePromptEffortFromModelSelection(
     case "antigravity":
       return null;
     case "codex":
+    case "codexSecondary":
       return modelSelection.options?.reasoningEffort ?? null;
     case "claudeAgent":
       return modelSelection.options?.effort ?? null;

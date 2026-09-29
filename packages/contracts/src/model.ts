@@ -161,6 +161,7 @@ export type DevinModelOptions = typeof DevinModelOptions.Type;
 
 export const ProviderModelOptions = Schema.Struct({
   codex: Schema.optional(CodexModelOptions),
+  codexSecondary: Schema.optional(CodexModelOptions),
   claudeAgent: Schema.optional(ClaudeModelOptions),
   cursor: Schema.optional(CursorModelOptions),
   devin: Schema.optional(DevinModelOptions),
@@ -583,59 +584,63 @@ const EMPTY_MODEL_CAPABILITIES: ModelCapabilities = {
  */
 export const DEFAULT_DROID_GIT_TEXT_GENERATION_MODEL = "deepseek-v4-flash-0731" as const;
 
+// Both Codex accounts run the same Codex runtime, so they share one model list.
+const CODEX_MODEL_OPTIONS = [
+  {
+    slug: "gpt-6-astra",
+    name: "GPT-6 Astra",
+    capabilities: CODEX_GPT_6_CAPABILITIES,
+  },
+  {
+    slug: "gpt-6-sol",
+    name: "GPT-6 Sol",
+    capabilities: CODEX_GPT_6_CAPABILITIES,
+  },
+  {
+    slug: "gpt-6-luna",
+    name: "GPT-6 Luna",
+    capabilities: CODEX_GPT_6_LUNA_CAPABILITIES,
+  },
+  {
+    slug: "gpt-5.5",
+    name: "GPT-5.5",
+    capabilities: CODEX_GPT_5_5_CAPABILITIES,
+  },
+  {
+    slug: "gpt-5.4",
+    name: "GPT-5.4",
+    capabilities: CODEX_GPT_5_CAPABILITIES,
+  },
+  {
+    slug: "gpt-5.4-mini",
+    name: "GPT-5.4 Mini",
+    capabilities: CODEX_GPT_5_CAPABILITIES,
+  },
+  {
+    slug: "gpt-5.3-codex",
+    name: "GPT-5.3 Codex",
+    capabilities: CODEX_GPT_5_CAPABILITIES,
+  },
+  {
+    slug: "gpt-5.3-codex-spark",
+    name: "GPT-5.3 Codex Spark",
+    capabilities: CODEX_GPT_5_CAPABILITIES,
+  },
+  {
+    slug: "gpt-5.2-codex",
+    name: "GPT-5.2 Codex",
+    capabilities: CODEX_GPT_5_CAPABILITIES,
+  },
+  {
+    slug: "gpt-5.2",
+    name: "GPT-5.2",
+    capabilities: CODEX_GPT_5_CAPABILITIES,
+  },
+] as const satisfies readonly ModelDefinition[];
+
 export const MODEL_OPTIONS_BY_PROVIDER = {
-  codex: [
-    {
-      slug: "gpt-6-astra",
-      name: "GPT-6 Astra",
-      capabilities: CODEX_GPT_6_CAPABILITIES,
-    },
-    {
-      slug: "gpt-6-sol",
-      name: "GPT-6 Sol",
-      capabilities: CODEX_GPT_6_CAPABILITIES,
-    },
-    {
-      slug: "gpt-6-luna",
-      name: "GPT-6 Luna",
-      capabilities: CODEX_GPT_6_LUNA_CAPABILITIES,
-    },
-    {
-      slug: "gpt-5.5",
-      name: "GPT-5.5",
-      capabilities: CODEX_GPT_5_5_CAPABILITIES,
-    },
-    {
-      slug: "gpt-5.4",
-      name: "GPT-5.4",
-      capabilities: CODEX_GPT_5_CAPABILITIES,
-    },
-    {
-      slug: "gpt-5.4-mini",
-      name: "GPT-5.4 Mini",
-      capabilities: CODEX_GPT_5_CAPABILITIES,
-    },
-    {
-      slug: "gpt-5.3-codex",
-      name: "GPT-5.3 Codex",
-      capabilities: CODEX_GPT_5_CAPABILITIES,
-    },
-    {
-      slug: "gpt-5.3-codex-spark",
-      name: "GPT-5.3 Codex Spark",
-      capabilities: CODEX_GPT_5_CAPABILITIES,
-    },
-    {
-      slug: "gpt-5.2-codex",
-      name: "GPT-5.2 Codex",
-      capabilities: CODEX_GPT_5_CAPABILITIES,
-    },
-    {
-      slug: "gpt-5.2",
-      name: "GPT-5.2",
-      capabilities: CODEX_GPT_5_CAPABILITIES,
-    },
-  ],
+  codex: CODEX_MODEL_OPTIONS,
+  codexSecondary: CODEX_MODEL_OPTIONS,
   claudeAgent: [
     {
       slug: "claude-fable-5-1",
@@ -1159,6 +1164,7 @@ export type ProviderWithDefaultModel = Exclude<ProviderKind, "pi">;
 
 export const DEFAULT_MODEL_BY_PROVIDER: Record<ProviderWithDefaultModel, ModelSlug> = {
   codex: "gpt-6-astra",
+  codexSecondary: "gpt-6-astra",
   claudeAgent: "claude-sonnet-5",
   cursor: "auto",
   devin: "adaptive",
@@ -1188,20 +1194,23 @@ export const GIT_TEXT_GENERATION_PROVIDERS = [
 ] as const satisfies readonly ProviderKind[];
 export type GitTextGenerationProvider = (typeof GIT_TEXT_GENERATION_PROVIDERS)[number];
 
+const CODEX_MODEL_SLUG_ALIASES: Record<string, ModelSlug> = {
+  sol: "gpt-6-sol",
+  luna: "gpt-6-luna",
+  astra: "gpt-6-astra",
+  "6": "gpt-6-astra",
+  "gpt-6": "gpt-6-astra",
+  "5.5": "gpt-5.5",
+  "5.4": "gpt-5.4",
+  "5.3": "gpt-5.3-codex",
+  "gpt-5.3": "gpt-5.3-codex",
+  "5.3-spark": "gpt-5.3-codex-spark",
+  "gpt-5.3-spark": "gpt-5.3-codex-spark",
+};
+
 export const MODEL_SLUG_ALIASES_BY_PROVIDER: Record<ProviderKind, Record<string, ModelSlug>> = {
-  codex: {
-    sol: "gpt-6-sol",
-    luna: "gpt-6-luna",
-    astra: "gpt-6-astra",
-    "6": "gpt-6-astra",
-    "gpt-6": "gpt-6-astra",
-    "5.5": "gpt-5.5",
-    "5.4": "gpt-5.4",
-    "5.3": "gpt-5.3-codex",
-    "gpt-5.3": "gpt-5.3-codex",
-    "5.3-spark": "gpt-5.3-codex-spark",
-    "gpt-5.3-spark": "gpt-5.3-codex-spark",
-  },
+  codex: CODEX_MODEL_SLUG_ALIASES,
+  codexSecondary: CODEX_MODEL_SLUG_ALIASES,
   claudeAgent: {
     fable: "claude-fable-5-1",
     "fable-5.1": "claude-fable-5-1",
@@ -1380,6 +1389,7 @@ Object.assign(MODEL_CAPABILITIES_INDEX.grok, {
 
 export const PROVIDER_DISPLAY_NAMES: Record<ProviderKind, string> = {
   codex: "Codex",
+  codexSecondary: "codex-personal",
   claudeAgent: "Claude",
   cursor: "Cursor",
   devin: "Devin",

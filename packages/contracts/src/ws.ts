@@ -165,6 +165,12 @@ import {
   ExternalMcpRevokeIntegrationInput,
 } from "./externalMcp";
 import {
+  MetisMemoryDeleteInput,
+  MetisMemoryReadInput,
+  MetisMemoryUpdateSoulInput,
+  MetisMemoryWriteInput,
+} from "./memory";
+import {
   GitHubProjectProvisionInput,
   GitHubProjectProvisionProgressEvent,
 } from "./githubProjectProvisioning";
@@ -305,6 +311,13 @@ export const WS_METHODS = {
   automationArchiveRun: "automation.archiveRun",
   automationResolveProposal: "automation.resolveProposal",
   subscribeAutomationEvents: "automation.subscribe",
+
+  // Metis long-term memory (soul + global/project memories)
+  memoryGetOverview: "memory.getOverview",
+  memoryRead: "memory.read",
+  memoryWrite: "memory.write",
+  memoryDelete: "memory.delete",
+  memoryUpdateSoul: "memory.updateSoul",
 } as const;
 
 // ── Push Event Channels ──────────────────────────────────────────────
@@ -519,6 +532,13 @@ const WebSocketRequestBody = Schema.Union([
   tagRequestBody(WS_METHODS.automationArchiveRun, AutomationArchiveRunInput),
   tagRequestBody(WS_METHODS.automationResolveProposal, AutomationResolveProposalInput),
   tagRequestBody(WS_METHODS.subscribeAutomationEvents, Schema.Struct({})),
+
+  // Metis long-term memory
+  tagRequestBody(WS_METHODS.memoryGetOverview, Schema.Struct({})),
+  tagRequestBody(WS_METHODS.memoryRead, MetisMemoryReadInput),
+  tagRequestBody(WS_METHODS.memoryWrite, MetisMemoryWriteInput),
+  tagRequestBody(WS_METHODS.memoryDelete, MetisMemoryDeleteInput),
+  tagRequestBody(WS_METHODS.memoryUpdateSoul, MetisMemoryUpdateSoulInput),
 ]);
 
 export const WebSocketRequest = Schema.Struct({

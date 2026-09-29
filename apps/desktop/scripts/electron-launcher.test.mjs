@@ -263,7 +263,7 @@ describe("macOS Electron launcher signature", () => {
           : [],
       );
       assert.equal(
-        resets.every(({ arguments_ }) => /^com\.[\w.]*synara/i.test(arguments_[2])),
+        resets.every(({ arguments_ }) => arguments_[2] === "local.agentworkbench.desktop.dev"),
         true,
       );
     });
@@ -360,7 +360,7 @@ describe("macOS source bundle reopen", () => {
     assert.equal(result.environment.SYNARA_DESKTOP_FLAVOR, "development");
     assert.equal(Object.keys(result.environment).length, 4);
     const configuration = readFileSync(
-      join(desktop, ".electron-runtime", "Synara (Dev).app.launch.json"),
+      join(desktop, ".electron-runtime", "Metis.app.launch.json"),
       "utf8",
     );
     assert.equal(configuration.includes("secret"), false);
@@ -378,7 +378,7 @@ describe("macOS source bundle reopen", () => {
     assert.equal(fixture.build(), executable);
     assert.deepEqual(fixture.commands, []);
     const configuration = readFileSync(
-      join(dirname(fixture.metadataPath), "Synara (Dev).app.launch.json"),
+      join(dirname(fixture.metadataPath), "Metis.app.launch.json"),
       "utf8",
     );
     assert.equal(configuration.includes("8891"), false);

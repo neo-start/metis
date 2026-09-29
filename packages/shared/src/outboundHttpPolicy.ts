@@ -70,6 +70,15 @@ export function isPublicIpAddress(address: string): boolean {
   return false;
 }
 
+// RFC 2544 benchmarking range. Local TUN proxies (Surge, Clash, sing-box) answer
+// DNS with fake IPs from it and route the connection to the real host.
+const proxyFakeIpAddresses = new Net.BlockList();
+proxyFakeIpAddresses.addSubnet("198.18.0.0", 15, "ipv4");
+
+export function isProxyFakeIpAddress(address: string): boolean {
+  return Net.isIP(address) === 4 && proxyFakeIpAddresses.check(address, "ipv4");
+}
+
 export function assertPublicIpAddress(address: string): void {
   if (!isPublicIpAddress(address)) {
     throw new OutboundPolicyError(

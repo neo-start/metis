@@ -179,8 +179,8 @@ const make = (options?: ProviderRuntimeReconcilerLiveOptions) =>
           kind: "provider.runtime.reconciled",
           summary:
             plan.action === "align-running-turn"
-              ? "Synara realigned the active provider turn"
-              : "Synara recovered a stale running state",
+              ? "Metis realigned the active provider turn"
+              : "Metis recovered a stale running state",
           payload: {
             provider: plan.provider,
             action: plan.action,

@@ -10,6 +10,7 @@ import { agentGatewayRouteLayer } from "./agentGateway/httpRoute";
 import { AgentGatewayCredentials } from "./agentGateway/Services/AgentGatewayCredentials";
 import { AutomationRunReactor } from "./automation/Services/AutomationRunReactor";
 import { AutomationScheduler } from "./automation/Services/AutomationScheduler";
+import { FeishuBridge } from "./feishu/Services/FeishuBridge";
 import { AutomationService } from "./automation/Services/AutomationService";
 import {
   clearPersistedServerRuntimeState,
@@ -37,7 +38,14 @@ import {
   claimQuitResumeRecordAtStartup,
   resumeQuitInterruptedChats,
 } from "./orchestration/quitResume";
+import {
+  claimRestartResumeSnapshotAtStartup,
+  readNewestTurnIntentIsStop,
+  recordRestartResumeSnapshotAtShutdown,
+  resumeRestartInterruptedChats,
+} from "./orchestration/restartResume";
 import { reconcileRestartStuckTurns } from "./orchestration/startupTurnReconciliation";
+import { OrchestrationEventStoreLive } from "./persistence/Layers/OrchestrationEventStore";
 import { ProviderSessionReaper } from "./provider/Services/ProviderSessionReaper";
 import { ProviderRuntimeReconciler } from "./provider/Services/ProviderRuntimeReconciler";
 import { ProviderService, type ProviderServiceShape } from "./provider/Services/ProviderService";
@@ -68,6 +76,7 @@ export interface ServerShape {
     | ManagedAttachmentCleanup
     | AutomationRunReactor
     | AutomationScheduler
+    | FeishuBridge
     | AutomationService
     | ServerLifecycleEvents
     | OrchestrationEngineService
@@ -129,6 +138,7 @@ export const createEffectServer = Effect.fn(function* (
   const agentGatewayCredentials = yield* AgentGatewayCredentials;
   const automationRunReactor = yield* AutomationRunReactor;
   const automationScheduler = yield* AutomationScheduler;
+  const feishuBridge = yield* FeishuBridge;
   const keybindings = yield* Keybindings;
   const managedAttachmentCleanup = yield* ManagedAttachmentCleanup;
   const lifecycleEvents = yield* ServerLifecycleEvents;
@@ -208,9 +218,18 @@ export const createEffectServer = Effect.fn(function* (
       subscriptionsScope,
     }),
   );
+  // Registered after the pipeline close so it runs first: remember the chats in
+  // flight before provider teardown settles their turns, so the next boot can
+  // continue them (desktop update install, relaunch, backend restart).
+  yield* Effect.addFinalizer(() =>
+    recordRestartResumeSnapshotAtShutdown.pipe(
+      Effect.provideService(OrchestrationEngineService, orchestrationEngine),
+    ),
+  );
   yield* Scope.provide(orchestrationReactor.start, subscriptionsScope);
   yield* Scope.provide(automationScheduler.start(), subscriptionsScope);
   yield* Scope.provide(automationRunReactor.start(), subscriptionsScope);
+  yield* Scope.provide(feishuBridge.start(), subscriptionsScope);
   yield* Scope.provide(threadDeletionReactor.start(), subscriptionsScope);
   yield* Scope.provide(providerSessionReaper.start(), subscriptionsScope);
   yield* Scope.provide(providerRuntimeReconciler.start(), subscriptionsScope);
@@ -219,7 +238,7 @@ export const createEffectServer = Effect.fn(function* (
   // Heal turns orphaned by the previous process exit (their in-memory runtimes
   // died, so they can never complete on their own) before clients can observe
   // the stale "Working" state.
-  yield* reconcileRestartStuckTurns.pipe(
+  const restartOrphans = yield* reconcileRestartStuckTurns.pipe(
     Effect.provide(ProjectionPendingInteractionRepositoryLive),
   );
   // The reconciliation above terminalizes durable turn projections without a
@@ -235,10 +254,29 @@ export const createEffectServer = Effect.fn(function* (
   // Claim the previous quit's "Resume chats automatically" record while no
   // command (and so no new quit) can run yet; a missing record costs one stat.
   const quitResumeRecord = yield* claimQuitResumeRecordAtStartup;
+  // Same for the previous graceful shutdown's snapshot of in-flight chats.
+  const restartResumeSnapshot = yield* claimRestartResumeSnapshotAtStartup;
   yield* runtimeStartup.markCommandReady;
   // The recorded chats get their continuation turn now that the orphaned turns
   // above are settled. Forked so the (rare) dispatch work never delays readiness.
-  yield* resumeQuitInterruptedChats(quitResumeRecord).pipe(Effect.forkIn(subscriptionsScope));
+  // Restart resume runs after quit resume and skips the threads it covers.
+  const sqlClient = yield* SqlClient.SqlClient;
+  const readTurnIntentIsStop = (threadId: Parameters<typeof readNewestTurnIntentIsStop>[0]) =>
+    readNewestTurnIntentIsStop(threadId).pipe(
+      Effect.provide(OrchestrationEventStoreLive),
+      Effect.provideService(SqlClient.SqlClient, sqlClient),
+    );
+  yield* resumeQuitInterruptedChats(quitResumeRecord).pipe(
+    Effect.andThen(
+      resumeRestartInterruptedChats({
+        bootOrphans: restartOrphans,
+        snapshot: restartResumeSnapshot,
+        quitResume: quitResumeRecord,
+        newestTurnIntentIsStop: readTurnIntentIsStop,
+      }),
+    ),
+    Effect.forkIn(subscriptionsScope),
+  );
 
   yield* lifecycleEvents.publish({
     type: "welcome",

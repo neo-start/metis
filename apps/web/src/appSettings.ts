@@ -8,6 +8,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Option, Schema, SchemaTransformation } from "effect";
 import {
   type AssistantDeliveryMode,
+  ClaudeCacheReviewDefault,
+  CODEX_SECONDARY_DEFAULT_HOME_PATH,
   DesktopAppIcon,
   DEFAULT_GIT_TEXT_GENERATION_MODEL,
   DEFAULT_SERVER_SETTINGS,
@@ -138,6 +140,7 @@ export function getDefaultNativeFontSmoothing(platform = globalThis.navigator?.p
 
 type CustomModelSettingsKey =
   | "customCodexModels"
+  | "customCodexSecondaryModels"
   | "customClaudeModels"
   | "customCursorModels"
   | "customAntigravityModels"
@@ -158,6 +161,7 @@ export type ProviderCustomModelConfig = {
 
 const BUILT_IN_MODEL_SLUGS_BY_PROVIDER: Record<ProviderKind, ReadonlySet<string>> = {
   codex: new Set(getModelOptions("codex").map((option) => option.slug)),
+  codexSecondary: new Set(getModelOptions("codexSecondary").map((option) => option.slug)),
   claudeAgent: new Set(getModelOptions("claudeAgent").map((option) => option.slug)),
   cursor: new Set(getModelOptions("cursor").map((option) => option.slug)),
   devin: new Set(getModelOptions("devin").map((option) => option.slug)),
@@ -183,6 +187,7 @@ const withDefaults =
 
 const PersistedProviderKind = Schema.Literals([
   "codex",
+  "codexSecondary",
   "claudeAgent",
   "cursor",
   "devin",
@@ -261,6 +266,7 @@ const PersistedHiddenModels = Schema.Array(
 export const AppSettingsSchema = Schema.Struct({
   claudeBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
   claudeEnableArtifacts: Schema.Boolean.pipe(withDefaults(() => false)),
+  claudeCacheReviewDecision: ClaudeCacheReviewDefault.pipe(withDefaults(() => "ask" as const)),
   // Server-backed first-run marker; see ServerSettings.onboardingCompletedAt.
   onboardingCompletedAt: Schema.NullOr(Schema.String).pipe(withDefaults((): string | null => null)),
   uiDensity: UiDensity.pipe(withDefaults(() => DEFAULT_UI_DENSITY)),
@@ -273,6 +279,12 @@ export const AppSettingsSchema = Schema.Struct({
   ),
   codexBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
   codexHomePath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
+  codexSecondaryBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(
+    withDefaults(() => ""),
+  ),
+  codexSecondaryHomePath: Schema.String.check(Schema.isMaxLength(4096)).pipe(
+    withDefaults(() => CODEX_SECONDARY_DEFAULT_HOME_PATH),
+  ),
   cursorBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
   cursorApiEndpoint: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
   devinBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
@@ -294,6 +306,8 @@ export const AppSettingsSchema = Schema.Struct({
   confirmThreadDelete: Schema.Boolean.pipe(withDefaults(() => true)),
   // Desktop quit dialog: remember interrupted chats and continue them on the next launch.
   resumeChatsAfterQuit: Schema.Boolean.pipe(withDefaults(() => true)),
+  // Server-backed (read at server boot): continue chats cut off by a crash, update, or restart.
+  resumeChatsAfterRestart: Schema.Boolean.pipe(withDefaults(() => true)),
   confirmThreadArchive: Schema.Boolean.pipe(withDefaults(() => false)),
   confirmTerminalTabClose: Schema.Boolean.pipe(withDefaults(() => true)),
   diffWordWrap: Schema.Boolean.pipe(withDefaults(() => false)),
@@ -384,6 +398,7 @@ export const AppSettingsSchema = Schema.Struct({
   ),
   timestampFormat: TimestampFormat.pipe(withDefaults(() => DEFAULT_TIMESTAMP_FORMAT)),
   customCodexModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
+  customCodexSecondaryModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
   customClaudeModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
   customCursorModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
   customDevinModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
@@ -451,6 +466,15 @@ const PROVIDER_CUSTOM_MODEL_CONFIG: Record<ProviderKind, ProviderCustomModelConf
     defaultSettingsKey: "customCodexModels",
     title: "Codex",
     description: "Save additional Codex model slugs for the picker and `/model` command.",
+    placeholder: "your-codex-model-slug",
+    example: "gpt-6.7-codex-ultra-preview",
+  },
+  codexSecondary: {
+    provider: "codexSecondary",
+    settingsKey: "customCodexSecondaryModels",
+    defaultSettingsKey: "customCodexSecondaryModels",
+    title: "codex-personal",
+    description: "Save additional model slugs for the second Codex account.",
     placeholder: "your-codex-model-slug",
     example: "gpt-6.7-codex-ultra-preview",
   },
@@ -673,6 +697,10 @@ function normalizeAppSettings(settings: AppSettings): AppSettings {
     openCodeServerPassword: "",
     claudeBinaryPath: normalizeProviderBinaryPathOverride("claudeAgent", settings.claudeBinaryPath),
     codexBinaryPath: normalizeProviderBinaryPathOverride("codex", settings.codexBinaryPath),
+    codexSecondaryBinaryPath: normalizeProviderBinaryPathOverride(
+      "codexSecondary",
+      settings.codexSecondaryBinaryPath,
+    ),
     cursorBinaryPath: normalizeProviderBinaryPathOverride("cursor", settings.cursorBinaryPath),
     devinBinaryPath: normalizeProviderBinaryPathOverride("devin", settings.devinBinaryPath),
     antigravityBinaryPath: normalizeProviderBinaryPathOverride(
@@ -694,6 +722,10 @@ function normalizeAppSettings(settings: AppSettings): AppSettings {
     terminalFontSizePx: normalizeTerminalFontSizePx(settings.terminalFontSizePx),
     terminalFontFamily: normalizeTerminalFontFamily(settings.terminalFontFamily),
     customCodexModels: normalizeCustomModelSlugs(settings.customCodexModels, "codex"),
+    customCodexSecondaryModels: normalizeCustomModelSlugs(
+      settings.customCodexSecondaryModels,
+      "codexSecondary",
+    ),
     customClaudeModels: normalizeCustomModelSlugs(settings.customClaudeModels, "claudeAgent"),
     customCursorModels: normalizeCustomModelSlugs(settings.customCursorModels, "cursor"),
     customDevinModels: normalizeCustomModelSlugs(settings.customDevinModels, "devin"),
@@ -747,14 +779,18 @@ function serverSettingsToAppSettings(settings: ServerSettingsView): Partial<AppS
   return {
     claudeBinaryPath: settings.providers.claudeAgent.binaryPath,
     claudeEnableArtifacts: settings.providers.claudeAgent.enableArtifacts,
+    claudeCacheReviewDecision: settings.providers.claudeAgent.cacheReviewDecision,
     codexBinaryPath: settings.providers.codex.binaryPath,
     codexHomePath: settings.providers.codex.homePath,
+    codexSecondaryBinaryPath: settings.providers.codexSecondary.binaryPath,
+    codexSecondaryHomePath: settings.providers.codexSecondary.homePath,
     cursorApiEndpoint: settings.providers.cursor.apiEndpoint,
     cursorBinaryPath: settings.providers.cursor.binaryPath,
     devinBinaryPath: settings.providers.devin.binaryPath,
     defaultThreadEnvMode: settings.defaultThreadEnvMode,
     enableAssistantStreaming: settings.enableAssistantStreaming,
     enableProviderUpdateChecks: settings.enableProviderUpdateChecks,
+    resumeChatsAfterRestart: settings.resumeChatsAfterRestart,
     antigravityBinaryPath: settings.providers.antigravity.binaryPath,
     grokBinaryPath: settings.providers.grok.binaryPath,
     droidBinaryPath: settings.providers.droid.binaryPath,
@@ -765,6 +801,7 @@ function serverSettingsToAppSettings(settings: ServerSettingsView): Partial<AppS
     piAgentDir: settings.providers.pi.agentDir,
     piBinaryPath: settings.providers.pi.binaryPath,
     customCodexModels: settings.providers.codex.customModels,
+    customCodexSecondaryModels: settings.providers.codexSecondary.customModels,
     customClaudeModels: settings.providers.claudeAgent.customModels,
     customCursorModels: settings.providers.cursor.customModels,
     customDevinModels: settings.providers.devin.customModels,
@@ -853,6 +890,9 @@ export function appSettingsPatchToServerSettingsPatch(
   if (hasOwn(patch, "enableProviderUpdateChecks")) {
     serverPatch.enableProviderUpdateChecks = Boolean(patch.enableProviderUpdateChecks);
   }
+  if (hasOwn(patch, "resumeChatsAfterRestart")) {
+    serverPatch.resumeChatsAfterRestart = Boolean(patch.resumeChatsAfterRestart);
+  }
   if (patch.defaultThreadEnvMode === "local" || patch.defaultThreadEnvMode === "worktree") {
     serverPatch.defaultThreadEnvMode = patch.defaultThreadEnvMode;
   }
@@ -885,14 +925,35 @@ export function appSettingsPatchToServerSettingsPatch(
     };
   }
   if (
+    hasOwn(patch, "codexSecondaryBinaryPath") ||
+    hasOwn(patch, "codexSecondaryHomePath") ||
+    hasOwn(patch, "customCodexSecondaryModels")
+  ) {
+    providers.codexSecondary = {
+      ...(hasOwn(patch, "codexSecondaryBinaryPath")
+        ? { binaryPath: patch.codexSecondaryBinaryPath ?? "" }
+        : {}),
+      ...(hasOwn(patch, "codexSecondaryHomePath")
+        ? { homePath: patch.codexSecondaryHomePath ?? "" }
+        : {}),
+      ...(hasOwn(patch, "customCodexSecondaryModels")
+        ? { customModels: patch.customCodexSecondaryModels ?? [] }
+        : {}),
+    };
+  }
+  if (
     hasOwn(patch, "claudeBinaryPath") ||
     hasOwn(patch, "claudeEnableArtifacts") ||
+    hasOwn(patch, "claudeCacheReviewDecision") ||
     hasOwn(patch, "customClaudeModels")
   ) {
     providers.claudeAgent = {
       ...(hasOwn(patch, "claudeBinaryPath") ? { binaryPath: patch.claudeBinaryPath ?? "" } : {}),
       ...(hasOwn(patch, "claudeEnableArtifacts")
         ? { enableArtifacts: Boolean(patch.claudeEnableArtifacts) }
+        : {}),
+      ...(patch.claudeCacheReviewDecision !== undefined
+        ? { cacheReviewDecision: patch.claudeCacheReviewDecision }
         : {}),
       ...(hasOwn(patch, "customClaudeModels")
         ? { customModels: patch.customClaudeModels ?? [] }
@@ -1014,8 +1075,11 @@ function buildInitialServerSettingsMigrationPatch(settings: AppSettings): Server
   for (const key of [
     "claudeBinaryPath",
     "claudeEnableArtifacts",
+    "claudeCacheReviewDecision",
     "codexBinaryPath",
     "codexHomePath",
+    "codexSecondaryBinaryPath",
+    "codexSecondaryHomePath",
     "cursorApiEndpoint",
     "cursorBinaryPath",
     "defaultThreadEnvMode",
@@ -1047,6 +1111,7 @@ function buildInitialServerSettingsMigrationPatch(settings: AppSettings): Server
 
   for (const key of [
     "customCodexModels",
+    "customCodexSecondaryModels",
     "customClaudeModels",
     "customCursorModels",
     "customDevinModels",
@@ -1115,6 +1180,7 @@ export function getCustomModelsByProvider(
 ): Record<ProviderKind, readonly string[]> {
   return {
     codex: getCustomModelsForProvider(settings, "codex"),
+    codexSecondary: getCustomModelsForProvider(settings, "codexSecondary"),
     claudeAgent: getCustomModelsForProvider(settings, "claudeAgent"),
     cursor: getCustomModelsForProvider(settings, "cursor"),
     devin: getCustomModelsForProvider(settings, "devin"),
@@ -1249,6 +1315,7 @@ export function getCustomModelOptionsByProvider(
   const customModelsByProvider = getCustomModelsByProvider(settings);
   return {
     codex: getAppModelOptions("codex", customModelsByProvider.codex),
+    codexSecondary: getAppModelOptions("codexSecondary", customModelsByProvider.codexSecondary),
     claudeAgent: getAppModelOptions("claudeAgent", customModelsByProvider.claudeAgent),
     cursor: getAppModelOptions("cursor", customModelsByProvider.cursor),
     devin: getAppModelOptions("devin", customModelsByProvider.devin),
@@ -1266,6 +1333,8 @@ export function getProviderStartOptions(
     | "claudeBinaryPath"
     | "codexBinaryPath"
     | "codexHomePath"
+    | "codexSecondaryBinaryPath"
+    | "codexSecondaryHomePath"
     | "cursorApiEndpoint"
     | "cursorBinaryPath"
     | "devinBinaryPath"
@@ -1284,6 +1353,10 @@ export function getProviderStartOptions(
     settings.claudeBinaryPath,
   );
   const codexBinaryPath = normalizeProviderBinaryPathOverride("codex", settings.codexBinaryPath);
+  const codexSecondaryBinaryPath = normalizeProviderBinaryPathOverride(
+    "codexSecondary",
+    settings.codexSecondaryBinaryPath,
+  );
   const cursorBinaryPath = normalizeProviderBinaryPathOverride("cursor", settings.cursorBinaryPath);
   const devinBinaryPath = normalizeProviderBinaryPathOverride("devin", settings.devinBinaryPath);
   const antigravityBinaryPath = normalizeProviderBinaryPathOverride(
@@ -1306,6 +1379,16 @@ export function getProviderStartOptions(
           codex: {
             ...(codexBinaryPath ? { binaryPath: codexBinaryPath } : {}),
             ...(settings.codexHomePath ? { homePath: settings.codexHomePath } : {}),
+          },
+        }
+      : {}),
+    ...(codexSecondaryBinaryPath || settings.codexSecondaryHomePath
+      ? {
+          codexSecondary: {
+            ...(codexSecondaryBinaryPath ? { binaryPath: codexSecondaryBinaryPath } : {}),
+            ...(settings.codexSecondaryHomePath
+              ? { homePath: settings.codexSecondaryHomePath }
+              : {}),
           },
         }
       : {}),
@@ -1407,6 +1490,7 @@ export function getCustomBinaryPathForProvider(
     AppSettings,
     | "claudeBinaryPath"
     | "codexBinaryPath"
+    | "codexSecondaryBinaryPath"
     | "cursorBinaryPath"
     | "devinBinaryPath"
     | "antigravityBinaryPath"
@@ -1420,6 +1504,8 @@ export function getCustomBinaryPathForProvider(
   switch (provider) {
     case "codex":
       return normalizeProviderBinaryPathOverride(provider, settings.codexBinaryPath);
+    case "codexSecondary":
+      return normalizeProviderBinaryPathOverride(provider, settings.codexSecondaryBinaryPath);
     case "claudeAgent":
       return normalizeProviderBinaryPathOverride(provider, settings.claudeBinaryPath);
     case "cursor":

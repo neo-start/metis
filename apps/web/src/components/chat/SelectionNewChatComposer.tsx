@@ -3,21 +3,17 @@
 import type { ThreadEnvironmentMode } from "@synara/contracts";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
-import { ArrowUpRightIcon, ComposerSendArrowIcon, LoaderCircleIcon, XIcon } from "~/lib/icons";
+import { ArrowUpRightIcon, XIcon } from "~/lib/icons";
 import { resolveThreadEnvironmentPresentation } from "~/lib/threadEnvironment";
-import { ComposerPromptEditor, type ComposerPromptEditorHandle } from "../ComposerPromptEditor";
+import { type ComposerPromptEditorHandle } from "../ComposerPromptEditor";
 import { Button } from "../ui/button";
 import { AssistantSelectionsSummaryChip } from "./AssistantSelectionsSummaryChip";
 import { ComposerEnvironmentPicker } from "./ComposerEnvironmentPicker";
-import {
-  COMPOSER_EDITOR_PADDING_CLASS_NAME,
-  COMPOSER_FOOTER_ROW_CLASS_NAME,
-  COMPOSER_INPUT_SHELL_CLASS_NAME,
-  COMPOSER_INPUT_SURFACE_CLASS_NAME,
-} from "./composerPickerStyles";
-import { cn } from "~/lib/utils";
-import { DisclosureRegion } from "../ui/DisclosureRegion";
 import { TRANSCRIPT_SELECTION_ACTION_HEIGHT_PX } from "./chatSelectionActions";
+import {
+  TranscriptQuickComposerForm,
+  useTranscriptQuickComposerSubmit,
+} from "./TranscriptQuickComposerForm";
 import type { PendingTranscriptSelectionAction } from "./useTranscriptAssistantSelectionAction";
 
 interface SelectionNewChatComposerProps {
@@ -40,12 +36,20 @@ export function SelectionNewChatComposer({
   const [prompt, setPrompt] = useState("");
   const [cursor, setCursor] = useState(0);
   const [envMode, setEnvMode] = useState(canUseWorktree ? defaultEnvMode : "local");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const submittingRef = useRef(false);
   const surfaceRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<ComposerPromptEditorHandle>(null);
   const environmentMenuOpenRef = useRef(false);
+  const { busy, error, submittingRef, submit } = useTranscriptQuickComposerSubmit<
+    "send" | "compose"
+  >({
+    readPrompt: () => inputRef.current?.readSnapshot().value ?? prompt,
+    promptOptionalFor: ["compose"],
+    fallbackError: "Could not start the chat. Try again.",
+    onSubmit: async (nextPrompt, intent) => {
+      await (intent === "send" ? onSend : onOpenInChat)(nextPrompt, envMode);
+      onClose();
+    },
+  });
   const selections = [
     {
       type: "assistant-selection" as const,
@@ -104,24 +108,7 @@ export function SelectionNewChatComposer({
       document.removeEventListener("pointerdown", dismiss);
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, [onClose]);
-
-  const submit = async (intent: "send" | "compose") => {
-    const nextPrompt = inputRef.current?.readSnapshot().value ?? prompt;
-    if (submittingRef.current || (intent === "send" && !nextPrompt.trim())) return;
-    submittingRef.current = true;
-    setBusy(true);
-    setError(null);
-    try {
-      await (intent === "send" ? onSend : onOpenInChat)(nextPrompt, envMode);
-      onClose();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not start the chat. Try again.");
-    } finally {
-      submittingRef.current = false;
-      setBusy(false);
-    }
-  };
+  }, [onClose, submittingRef]);
 
   return (
     <div
@@ -134,103 +121,63 @@ export function SelectionNewChatComposer({
       // surface's shadow into hard corners. The editor caps and scrolls its own height.
       style={{ left: action.left, top: action.top }}
     >
-      <div className={COMPOSER_INPUT_SHELL_CLASS_NAME}>
-        <div className={COMPOSER_INPUT_SURFACE_CLASS_NAME}>
-          <DisclosureRegion open>
-            <form
-              aria-busy={busy}
-              onSubmit={(event) => {
-                event.preventDefault();
-                void submit("send");
-              }}
-            >
-              <div className={cn(COMPOSER_EDITOR_PADDING_CLASS_NAME, "px-2.5 pt-2 pb-1")}>
-                <div className="mb-1 flex items-center justify-between gap-2">
-                  <AssistantSelectionsSummaryChip selections={selections} />
-                  <div className="flex items-center gap-1">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="xs"
-                      disabled={busy}
-                      onClick={() => {
-                        void submit("compose");
-                      }}
-                    >
-                      Open in chat
-                      <ArrowUpRightIcon className="size-3" />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-xs"
-                      aria-label="Close new chat composer"
-                      disabled={busy}
-                      onClick={onClose}
-                    >
-                      <XIcon className="size-3.5" />
-                    </Button>
-                  </div>
-                </div>
-                <ComposerPromptEditor
-                  ref={inputRef}
-                  value={prompt}
-                  cursor={cursor}
-                  terminalContexts={[]}
-                  disabled={busy}
-                  ariaLabel="Message for new chat"
-                  className="min-h-[1lh]"
-                  placeholder="Ask about this selection…"
-                  onRemoveTerminalContext={() => {}}
-                  onPaste={() => {}}
-                  onChange={(value, nextCursor) => {
-                    setPrompt(value);
-                    setCursor(nextCursor);
-                  }}
-                  onCommandKeyDown={(key, event) => {
-                    if (key !== "Enter" || event.shiftKey || event.isComposing) return false;
-                    void submit("send");
-                    return true;
-                  }}
-                />
-              </div>
-              {error ? (
-                <p role="alert" className="px-3 pb-2 text-ui leading-snug text-destructive">
-                  {error}
-                </p>
-              ) : null}
-              <div className={cn(COMPOSER_FOOTER_ROW_CLASS_NAME, "gap-2")}>
-                <ComposerEnvironmentPicker
-                  environmentPresentation={resolveThreadEnvironmentPresentation({ envMode })}
-                  onEnvModeChange={setEnvMode}
-                  canSwitchToWorktree={canUseWorktree && envMode === "local"}
-                  disabled={busy}
-                  onOpenChange={(open) => {
-                    environmentMenuOpenRef.current = open;
-                  }}
-                />
-                <Button
-                  type="submit"
-                  variant="prominent"
-                  size="icon-xs"
-                  className="size-7 rounded-full sm:size-7"
-                  aria-label="Send to new chat"
-                  disabled={busy || !prompt.trim()}
-                >
-                  {busy ? (
-                    <LoaderCircleIcon className="size-3 animate-spin" />
-                  ) : (
-                    <ComposerSendArrowIcon
-                      aria-hidden="true"
-                      className="size-5 shrink-0 translate-y-px"
-                    />
-                  )}
-                </Button>
-              </div>
-            </form>
-          </DisclosureRegion>
-        </div>
-      </div>
+      <TranscriptQuickComposerForm
+        inputRef={inputRef}
+        value={prompt}
+        cursor={cursor}
+        busy={busy}
+        error={error}
+        placeholder="Ask about this selection…"
+        editorAriaLabel="Message for new chat"
+        sendAriaLabel="Send to new chat"
+        header={
+          <>
+            <AssistantSelectionsSummaryChip selections={selections} />
+            <div className="flex items-center gap-1">
+              <Button
+                type="button"
+                variant="ghost"
+                size="xs"
+                disabled={busy}
+                onClick={() => {
+                  void submit("compose");
+                }}
+              >
+                Open in chat
+                <ArrowUpRightIcon className="size-3" />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                aria-label="Close new chat composer"
+                disabled={busy}
+                onClick={onClose}
+              >
+                <XIcon className="size-3.5" />
+              </Button>
+            </div>
+          </>
+        }
+        footerLeading={
+          <ComposerEnvironmentPicker
+            environmentPresentation={resolveThreadEnvironmentPresentation({ envMode })}
+            onEnvModeChange={setEnvMode}
+            canSwitchToWorktree={canUseWorktree && envMode === "local"}
+            disabled={busy}
+            onOpenChange={(open) => {
+              environmentMenuOpenRef.current = open;
+            }}
+          />
+        }
+        onChange={(value, nextCursor) => {
+          setPrompt(value);
+          setCursor(nextCursor);
+        }}
+        onSend={() => {
+          void submit("send");
+        }}
+      />
     </div>
   );
 }

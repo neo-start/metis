@@ -27,6 +27,7 @@ const HEATMAP_WINDOW_DAYS = 274; // ~9 months, GitHub-style contribution grid.
 const SKILL_RESULT_LIMIT = 12;
 const PROVIDER_KINDS = new Set<ProviderKind>([
   "codex",
+  "codexSecondary",
   "claudeAgent",
   "cursor",
   "antigravity",

@@ -73,6 +73,14 @@ the conversation or split from one exact turn. Use a
 [handoff](https://www.trysynara.com/docs/workflows/handoffs) when another provider should continue
 the same task and ownership boundary.
 
+Forks render as branches. Every assistant turn offers **Reply here**: the reply composer opens under
+that turn, and sending forks the chat from it and dispatches your reply in the fork. Turns that have
+forks show a branch strip (this chat first, then each fork); a forked chat shows the same strip under
+its "Continued from chat" divider so you can switch between sibling branches. The sidebar nests forks
+under the chat they branched from. A branch taken from an earlier turn sees only the transcript up to
+that turn: the provider does not resume the source session, it is bootstrapped from the imported
+messages.
+
 Sidechats inherit the source chat's selected permissions, including Full access. Approve for me
 is preserved when the selected provider and model support it; otherwise the sidechat uses Ask for
 approval. You can change a sidechat's permissions independently after creating it.
@@ -116,6 +124,10 @@ Synara supplies the shared workspace around it:
 Each task owns a provider session. Available models and controls can differ because Synara discovers
 capabilities from the installed runtime and account.
 
+Metis also keeps its own [soul and long-term memory](./memory.md), independent of any provider. Every
+new provider session receives the soul and a bounded memory index, and agents keep memories current
+with the `synara_memory_*` tools.
+
 ## Handoffs
 
 A [provider handoff](https://www.trysynara.com/docs/workflows/handoffs) lets another supported
@@ -129,6 +141,18 @@ Use a handoff when:
 - You want to continue without manually rebuilding the task context
 
 A handoff does not remove the need to inspect the diff or verify the new provider's work.
+
+### Switching provider mid-chat
+
+A started chat is locked to its provider, but the composer model picker still lists every
+provider. Picking a model from another provider is a provider switch: if the chat is working it
+is interrupted first, then handed off with the picked model. When the source chat was stopped
+mid-work (its newest turn ended "interrupted"), the server queues one continuation turn on the
+new thread so the new provider carries on without being prompted. A handoff from a settled chat
+gets no automatic turn. The same rule applies to a handoff created from the thread menu.
+
+Restarting Metis while chats are running is covered separately by the server setting "resume
+chats after restart", which continues each orphaned chat with one turn at the next boot.
 
 ## Git, checkpoints, and review
 

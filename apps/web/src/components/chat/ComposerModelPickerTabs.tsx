@@ -53,6 +53,8 @@ function PickerTabButton(props: {
 export type ComposerModelPickerProviderTab = {
   provider: ProviderKind;
   label: string;
+  /** Signed-in account, when known, so two instances of one provider can be told apart. */
+  accountEmail: string | null;
   /** Null when the provider can be opened; otherwise why not ("Sign in", "Checking"…). */
   unavailableLabel: string | null;
 };
@@ -62,12 +64,12 @@ export function resolveComposerModelPickerProviderTabs(
   providers: ReadonlyArray<ServerProviderStatus> | undefined,
 ): ComposerModelPickerProviderTab[] {
   return options.map((option) => {
-    const availability = resolveLiveProviderAvailability(
-      providers?.find((entry) => entry.provider === option.value),
-    );
+    const status = providers?.find((entry) => entry.provider === option.value);
+    const availability = resolveLiveProviderAvailability(status);
     return {
       provider: option.value,
       label: option.label,
+      accountEmail: status?.accountEmail ?? null,
       unavailableLabel: availability.disabled ? (availability.label ?? "Unavailable") : null,
     };
   });
@@ -98,11 +100,9 @@ export function ComposerModelPickerTabs(props: {
         return (
           <PickerTabButton
             key={providerTab.provider}
-            label={
-              providerTab.unavailableLabel
-                ? `${providerTab.label} · ${providerTab.unavailableLabel}`
-                : providerTab.label
-            }
+            label={[providerTab.label, providerTab.accountEmail, providerTab.unavailableLabel]
+              .filter(Boolean)
+              .join(" · ")}
             active={props.tab === providerTab.provider}
             disabled={providerTab.unavailableLabel !== null}
             onSelect={() => props.onTabChange(providerTab.provider)}

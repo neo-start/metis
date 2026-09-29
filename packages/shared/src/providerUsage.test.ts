@@ -26,6 +26,7 @@ describe("provider usage metadata", () => {
   it("exposes a live usage source for every Synara provider", () => {
     expect([...PROVIDER_USAGE_PROVIDERS]).toEqual([
       "codex",
+      "codexSecondary",
       "claudeAgent",
       "cursor",
       "antigravity",

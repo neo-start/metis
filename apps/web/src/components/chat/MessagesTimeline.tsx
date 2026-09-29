@@ -61,6 +61,7 @@ import {
   type LucideIcon,
   NewThreadIcon,
   PinIcon,
+  ReplyIcon,
   SteerIcon,
   Undo2Icon,
   WorktreeIcon,
@@ -71,6 +72,9 @@ import { Button } from "../ui/button";
 import { composerOverlayScrollMaskImage } from "./composerOverlay";
 import { CrossTaskOriginLabel, type CrossTaskOrigin } from "./CrossTaskOriginLabel";
 import { ForkSourceDivider, type ForkSourceReference } from "./ForkSourceDivider";
+import { ForkBranchStrip } from "./ForkBranchStrip";
+import { InlineReplyComposer } from "./InlineReplyComposer";
+import type { ForkBranchGroup } from "~/lib/threadForkPoints";
 import { SynaraThreadCreationCard } from "./SynaraThreadCreationCard";
 import { buildExpandedImagePreview, ExpandedImagePreview } from "./ExpandedImagePreview";
 import { ProposedPlanCard } from "./ProposedPlanCard";
@@ -423,6 +427,23 @@ interface MessagesTimelineProps {
   onTogglePinMessage?: (messageId: MessageId) => void;
   /** Fork the thread from the assistant footer, carrying the transcript up to that turn. */
   onForkFromMessage?: (messageId: MessageId) => void;
+  /** Open the inline reply composer under an assistant turn (reply = fork + send). */
+  onReplyFromMessage?: (messageId: MessageId) => void;
+  /** Assistant message whose inline reply composer is open, if any. */
+  replyComposerMessageId?: MessageId | null;
+  /** Send the inline reply: forks from the message and dispatches the prompt in the fork. */
+  onSendReplyFromMessage?: (messageId: MessageId, prompt: string) => Promise<void>;
+  onCloseReplyComposer?: () => void;
+  /** Branches (this chat + forks) keyed by the assistant message they leave from. */
+  forkBranchesByMessageId?: ReadonlyMap<MessageId, ForkBranchGroup>;
+  /** For a forked transcript: the source chat and sibling forks off the same turn. */
+  forkSiblingBranches?: ForkBranchGroup | null;
+  /**
+   * The transcript was opened by a branch switch that lands on the fork point.
+   * Suppresses the end-anchored initial scroll, which LegendList would otherwise
+   * re-apply on every data change and drag a streaming branch back to its tail.
+   */
+  openAtForkPoint?: boolean;
   /** Recorded goal achievements; each renders a footer badge on its turn's terminal assistant message. */
   goalAchievements?: readonly ThreadGoalAchievement[];
   /** User messages inserted locally by send actions, eligible for the subtle enter affordance. */
@@ -532,6 +553,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   canPinMessage,
   onTogglePinMessage,
   onForkFromMessage,
+  onReplyFromMessage,
+  replyComposerMessageId = null,
+  onSendReplyFromMessage,
+  onCloseReplyComposer,
+  forkBranchesByMessageId,
+  forkSiblingBranches = null,
+  openAtForkPoint = false,
   goalAchievements: goalAchievementsProp,
   enteringUserMessageIds: enteringUserMessageIdsProp,
   tailAnchorMessageId: tailAnchorMessageIdProp,
@@ -787,9 +815,20 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const forkSourceDivider = useMemo(
     () =>
       forkSource && onOpenThread ? (
-        <ForkSourceDivider source={forkSource} onOpenSourceThread={onOpenThread} />
+        <>
+          <ForkSourceDivider source={forkSource} onOpenSourceThread={onOpenThread} />
+          {forkSiblingBranches ? (
+            // Sibling switcher sits right under the divider so the fork point reads
+            // as a junction: "continued from chat" above, "which branch" below.
+            <ForkBranchStrip
+              group={forkSiblingBranches}
+              onOpenThread={onOpenThread}
+              className="-mt-2 pb-4"
+            />
+          ) : null}
+        </>
       ) : null,
-    [forkSource, onOpenThread],
+    [forkSiblingBranches, forkSource, onOpenThread],
   );
   const forkDividerBeforeRowId = useMemo(() => {
     if (!canRenderForkSourceDivider) {
@@ -908,9 +947,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       expandedWorkGroupsState,
       findHighlight,
       firstUserMessageId,
+      forkBranchesByMessageId,
+      forkSiblingBranches,
       highlightedMessageId,
       lastLiveWorkGroupId,
       pinnedMessageIds,
+      replyComposerMessageId,
       settledTurnCollapseTransitions,
       submittingEditedUserMessageId,
       toolGroupSummaryOverrides,
@@ -926,9 +968,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       expandedWorkGroupsState,
       findHighlight,
       firstUserMessageId,
+      forkBranchesByMessageId,
+      forkSiblingBranches,
       highlightedMessageId,
       lastLiveWorkGroupId,
       pinnedMessageIds,
+      replyComposerMessageId,
       settledTurnCollapseTransitions,
       submittingEditedUserMessageId,
       toolGroupSummaryOverrides,
@@ -1846,6 +1891,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           // ephemeral or still-streaming bubble has no turn to fork from.
           const showForkAction =
             messageCanPin && Boolean(onForkFromMessage) && assistantCopyState.visible;
+          const showReplyAction =
+            messageCanPin && Boolean(onReplyFromMessage) && assistantCopyState.visible;
+          const forkBranchGroup = forkBranchesByMessageId?.get(row.message.id) ?? null;
+          const replyComposerOpen = replyComposerMessageId === row.message.id;
           const turnSummary = row.assistantTurnDiffSummary;
           const fileDiffStatByPath = new Map(
             (turnSummary?.files ?? []).map((file) => [
@@ -2467,6 +2516,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                 })()}
                 {(showPinToggle ||
                   showForkAction ||
+                  showReplyAction ||
                   assistantCopyState.visible ||
                   assistantMeta.length > 0 ||
                   goalAchievement !== null) && (
@@ -2489,6 +2539,21 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                         onClick={() => onForkFromMessage?.(row.message.id)}
                       >
                         <GitForkIcon className={MESSAGE_ACTION_ICON_CLASS_NAME} />
+                      </MessageActionButton>
+                    ) : null}
+                    {showReplyAction ? (
+                      <MessageActionButton
+                        label="Reply from this turn"
+                        tooltip="Reply here (new branch)"
+                        aria-pressed={replyComposerOpen}
+                        className={replyComposerOpen ? "text-foreground" : undefined}
+                        onClick={() =>
+                          replyComposerOpen
+                            ? onCloseReplyComposer?.()
+                            : onReplyFromMessage?.(row.message.id)
+                        }
+                      >
+                        <ReplyIcon className={MESSAGE_ACTION_ICON_CLASS_NAME} />
                       </MessageActionButton>
                     ) : null}
                     {showPinToggle ? (
@@ -2527,6 +2592,22 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                     ) : null}
                   </div>
                 )}
+                {forkBranchGroup && onOpenThread ? (
+                  <ForkBranchStrip
+                    group={forkBranchGroup}
+                    onOpenThread={onOpenThread}
+                    className="mt-2"
+                  />
+                ) : null}
+                {replyComposerOpen && onSendReplyFromMessage && onCloseReplyComposer ? (
+                  <InlineReplyComposer
+                    key={`reply:${row.message.id}`}
+                    draftKey={row.message.id}
+                    className="mt-3"
+                    onSend={(prompt) => onSendReplyFromMessage(row.message.id, prompt)}
+                    onClose={onCloseReplyComposer}
+                  />
+                ) : null}
               </div>
             </>
           );
@@ -2620,7 +2701,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         // change while this is true, which would yank a live post-send anchor
         // out of its hold. A remount that inherits an already-settled anchor has
         // no slide to preserve, so bootstrapping at the end is what we want.
-        initialScrollAtEnd={tailAnchorMessageId === null || hasInheritedTailAnchor}
+        initialScrollAtEnd={
+          !openAtForkPoint && (tailAnchorMessageId === null || hasInheritedTailAnchor)
+        }
         {...(anchoredEndSpace ? { anchoredEndSpace } : {})}
         maintainScrollAtEnd={followLiveOutput && !tailAnchorSlideInFlight}
         maintainScrollAtEndThreshold={0.1}

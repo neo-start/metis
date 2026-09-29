@@ -1,9 +1,9 @@
 // FILE: SynaraLogo.tsx
-// Purpose: Render the Synara mark as an inline SVG that follows theme foreground color.
+// Purpose: Render the selected Metis mark through the inherited SVG icon interface.
 // Layer: Shared app branding primitive
 
 import type { SVGProps } from "react";
-import { SYNARA_LOGO_PATHS } from "~/assets/synaraLogoPath";
+import { APP_LOGO_URL } from "~/branding";
 import { cn } from "~/lib/utils";
 
 export function SynaraLogo({ className, ...props }: SVGProps<SVGSVGElement>) {
@@ -11,16 +11,14 @@ export function SynaraLogo({ className, ...props }: SVGProps<SVGSVGElement>) {
 
   return (
     <svg
-      viewBox="0 0 470 504"
+      viewBox="0 0 1254 1254"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden={ariaLabel ? undefined : true}
       {...props}
       className={cn("shrink-0 text-foreground", className)}
     >
-      {SYNARA_LOGO_PATHS.map((path) => (
-        <path key={path} d={path} fill="currentColor" />
-      ))}
+      <image href={APP_LOGO_URL} width="1254" height="1254" />
     </svg>
   );
 }

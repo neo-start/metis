@@ -19,7 +19,7 @@ import {
   type SerializedTextNode,
   type Spread,
 } from "lexical";
-import type { ProviderKind } from "@synara/contracts";
+import { PROVIDER_DISPLAY_NAMES, type ProviderKind } from "@synara/contracts";
 import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
@@ -140,6 +140,9 @@ function renderMentionChipDom(
               fallback={<MessageCircleIcon className="size-full" />}
             />,
           );
+          if (provider) {
+            host.title = PROVIDER_DISPLAY_NAMES[provider];
+          }
           return host;
         })()
       : createMentionChipIconElement(pathValue, kind, COMPOSER_INLINE_CHIP_INLINE_ICON_CLASS_NAME);

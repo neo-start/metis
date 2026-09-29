@@ -67,6 +67,9 @@ export const ORCHESTRATION_WS_CHANNELS = {
 
 export const ProviderKind = Schema.Literals([
   "codex",
+  // A second Codex instance with its own CODEX_HOME, so two ChatGPT accounts
+  // can run side by side. Shares Codex models, options and runtime.
+  "codexSecondary",
   "claudeAgent",
   "cursor",
   "antigravity",
@@ -77,6 +80,16 @@ export const ProviderKind = Schema.Literals([
   "devin",
 ]);
 export type ProviderKind = typeof ProviderKind.Type;
+
+/** Provider kinds backed by the Codex app-server runtime (one per ChatGPT account). */
+export const CODEX_PROVIDER_KINDS = ["codex", "codexSecondary"] as const;
+export type CodexProviderKind = (typeof CODEX_PROVIDER_KINDS)[number];
+
+export function isCodexProviderKind(
+  provider: string | null | undefined,
+): provider is CodexProviderKind {
+  return provider === "codex" || provider === "codexSecondary";
+}
 
 /**
  * Providers that no longer exist as `ProviderKind` members but may survive in
@@ -124,6 +137,13 @@ export const CodexModelSelection = Schema.Struct({
   options: Schema.optional(CodexModelOptions),
 });
 export type CodexModelSelection = typeof CodexModelSelection.Type;
+
+export const CodexSecondaryModelSelection = Schema.Struct({
+  provider: Schema.Literal("codexSecondary"),
+  model: TrimmedNonEmptyString,
+  options: Schema.optional(CodexModelOptions),
+});
+export type CodexSecondaryModelSelection = typeof CodexSecondaryModelSelection.Type;
 
 export const ClaudeModelSelection = Schema.Struct({
   provider: Schema.Literal("claudeAgent"),
@@ -184,6 +204,7 @@ export type DevinModelSelection = typeof DevinModelSelection.Type;
 
 export const ModelSelection = Schema.Union([
   CodexModelSelection,
+  CodexSecondaryModelSelection,
   ClaudeModelSelection,
   CursorModelSelection,
   DevinModelSelection,
@@ -241,6 +262,7 @@ export const DevinProviderStartOptions = Schema.Struct({
 
 export const ProviderStartOptions = Schema.Struct({
   codex: Schema.optional(CodexProviderStartOptions),
+  codexSecondary: Schema.optional(CodexProviderStartOptions),
   claudeAgent: Schema.optional(ClaudeProviderStartOptions),
   cursor: Schema.optional(CursorProviderStartOptions),
   devin: Schema.optional(DevinProviderStartOptions),

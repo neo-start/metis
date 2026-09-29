@@ -120,14 +120,14 @@ export function resolveComputerAvailabilityView(
       return {
         kind: "ready",
         title: "All permissions granted",
-        description: "Synara connects to the desktop the next time an agent uses it.",
+        description: "Metis connects to the desktop the next time an agent uses it.",
       };
     }
     if (health && health.status !== "connected") {
       return {
         kind: "checking",
         title: "Computer access has not been checked",
-        description: "Choose Set up to check that Synara can see and control the desktop.",
+        description: "Choose Set up to check that Metis can see and control the desktop.",
       };
     }
     if (health?.captureAvailable === false) {
@@ -135,20 +135,20 @@ export function resolveComputerAvailabilityView(
         kind: "blocked",
         title: "Screen capture is unavailable",
         description:
-          "Desktop input is connected, but Synara cannot take screenshots. Choose Set up to check access.",
+          "Desktop input is connected, but Metis cannot take screenshots. Choose Set up to check access.",
       };
     }
     return {
       kind: "ready",
       title: "Connected to the desktop",
-      description: "Synara can see and control the desktop through its computer tools.",
+      description: "Metis can see and control the desktop through its computer tools.",
     };
   }
   if (availability.kind === "unsupported-platform") {
     return {
       kind: "blocked",
       title: "Computer control is unavailable",
-      description: `This server is running on ${availability.platform}. Computer control needs macOS, or a Wayland desktop on Linux — KWin or Hyprland, or Synara's own nested desktop.`,
+      description: `This server is running on ${availability.platform}. Computer control needs macOS, or a Wayland desktop on Linux — KWin or Hyprland, or Metis's own nested desktop.`,
     };
   }
   // A withheld grant is blocked like anything else, but it is the one blocked

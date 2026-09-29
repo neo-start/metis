@@ -42,6 +42,8 @@ function getProviderStartOptionsCustomBinaryPath(
   switch (provider) {
     case "codex":
       return normalizeCustomBinaryPath(providerOptions?.codex?.binaryPath);
+    case "codexSecondary":
+      return normalizeCustomBinaryPath(providerOptions?.codexSecondary?.binaryPath);
     case "claudeAgent":
       return normalizeCustomBinaryPath(providerOptions?.claudeAgent?.binaryPath);
     case "antigravity":

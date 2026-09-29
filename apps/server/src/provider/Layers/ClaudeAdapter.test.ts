@@ -696,14 +696,14 @@ function fakeSlashCommand(entry: string) {
   return alias ? Object.assign(command, { aliases: [alias] }) : command;
 }
 
-describe("Claude Synara harness policy", () => {
+describe("Claude Metis harness policy", () => {
   it("advertises scoped MCP additively when credentials are available", () => {
     const text = buildEmbeddedClaudeSystemPromptAppend(true);
     assert.include(text, SYNARA_HARNESS_POLICY_MARKER);
     assert.include(text, "Final responses must restate every needed scope");
     assert.include(text, "include all decision context");
     assert.include(text, "Use the synara_* tools");
-    assert.notInclude(text, "Synara MCP control is unavailable");
+    assert.notInclude(text, "Metis MCP control is unavailable");
   });
 
   it("stays truthful when scoped MCP credentials are absent", () => {
@@ -711,7 +711,7 @@ describe("Claude Synara harness policy", () => {
     assert.include(text, SYNARA_HARNESS_POLICY_MARKER);
     assert.include(text, "Final responses must restate every needed scope");
     assert.include(text, "include all decision context");
-    assert.include(text, "Synara MCP control is unavailable");
+    assert.include(text, "Metis MCP control is unavailable");
   });
 });
 
@@ -786,7 +786,7 @@ describe("ClaudeAdapterLive", () => {
     },
   );
 
-  it.effect("injects the canonical Synara browser MCP into an Opus 4.8 session", () => {
+  it.effect("injects the canonical Metis browser MCP into an Opus 4.8 session", () => {
     const gateway = makeGatewayCredentialsHarness();
     const harness = makeMultiQueryHarness({ gatewayCredentials: gateway.credentials });
     return Effect.gen(function* () {
@@ -1034,9 +1034,9 @@ describe("ClaudeAdapterLive", () => {
       assert.include(systemPrompt.append ?? "", "When spawning subagents");
       assert.include(systemPrompt.append ?? "", "worker-<tier>");
       assert.include(systemPrompt.append ?? "", SYNARA_HARNESS_POLICY_MARKER);
-      assert.include(systemPrompt.append ?? "", "Synara is the host and harness");
+      assert.include(systemPrompt.append ?? "", "Metis is the host and harness");
       // This characterization harness intentionally omits gateway credentials.
-      assert.include(systemPrompt.append ?? "", "Synara MCP control is unavailable");
+      assert.include(systemPrompt.append ?? "", "Metis MCP control is unavailable");
     }).pipe(
       Effect.provideService(Random.Random, makeDeterministicRandomService()),
       Effect.provide(harness.layer),
@@ -3025,6 +3025,91 @@ describe("ClaudeAdapterLive", () => {
         const detail = firstNotice.payload.detail as Record<string, unknown>;
         assert.equal(detail.subtype, "background_tasks_changed");
       }
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
+  it.effect("vouches for live task ids only after the background snapshot arrives", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      const warnings = yield* Queue.unbounded<string>();
+      yield* adapter.streamEvents.pipe(
+        Stream.filter((event) => event.type === "runtime.warning"),
+        Stream.runForEach((event) =>
+          event.type === "runtime.warning"
+            ? Queue.offer(warnings, event.payload.message)
+            : Effect.void,
+        ),
+        Effect.forkChild,
+      );
+      yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: "claudeAgent",
+        runtimeMode: "full-access",
+      });
+      const drain = (uuid: string) =>
+        Effect.gen(function* () {
+          harness.query.emit({
+            type: "system",
+            // Unknown kinds warn once per session, so each sentinel is unique.
+            subtype: `sentinel_${uuid}`,
+            session_id: "sdk-session-live-ids",
+            uuid,
+          } as unknown as SDKMessage);
+          while (!(yield* Queue.take(warnings)).includes(`sentinel_${uuid}`)) {
+            // Skip background notices until the sentinel is processed.
+          }
+        });
+
+      assert.equal(typeof adapter.getLiveTaskIds, "function");
+      // A task that starts without any background snapshot cannot prove the
+      // runtime idle: older CLIs never send background_tasks_changed.
+      harness.query.emit({
+        type: "system",
+        subtype: "task_started",
+        task_id: "agent-without-notification",
+        description: "Sandbox image and Docker provider",
+        task_type: "local_agent",
+        session_id: "sdk-session-live-ids",
+        uuid: "live-ids-task-started",
+      } as unknown as SDKMessage);
+      yield* drain("live-ids-sentinel-1");
+      assert.equal(yield* adapter.getLiveTaskIds!(THREAD_ID), undefined);
+
+      harness.query.emit({
+        type: "system",
+        subtype: "background_tasks_changed",
+        tasks: [
+          {
+            task_id: "bg-poll",
+            task_type: "local_bash",
+            description: "Wait properly for community agent upload result",
+          },
+        ],
+        session_id: "sdk-session-live-ids",
+        uuid: "live-ids-change-1",
+      } as unknown as SDKMessage);
+      yield* drain("live-ids-sentinel-2");
+      // The still-running background Bash stays authoritative; the agent whose
+      // terminal notification never arrived is not reported as live.
+      assert.deepEqual(Array.from((yield* adapter.getLiveTaskIds!(THREAD_ID)) ?? []), ["bg-poll"]);
+
+      harness.query.emit({
+        type: "system",
+        subtype: "background_tasks_changed",
+        tasks: [],
+        session_id: "sdk-session-live-ids",
+        uuid: "live-ids-change-2",
+      } as unknown as SDKMessage);
+      yield* drain("live-ids-sentinel-3");
+      assert.equal((yield* adapter.getLiveTaskIds!(THREAD_ID))?.size, 0);
+      assert.equal(
+        yield* adapter.getLiveTaskIds!(ThreadId.makeUnsafe("thread-without-session")),
+        undefined,
+      );
     }).pipe(
       Effect.provideService(Random.Random, makeDeterministicRandomService()),
       Effect.provide(harness.layer),
@@ -10735,7 +10820,7 @@ await agent("Draft the spec", { label: "delta-agent", phase: "Two" });
       const promptText = yield* Effect.promise(() =>
         readFirstPromptText(harness.getLastCreateQueryInput()),
       );
-      assert.include(promptText ?? "", "Synara plan mode is active.");
+      assert.include(promptText ?? "", "Metis plan mode is active.");
       assert.include(promptText ?? "", "<proposed_plan>");
       assert.include(promptText ?? "", "User request:\nplan this for me");
     }).pipe(
@@ -12598,7 +12683,7 @@ describe("Claude explicit native compaction", () => {
           if (native) {
             assert.equal(text, input);
           } else {
-            assert.include(text, "Synara plan mode is active.");
+            assert.include(text, "Metis plan mode is active.");
           }
         }).pipe(
           Effect.provideService(Random.Random, makeDeterministicRandomService()),

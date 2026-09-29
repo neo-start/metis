@@ -4,7 +4,7 @@
  * Centralizes provider-to-icon mapping so new providers do not need repeated
  * branching across every UI surface.
  */
-import { type ProviderKind } from "@synara/contracts";
+import { PROVIDER_DISPLAY_NAMES, type ProviderKind, isCodexProviderKind } from "@synara/contracts";
 import type { ReactNode, SVGProps } from "react";
 
 import { CentralIcon } from "~/lib/central-icons";
@@ -21,6 +21,7 @@ import {
   OpenCodeIcon,
   PiIcon,
 } from "./Icons";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
 export type ProviderIconTone = "default" | "header";
 
@@ -65,6 +66,7 @@ const OpenCodeProviderIcon = ({
 
 export const PROVIDER_ICON_COMPONENT_BY_PROVIDER: Record<ProviderKind, Icon> = {
   codex: OpenAI,
+  codexSecondary: OpenAI,
   claudeAgent: ClaudeAI,
   cursor: CursorIcon,
   devin: DevinIcon,
@@ -82,7 +84,7 @@ export function providerIconToneClassName(
   if (provider === "opencode") {
     return "text-muted-foreground/70";
   }
-  if (provider === "codex") {
+  if (isCodexProviderKind(provider)) {
     return tone === "header" ? "text-muted-foreground/85" : "text-foreground";
   }
   return "text-foreground";
@@ -92,12 +94,28 @@ export type ProviderIconProps = Omit<SVGProps<SVGSVGElement>, "ref"> & {
   readonly provider: ProviderKind | null | undefined;
   readonly fallback?: ReactNode;
   readonly tone?: ProviderIconTone;
+  /**
+   * Names the provider on hover for icon-only surfaces, where two instances of
+   * one runtime (Codex / codex-personal) otherwise look identical. `true` shows
+   * the display name; a string replaces it.
+   */
+  readonly tooltip?: boolean | string;
 };
+
+/** Tooltip text for a provider icon: its display name, plus the account when known. */
+export function providerIconTooltipLabel(
+  provider: ProviderKind,
+  accountEmail?: string | null,
+): string {
+  const name = PROVIDER_DISPLAY_NAMES[provider];
+  return accountEmail ? `${name} · ${accountEmail}` : name;
+}
 
 export function ProviderIcon({
   provider,
   fallback: fallbackProp,
   tone: toneProp,
+  tooltip,
   className,
   "aria-hidden": ariaHiddenProp,
   ...svgProps
@@ -110,12 +128,26 @@ export function ProviderIcon({
   }
 
   const Icon = PROVIDER_ICON_COMPONENT_BY_PROVIDER[provider];
-  return (
+  const icon = (
     <Icon
       aria-hidden={ariaHidden}
       {...svgProps}
       className={cn(providerIconToneClassName(provider, tone), className)}
     />
+  );
+  if (!tooltip) {
+    return icon;
+  }
+  const label = typeof tooltip === "string" ? tooltip : providerIconTooltipLabel(provider);
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={<span className="inline-flex shrink-0 items-center" aria-label={label} />}
+      >
+        {icon}
+      </TooltipTrigger>
+      <TooltipPopup side="top">{label}</TooltipPopup>
+    </Tooltip>
   );
 }
 

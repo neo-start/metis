@@ -80,7 +80,7 @@ describe("source desktop launch", () => {
       env: {
         PATH: "/usr/bin",
         SYNARA_DESKTOP_FLAVOR: "development",
-        SYNARA_HOME: join("/Users/tester", ".synara-dev"),
+        SYNARA_HOME: join("/Users/tester", ".agent-workbench-dev"),
         SYNARA_SOURCE_DESKTOP_BUILD_MARKER,
       },
       stdio: "inherit",

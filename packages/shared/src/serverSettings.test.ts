@@ -15,6 +15,11 @@ describe("providerStartOptionsFromServerSettings", () => {
           binaryPath: "",
           homePath: "",
         },
+        codexSecondary: {
+          ...DEFAULT_SERVER_SETTINGS.providers.codexSecondary,
+          binaryPath: "",
+          homePath: "",
+        },
         claudeAgent: {
           ...DEFAULT_SERVER_SETTINGS.providers.claudeAgent,
           binaryPath: "",
@@ -64,6 +69,7 @@ describe("providerStartOptionsFromServerSettings", () => {
       }),
     ).not.toThrow();
     expect(providerOptions.codex).toEqual({});
+    expect(providerOptions.codexSecondary).toEqual({});
     expect(providerOptions.claudeAgent).toEqual({ enableArtifacts: false });
     expect(providerOptions.cursor).toEqual({});
     expect(providerOptions.antigravity).toEqual({});

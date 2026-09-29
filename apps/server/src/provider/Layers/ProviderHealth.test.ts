@@ -11,7 +11,7 @@ import * as PlatformError from "effect/PlatformError";
 import { ChildProcessSpawner } from "effect/unstable/process";
 import { vi } from "vitest";
 
-import { SYNARA_CODEX_HOME_OVERLAY_DIR } from "../../codexHomePaths";
+import { resolveSynaraCodexHomeOverlayPath } from "../../codexHomePaths";
 import { ServerConfig } from "../../config";
 import { ServerSettingsService } from "../../serverSettings";
 import { ProviderHealth } from "../Services/ProviderHealth";
@@ -157,6 +157,7 @@ function hangingSpawnerLayer(input: {
 const allProvidersDisabledSettings = {
   providers: {
     codex: { enabled: false },
+    codexSecondary: { enabled: false },
     claudeAgent: { enabled: false },
     cursor: { enabled: false },
     devin: { enabled: false },
@@ -172,6 +173,7 @@ const allProvidersDisabledServerSettings = {
   ...DEFAULT_SERVER_SETTINGS,
   providers: {
     codex: { ...DEFAULT_SERVER_SETTINGS.providers.codex, enabled: false },
+    codexSecondary: { ...DEFAULT_SERVER_SETTINGS.providers.codexSecondary, enabled: false },
     claudeAgent: { ...DEFAULT_SERVER_SETTINGS.providers.claudeAgent, enabled: false },
     cursor: { ...DEFAULT_SERVER_SETTINGS.providers.cursor, enabled: false },
     devin: { ...DEFAULT_SERVER_SETTINGS.providers.devin, enabled: false },
@@ -493,7 +495,7 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
         available: false,
         authStatus: "unknown",
         checkedAt: "2026-06-16T12:00:00.000Z",
-        message: "Provider is disabled in Synara settings.",
+        message: "Provider is disabled in Metis settings.",
       });
     });
 
@@ -505,9 +507,9 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
       );
       const codex = statuses.find((status) => status.provider === "codex");
 
-      assert.strictEqual(statuses.length, 9);
+      assert.strictEqual(statuses.length, 10);
       assert.strictEqual(codex?.available, false);
-      assert.strictEqual(codex?.message, "Provider is disabled in Synara settings.");
+      assert.strictEqual(codex?.message, "Provider is disabled in Metis settings.");
     });
 
     it("suppresses cached update advisories when automatic update checks are disabled", () => {
@@ -568,7 +570,7 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
         const cachedCodex = yield* readProviderStatusCache(cachePath);
 
         assert.strictEqual(codex?.available, false);
-        assert.strictEqual(codex?.message, "Provider is disabled in Synara settings.");
+        assert.strictEqual(codex?.message, "Provider is disabled in Metis settings.");
         assert.deepStrictEqual(cachedCodex, cachedReadyCodexStatus);
       }),
     );
@@ -615,7 +617,7 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
           const disabledCodex = disabledStatuses.find((status) => status.provider === "codex");
 
           assert.strictEqual(disabledCodex?.available, false);
-          assert.strictEqual(disabledCodex?.message, "Provider is disabled in Synara settings.");
+          assert.strictEqual(disabledCodex?.message, "Provider is disabled in Metis settings.");
 
           yield* serverSettings.updateSettings({
             providers: {
@@ -629,7 +631,7 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
           const currentCodex = currentStatuses.find((status) => status.provider === "codex");
           assert.strictEqual(currentCodex?.available, true);
           assert.strictEqual(currentCodex?.authStatus, "authenticated");
-          assert.notStrictEqual(currentCodex?.message, "Provider is disabled in Synara settings.");
+          assert.notStrictEqual(currentCodex?.message, "Provider is disabled in Metis settings.");
           assert.strictEqual(spawnCount, 0);
         }).pipe(Effect.provide(layer));
       }),
@@ -640,10 +642,10 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
         const providerHealth = yield* ProviderHealth;
         const statuses = yield* providerHealth.refresh;
 
-        assert.strictEqual(statuses.length, 9);
+        assert.strictEqual(statuses.length, 10);
         for (const status of statuses) {
           assert.strictEqual(status.available, false);
-          assert.strictEqual(status.message, "Provider is disabled in Synara settings.");
+          assert.strictEqual(status.message, "Provider is disabled in Metis settings.");
           assert.strictEqual(status.versionAdvisory?.status, "unknown");
           assert.strictEqual(status.versionAdvisory?.canUpdate, false);
           assert.strictEqual(status.versionAdvisory?.updateCommand, null);
@@ -745,15 +747,15 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
           assert.ok(commands.some((command) => command.includes("droid")));
           assert.notStrictEqual(
             statuses.find((status) => status.provider === "opencode")?.message,
-            "Provider is disabled in Synara settings.",
+            "Provider is disabled in Metis settings.",
           );
           assert.notStrictEqual(
             statuses.find((status) => status.provider === "pi")?.message,
-            "Provider is disabled in Synara settings.",
+            "Provider is disabled in Metis settings.",
           );
           assert.notStrictEqual(
             statuses.find((status) => status.provider === "droid")?.message,
-            "Provider is disabled in Synara settings.",
+            "Provider is disabled in Metis settings.",
           );
         }).pipe(Effect.provide(layer));
       }),
@@ -766,7 +768,7 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
 
         assert.ok(error instanceof ServerProviderUpdateError);
         assert.strictEqual(error.provider, "opencode");
-        assert.strictEqual(error.reason, "Provider is disabled in Synara settings.");
+        assert.strictEqual(error.reason, "Provider is disabled in Metis settings.");
       }).pipe(Effect.provide(disabledProviderHealthLayer)),
     );
   });
@@ -795,7 +797,10 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
           return yield* providerHealth.getStatuses;
         }).pipe(Effect.provide(layer));
 
-        assert.deepStrictEqual(statuses, []);
+        assert.strictEqual(statuses.length, 1);
+        assert.strictEqual(statuses[0]?.provider, "codexSecondary");
+        assert.strictEqual(statuses[0]?.available, false);
+        assert.strictEqual(statuses[0]?.message, "Provider is disabled in Metis settings.");
         assert.strictEqual(spawnCount, 0);
       }),
     );
@@ -1123,7 +1128,7 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
       return Effect.gen(function* () {
         const fileSystem = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
-        const { tmpDir, runtimeDir } = yield* withTempCodexHome();
+        const { tmpDir } = yield* withTempCodexHome();
         yield* fileSystem.writeFileString(
           path.join(tmpDir, "config.toml"),
           'model_provider = "portkey"\n',
@@ -1135,7 +1140,7 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
           path.join(configuredHome, "config.toml"),
           'model_provider = "openai"\n',
         );
-        expectedCodexHome = path.join(runtimeDir, SYNARA_CODEX_HOME_OVERLAY_DIR);
+        expectedCodexHome = resolveSynaraCodexHomeOverlayPath(process.env, configuredHome);
 
         const status = yield* makeCheckCodexProviderStatus("codex", configuredHome);
         assert.strictEqual(status.status, "ready");
@@ -1180,7 +1185,7 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
         assert.strictEqual(status.authStatus, "unknown");
         assert.strictEqual(
           status.message,
-          "Codex CLI v0.36.0 is too old for Synara. Upgrade to v0.37.0 or newer and restart Synara.",
+          "Codex CLI v0.36.0 is too old for Metis. Upgrade to v0.37.0 or newer and restart Metis.",
         );
       }).pipe(
         Effect.provide(
@@ -2069,7 +2074,7 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
         assert.strictEqual(status.status, "ready");
         assert.strictEqual(
           status.message,
-          "Pi CLI is installed. Synara will use Pi agent dir /tmp/pi-agent.",
+          "Pi CLI is installed. Metis will use Pi agent dir /tmp/pi-agent.",
         );
       }).pipe(
         Effect.provide(
@@ -2092,7 +2097,7 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
         assert.strictEqual(status.authStatus, "unknown");
         assert.strictEqual(
           status.message,
-          "Pi SDK is bundled, but the Pi CLI (`pi`) is not on PATH, so Synara could not verify the installed CLI version.",
+          "Pi SDK is bundled, but the Pi CLI (`pi`) is not on PATH, so Metis could not verify the installed CLI version.",
         );
       }).pipe(Effect.provide(failingSpawnerLayer("spawn pi ENOENT"))),
     );
@@ -2107,7 +2112,7 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
         assert.strictEqual(status.version, "1.0.11");
         assert.strictEqual(
           status.message,
-          "Antigravity CLI 1.0.11 is too old for Synara. Upgrade to 1.0.12 or newer.",
+          "Antigravity CLI 1.0.11 is too old for Metis. Upgrade to 1.0.12 or newer.",
         );
       }).pipe(
         Effect.provide(

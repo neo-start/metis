@@ -22,6 +22,7 @@ import {
   type ProviderKind,
   type ProviderRuntimeEvent,
   type RuntimeMode,
+  isCodexProviderKind,
 } from "@synara/contracts";
 import {
   Cache,
@@ -370,7 +371,7 @@ function reasoningSummaryBufferKey(
   event: ProviderRuntimeEvent,
   threadId = event.threadId,
 ): string | null {
-  if ((event.provider !== "codex" && event.provider !== "antigravity") || !event.itemId) {
+  if ((!isCodexProviderKind(event.provider) && event.provider !== "antigravity") || !event.itemId) {
     return null;
   }
   if (
@@ -410,7 +411,7 @@ function withBufferedReasoningSummary(
 ): ProviderRuntimeEvent {
   if (
     event.type !== "item.completed" ||
-    (event.provider !== "codex" && event.provider !== "antigravity") ||
+    (!isCodexProviderKind(event.provider) && event.provider !== "antigravity") ||
     event.payload.itemType !== "reasoning" ||
     readableReasoningDetail(event.payload.detail)
   ) {

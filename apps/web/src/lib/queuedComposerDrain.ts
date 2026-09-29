@@ -108,6 +108,25 @@ export function isQueuedComposerAwaitingTurnStart(threadId: ThreadId): boolean {
   return awaitingTurnStartsByThreadId.has(threadId);
 }
 
+// A server thread created by a fork has no session yet, so its phase reads as
+// "disconnected" and the auto-dispatch hold would keep a queued first turn
+// forever. An inline reply explicitly asks for that first send, so it grants a
+// one-shot exemption for exactly that thread; the grant is dropped as soon as
+// the thread has a session or its queue empties.
+const firstSendGrantedThreadIds = new Set<ThreadId>();
+
+export function grantQueuedComposerFirstSend(threadId: ThreadId): void {
+  firstSendGrantedThreadIds.add(threadId);
+}
+
+export function hasQueuedComposerFirstSendGrant(threadId: ThreadId): boolean {
+  return firstSendGrantedThreadIds.has(threadId);
+}
+
+export function revokeQueuedComposerFirstSendGrant(threadId: ThreadId): void {
+  firstSendGrantedThreadIds.delete(threadId);
+}
+
 export function tryBeginQueuedComposerAutoDispatch(threadId: ThreadId): boolean {
   if (autoDispatchLocks.has(threadId)) {
     return false;

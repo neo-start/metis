@@ -4,7 +4,7 @@
 // Exports: AdvancedSettingsPanel
 
 import { useQuery } from "@tanstack/react-query";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { logoutCurrentBrowserSession } from "~/authLogout";
 import { APP_VERSION } from "~/branding";
@@ -16,6 +16,13 @@ import { toastManager } from "~/components/ui/toast";
 import { ensureNativeApi, readNativeApi } from "~/nativeApi";
 import { serverAuthSessionQueryOptions, serverConfigQueryOptions } from "~/lib/serverReactQuery";
 import { cn } from "~/lib/utils";
+import {
+  CURRENT_LOCAL_BUILD,
+  LOCAL_BUILD_CHANGES,
+  fetchServedBundleId,
+  localBuildLabel,
+  readRunningBundleId,
+} from "~/localBuild";
 import { SETTINGS_INSET_LIST_CLASS_NAME } from "~/settingsPanelStyles";
 import { useStore } from "~/store";
 import { createAllThreadsMessagelessSelector, createThreadShellsSelector } from "~/storeSelectors";
@@ -38,6 +45,13 @@ export function AdvancedSettingsPanel(props: {
 
   const [isOpeningKeybindings, setIsOpeningKeybindings] = useState(false);
   const [isRepairingLocalState, setIsRepairingLocalState] = useState(false);
+  const [showLocalChanges, setShowLocalChanges] = useState(false);
+  // Read once per window: this is the bundle the window booted with, and it does
+  // not change until the app restarts even if a newer build lands on disk.
+  const [runningBundleId] = useState(readRunningBundleId);
+  // Re-read the served shell periodically while this panel is open, so a rebuild
+  // that lands after the window started shows up without touching anything.
+  const [servedBundleId, setServedBundleId] = useState<string | null>(null);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [showRecoveryTools, setShowRecoveryTools] = useState(false);
   const [openKeybindingsError, setOpenKeybindingsError] = useState<string | null>(null);
@@ -46,6 +60,26 @@ export function AdvancedSettingsPanel(props: {
     setShowRecoveryTools(false);
     setOpenKeybindingsError(null);
   });
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const checkServedBundle = async () => {
+      const bundleId = await fetchServedBundleId(controller.signal);
+      if (!controller.signal.aborted) setServedBundleId(bundleId);
+    };
+    void checkServedBundle();
+    const timer = window.setInterval(() => void checkServedBundle(), 20_000);
+    return () => {
+      controller.abort();
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  // A rebuild replaces the chunks on disk, but a window keeps serving the bundle it
+  // booted with, so a mismatched hash means a restart is what loads the new build.
+  const newerBuildOnDisk =
+    runningBundleId !== null && servedBundleId !== null && runningBundleId !== servedBundleId;
+  const canRelaunch = typeof window !== "undefined" && window.desktopBridge?.customTitleBar != null;
 
   const keybindingsConfigPath = configQuery.data?.keybindingsConfigPath ?? null;
   const availableEditors = configQuery.data?.availableEditors;
@@ -140,7 +174,7 @@ export function AdvancedSettingsPanel(props: {
         <SettingsSection title="Session">
           <SettingsRow
             title="This browser"
-            description="Revoke this browser session and close every live Synara connection it owns. A fresh pairing link is required to reconnect."
+            description="Revoke this browser session and close every live Metis connection it owns. A fresh pairing link is required to reconnect."
             status={`Authenticated as ${authSessionQuery.data.role ?? "client"}.`}
             control={
               <Button
@@ -246,6 +280,77 @@ export function AdvancedSettingsPanel(props: {
             </code>
           }
         />
+        <SettingsRow
+          title="Build"
+          description="The local change this window was built from. Every change bumps the number, but a running window keeps the build it started with, so check it again after restarting to confirm the newest build is live."
+          status={
+            newerBuildOnDisk ? (
+              <span className="text-warning">
+                {`This window is still running the build it started with. The bundle on disk is now ${servedBundleId} — restart Metis to load it.`}
+              </span>
+            ) : undefined
+          }
+          control={
+            <div className="flex items-center gap-2">
+              {newerBuildOnDisk && canRelaunch ? (
+                <Button
+                  size="xs"
+                  type="button"
+                  variant="outline"
+                  // `customTitleBar.relaunch` is the app's generic relaunch IPC
+                  // (app.relaunch + graceful quit); its preference row is the
+                  // Windows/Linux feature, not the handler.
+                  onClick={() => void window.desktopBridge?.customTitleBar?.relaunch()}
+                >
+                  Restart
+                </Button>
+              ) : null}
+              <code className="text-ui leading-snug font-medium text-muted-foreground">
+                {[
+                  localBuildLabel(),
+                  CURRENT_LOCAL_BUILD.date,
+                  runningBundleId ? `bundle ${runningBundleId}` : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </code>
+            </div>
+          }
+        >
+          <div className="mt-3 border-t border-border/70 pt-3">
+            <button
+              type="button"
+              className="flex w-full items-center justify-between text-left"
+              aria-expanded={showLocalChanges}
+              onClick={() => setShowLocalChanges((current) => !current)}
+            >
+              <span className="text-ui leading-snug font-medium text-muted-foreground">
+                {`All local changes (${LOCAL_BUILD_CHANGES.length})`}
+              </span>
+              <DisclosureChevron
+                open={showLocalChanges}
+                className="size-4 shrink-0 text-muted-foreground"
+              />
+            </button>
+            <DisclosureRegion
+              open={showLocalChanges}
+              contentClassName={cn(
+                "mt-3 px-3 py-3 text-ui leading-snug text-muted-foreground",
+                SETTINGS_INSET_LIST_CLASS_NAME,
+              )}
+            >
+              <ul className="space-y-1.5">
+                {LOCAL_BUILD_CHANGES.map((entry) => (
+                  <li key={entry.change} className="flex gap-2">
+                    <code className="shrink-0 tabular-nums">{`#${entry.change}`}</code>
+                    <span className="shrink-0 tabular-nums">{entry.date}</span>
+                    <span className="min-w-0">{entry.summary}</span>
+                  </li>
+                ))}
+              </ul>
+            </DisclosureRegion>
+          </div>
+        </SettingsRow>
         <SettingsRow
           title="Release history"
           description="A running log of every update, newest first. Same notes the post-update dialog shows, kept here so you can revisit them any time."

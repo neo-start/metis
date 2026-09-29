@@ -423,7 +423,7 @@ export async function prepareComposerImageFile(file: File): Promise<File> {
     return await optimizeOversizedComposerImage(file);
   } catch (cause) {
     if (cause instanceof ComposerImagePreparationError) throw cause;
-    throw new ComposerImagePreparationError(`Synara could not optimize '${imageName(file)}'.`, {
+    throw new ComposerImagePreparationError(`Metis could not optimize '${imageName(file)}'.`, {
       cause,
     });
   }

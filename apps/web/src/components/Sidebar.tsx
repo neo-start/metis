@@ -292,6 +292,7 @@ import {
   MenuSubTrigger,
   MenuTrigger,
 } from "./ui/menu";
+import { SidebarProviderUsage } from "./SidebarProviderUsage";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import {
   SidebarContent,
@@ -1283,7 +1284,7 @@ function SidebarActivityBellButton({
 }
 
 const SIDEBAR_SURFACE_PICKER_COPY: Record<SidebarView, { title: string; description: string }> = {
-  threads: { title: "Synara", description: "Build, debug, and ship" },
+  threads: { title: "Workbench", description: "Projects, conversations, and deliverables" },
   studio: { title: "Studio", description: "Open-ended agent work" },
 };
 
@@ -4552,7 +4553,7 @@ export default function Sidebar() {
   }
 
   // Interactive hover card for project/folder rows: name + pin toggle, chat
-  // count, path, and an "Edit project" action. Rendered inside a PreviewCard so
+  // count, path, and "Edit project" / "Remove project" actions. Rendered inside a PreviewCard so
   // its controls stay reachable when the pointer moves into the card.
   function renderProjectHoverCardPopup(
     project: (typeof sortedProjects)[number],
@@ -4571,6 +4572,7 @@ export default function Sidebar() {
           path={abbreviateHomePath(project.cwd, homeDir)}
           onTogglePin={() => toggleProjectPinned(project.id)}
           onEditProject={() => void handleProjectContextMenuAction(project.id, "rename")}
+          onRemoveProject={() => void handleProjectContextMenuAction(project.id, "delete")}
         />
       </PreviewCardPopup>
     );
@@ -4763,7 +4765,15 @@ export default function Sidebar() {
     });
     const isSubagentThread = Boolean(thread.parentThreadId);
     const leadingPr = isSubagentThread || thread.forkSourceThreadId ? null : pr;
-    const subagentIndentPx = Math.max(0, Math.min(depth - 1, 3) * 10);
+    // Fork rows nest under their source chat and need a visible step per level;
+    // subagent rows keep their existing (avatar-offset) indent rule.
+    // Subagent rows already read one level deeper than their numeric indent (their
+    // avatar column offsets them), so a fork at depth d takes the same step a
+    // subagent at depth d+1 would: every nested row then sits right of its parent.
+    const isForkChildRow = depth > 0 && !isSubagentThread && Boolean(thread.forkSourceThreadId);
+    const subagentIndentPx = isForkChildRow
+      ? Math.min(depth, 3) * 10
+      : Math.max(0, Math.min(depth - 1, 3) * 10);
     const showCompactMeta = !isSubagentThread;
     const showTemporaryThreadIcon = showCompactMeta && isTemporaryThread;
     const threadJumpLabel = visibleThreadJumpLabelByThreadId.get(thread.id) ?? null;
@@ -5610,7 +5620,7 @@ export default function Sidebar() {
       {
         id: "import-projects",
         label: "Import projects from…",
-        description: "Bring Codex and Claude Code projects and conversations into Synara.",
+        description: "Bring Codex and Claude Code projects and conversations into Metis.",
         keywords: ["import", "projects", "codex", "claude", "conversations", "folders"],
       },
       {
@@ -5631,8 +5641,8 @@ export default function Sidebar() {
       },
       {
         id: "feedback",
-        label: "Feedback Synara",
-        description: "Send feedback or report an issue to the Synara team.",
+        label: "Feedback Metis",
+        description: "Send feedback or report an issue to the upstream Synara team.",
         keywords: ["feedback", "bug", "issue", "problem", "report", "support", "synara"],
       },
       {
@@ -5720,7 +5730,7 @@ export default function Sidebar() {
             toastManager.add({
               type: "info",
               title: "Preparing update",
-              description: `Synara is preparing version ${nextState.availableVersion ?? "available"} in the background.`,
+              description: `Metis is preparing version ${nextState.availableVersion ?? "available"} in the background.`,
             });
             return;
           }
@@ -5729,7 +5739,7 @@ export default function Sidebar() {
             toastManager.add({
               type: "info",
               title: "Preparing update",
-              description: "Synara is downloading the update in the background.",
+              description: "Metis is downloading the update in the background.",
             });
             return;
           }
@@ -5747,7 +5757,7 @@ export default function Sidebar() {
             toastManager.add({
               type: "info",
               title: "You're up to date",
-              description: `Synara ${nextState.currentVersion} is already the newest version.`,
+              description: `Metis ${nextState.currentVersion} is already the newest version.`,
             });
             return;
           }
@@ -6111,6 +6121,12 @@ export default function Sidebar() {
                   onContextMenu={isOnStudio ? undefined : handleNavContextMenu}
                 >
                   <SidebarMenu className="gap-0.5">
+                    <SidebarPrimaryAction
+                      icon={FolderOpenIcon}
+                      label="工作台"
+                      active={pathname === "/workbench" || pathname === "/"}
+                      onClick={() => void navigate({ to: "/workbench" })}
+                    />
                     {isOnStudio ? (
                       <SidebarPrimaryAction
                         icon={NewThreadIcon}
@@ -6462,6 +6478,7 @@ export default function Sidebar() {
         <SidebarMenu>
           <SidebarMenuItem>
             <div className="flex flex-col gap-1">
+              {!isOnSettings ? <SidebarProviderUsage /> : null}
               {DebugFeatureFlagsMenu && showDebugFeatureFlagsMenu && !isOnSettings ? (
                 <Suspense fallback={null}>
                   <DebugFeatureFlagsMenu />

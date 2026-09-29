@@ -249,7 +249,7 @@ export const makeCreateThreadsHandler = Effect.fn(function* (
       return yield* Effect.fail(
         new GatewayToolError(
           "operation_failed",
-          "The original thread-creation operation is still in progress. Retry only with the same request id; Synara will not create replacement threads.",
+          "The original thread-creation operation is still in progress. Retry only with the same request id; Metis will not create replacement threads.",
           { operationId, status: operation?.status ?? "missing" },
         ),
       );
@@ -275,7 +275,7 @@ export const makeCreateThreadsHandler = Effect.fn(function* (
           id: EventId.makeUnsafe(`gateway:${marker}:threads-created-recap`),
           tone: "info",
           kind: "synara.threads.created",
-          summary: `Created ${input.result.createdCount} Synara ${threadLabel}`,
+          summary: `Created ${input.result.createdCount} Metis ${threadLabel}`,
           payload: {
             source: "synara_mcp",
             operationId: input.result.operationId,
@@ -466,7 +466,7 @@ export const makeCreateThreadsHandler = Effect.fn(function* (
       if (deprecatedBranchName) {
         return yield* Effect.fail(
           new ToolInputError(
-            '"branchName" is no longer supported for managed worktrees. Synara creates a managed temporary branch and renames it after the first prompt; create additional branches inside the new thread if needed.',
+            '"branchName" is no longer supported for managed worktrees. Metis creates a managed temporary branch and renames it after the first prompt; create additional branches inside the new thread if needed.',
           ),
         );
       }
@@ -637,7 +637,7 @@ export const makeCreateThreadsHandler = Effect.fn(function* (
             if (existsSync(plannedWorktreePath)) {
               return yield* Effect.fail(
                 new ToolInputError(
-                  `Worktree path "${plannedWorktreePath}" already exists. Synara will not reuse or remove a pre-existing path.`,
+                  `Worktree path "${plannedWorktreePath}" already exists. Metis will not reuse or remove a pre-existing path.`,
                 ),
               );
             }
@@ -857,7 +857,7 @@ export const makeCreateThreadsHandler = Effect.fn(function* (
             });
             return new GatewayToolError(
               "operation_failed",
-              "Synara could not dispatch the exact creation plan and cleanup is still pending. The durable operation remains compensating and will never create replacements.",
+              "Metis could not dispatch the exact creation plan and cleanup is still pending. The durable operation remains compensating and will never create replacements.",
               { operationId, ...failure, compensationPending: true },
             );
           }
@@ -893,13 +893,13 @@ export const makeCreateThreadsHandler = Effect.fn(function* (
               );
             return new GatewayToolError(
               "operation_failed",
-              "Synara compensated the created resources but could not persist a terminal operation status. The operation remains compensating and will never create replacements.",
+              "Metis compensated the created resources but could not persist a terminal operation status. The operation remains compensating and will never create replacements.",
               { operationId, ...failure, compensationPending: true },
             );
           }
           return new GatewayToolError(
             "operation_failed",
-            "Synara could not dispatch the exact creation plan. Created operation-owned resources were compensated; no replacements were created.",
+            "Metis could not dispatch the exact creation plan. Created operation-owned resources were compensated; no replacements were created.",
             { operationId, ...failure },
           );
         });

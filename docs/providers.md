@@ -10,6 +10,7 @@ consistent workspace.
 | ----------------------------------------------------------------------- | ------------------------------------------------------------ |
 | [Claude Code](https://www.trysynara.com/docs/providers/claude-code)     | Your installed Claude Code runtime and authenticated account |
 | [Codex](https://www.trysynara.com/docs/providers/codex)                 | Your installed and authenticated Codex CLI                   |
+| [codex-personal](#two-codex-accounts-codex-personal)                    | The same Codex CLI signed in to a second ChatGPT account     |
 | [OpenCode](https://www.trysynara.com/docs/providers/opencode)           | Your local OpenCode runtime and configured model providers   |
 | [Cursor](https://www.trysynara.com/docs/providers/cursor)               | Your local Cursor agent runtime and account                  |
 | [Devin](https://docs.devin.ai)                                          | Your installed and authenticated Devin CLI                   |
@@ -81,6 +82,21 @@ Claude Code may discover a model under an alias while reporting its concrete mod
 For a release newer than Synara's catalog, the picker shows the concrete ID. Agent Gateway accepts
 that ID when it resolves to one discovered non-default model; ambiguous IDs require an exact
 advertised alias.
+
+### Two Codex accounts (codex-personal)
+
+**codex-personal** (`codexSecondary`) is a second Codex provider for running another ChatGPT account next
+to the default one. It uses the same Codex CLI, models and options, but its own `CODEX_HOME`
+(default `~/.codex-secondary`), its own app-server processes, and its own Metis config overlay. It
+is off by default. To set it up:
+
+1. Sign the second account in once: `CODEX_HOME=~/.codex-secondary codex login`.
+2. Enable **codex-personal** under Settings → Providers, and change its `CODEX_HOME` path if needed.
+3. Pick **codex-personal** in the composer for chats that should use that account.
+
+codex-personal never falls back to `~/.codex` for sign-in, model discovery or usage, so one account never
+reports another's quota. Importing native Codex threads and spending banked usage resets remain
+available only for the default Codex account.
 
 For Codex, successful model discovery determines the built-in choices, including when the returned
 catalog is empty. Models absent from that catalog are not added back from Synara's static list.

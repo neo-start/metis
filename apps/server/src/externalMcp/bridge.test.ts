@@ -158,10 +158,10 @@ describe("external MCP stdio bridge", () => {
 
   it("fails clearly for missing and multiple running instances", () => {
     const baseDir = makeBaseDir();
-    expect(() => discoverExternalMcpRuntime(baseDir)).toThrow(/No running Synara instance/);
+    expect(() => discoverExternalMcpRuntime(baseDir)).toThrow(/No running Metis instance/);
     writeRuntime(baseDir, "userdata", 3773);
     writeRuntime(baseDir, "dev", 4773);
-    expect(() => discoverExternalMcpRuntime(baseDir)).toThrow(/Multiple running Synara instances/);
+    expect(() => discoverExternalMcpRuntime(baseDir)).toThrow(/Multiple running Metis instances/);
   });
 
   it.skipIf(process.platform === "win32")(
@@ -312,7 +312,7 @@ describe("external MCP stdio bridge", () => {
         if (urls.length === 1) {
           fs.rmSync(path.join(baseDir, "userdata", "server-runtime.json"));
           writeRuntime(baseDir, "userdata", 4773);
-          throw new TypeError("old Synara instance stopped");
+          throw new TypeError("old Metis instance stopped");
         }
         return new Response(JSON.stringify({ jsonrpc: "2.0", id: "restart", result: {} }), {
           status: 200,

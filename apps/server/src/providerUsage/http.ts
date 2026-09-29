@@ -23,6 +23,8 @@ export async function fetchJson(input: {
   bodyFormat?: "json" | "form";
   timeoutMs?: number;
   allowLoopbackHttp?: boolean;
+  /** Fixed vendor origins only; see OutboundHttpPolicy.allowProxyFakeIp. */
+  allowProxyFakeIp?: boolean;
 }): Promise<FetchJsonResult> {
   const encodedBody =
     input.body === undefined
@@ -42,6 +44,7 @@ export async function fetchJson(input: {
       maxQueued: 8,
       requirePublicAddress: true,
       ...(input.allowLoopbackHttp === true ? { allowLoopbackHttp: true } : {}),
+      ...(input.allowProxyFakeIp === true ? { allowProxyFakeIp: true } : {}),
     },
     url: input.url,
     method: input.method ?? "GET",

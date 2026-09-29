@@ -170,6 +170,7 @@ function KanbanCardViewComponent({
             fallback={
               <span className="size-3.5 shrink-0 rounded-full border border-dashed border-muted-foreground/40" />
             }
+            tooltip
           />
         )}
         {card.branch ? (

@@ -1,8 +1,10 @@
-export const APP_BASE_NAME = "Synara";
+export const APP_BASE_NAME = "Metis";
+export const APP_LOGO_URL = "/metis-logo-blue.png";
+export const APP_ICON_URL = "/metis-app-icon-blue.png";
 const isCanaryDesktop =
   typeof window !== "undefined" && window.location?.protocol === "synara-canary:";
 export const APP_DISPLAY_NAME = isCanaryDesktop
-  ? "Synara Canary"
+  ? `${APP_BASE_NAME} Canary`
   : import.meta.env.DEV
     ? `${APP_BASE_NAME} (Dev)`
     : APP_BASE_NAME;

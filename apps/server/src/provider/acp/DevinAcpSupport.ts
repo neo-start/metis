@@ -406,13 +406,13 @@ export const resolveDevinAcpAuthMethodId = (
     if (!hasApiKey && authMethodIds.size > 0) {
       return yield* new AcpErrors.AcpRequestError({
         code: -32602,
-        errorMessage: `Devin ACP advertised only interactive auth (${advertised}). Synara will not open a browser during a message send. Set WINDSURF_API_KEY or log in with Devin CLI so its saved API key is available, then retry.`,
+        errorMessage: `Devin ACP advertised only interactive auth (${advertised}). Metis will not open a browser during a message send. Set WINDSURF_API_KEY or log in with Devin CLI so its saved API key is available, then retry.`,
         data: { authMethods: [...authMethodIds], reason: "credentials_missing" },
       });
     }
     return yield* new AcpErrors.AcpRequestError({
       code: -32602,
-      errorMessage: `Devin ACP advertised no supported headless authentication method (advertised: ${advertised}). Synara supports API-key and cached-token auth; update Devin and retry.`,
+      errorMessage: `Devin ACP advertised no supported headless authentication method (advertised: ${advertised}). Metis supports API-key and cached-token auth; update Devin and retry.`,
       data: { authMethods: [...authMethodIds], reason: "compatibility_mismatch" },
     });
   });

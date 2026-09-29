@@ -81,10 +81,10 @@ export function makeThreadReadTools(input: ThreadReadToolsInput): ReadonlyArray<
     definition: {
       name: "synara_context",
       description:
-        "Inspect the current Synara harness identity, caller thread/turn, and authorized coordination capabilities.",
+        "Inspect the current Metis harness identity, caller thread/turn, and authorized coordination capabilities.",
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
       annotations: {
-        title: "Synara context",
+        title: "Metis context",
         readOnlyHint: true,
         destructiveHint: false,
         idempotentHint: true,
@@ -118,10 +118,10 @@ export function makeThreadReadTools(input: ThreadReadToolsInput): ReadonlyArray<
     requiredCapability: "thread:read",
     definition: {
       name: "synara_capabilities",
-      description: `List canonical Synara provider/model targets, exact provider option keys, examples, and gateway limits used to validate thread creation. ${AGENT_GATEWAY_TARGET_OPTIONS_DESCRIPTION}`,
+      description: `List canonical Metis provider/model targets, exact provider option keys, examples, and gateway limits used to validate thread creation. ${AGENT_GATEWAY_TARGET_OPTIONS_DESCRIPTION}`,
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
       annotations: {
-        title: "Synara capabilities",
+        title: "Metis capabilities",
         readOnlyHint: true,
         destructiveHint: false,
         idempotentHint: true,
@@ -178,9 +178,9 @@ export function makeThreadReadTools(input: ThreadReadToolsInput): ReadonlyArray<
     definition: {
       name: "synara_list_projects",
       description:
-        "List Synara projects (id, title, workspace root). System-managed containers (the Chats and Studio surfaces) are not projects and are excluded. Use before creating a thread in another project.",
+        "List Metis projects (id, title, workspace root). System-managed containers (the Chats and Studio surfaces) are not projects and are excluded. Use before creating a thread in another project.",
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
-      annotations: { title: "List Synara projects", ...READ_ONLY_TOOL_ANNOTATIONS },
+      annotations: { title: "List Metis projects", ...READ_ONLY_TOOL_ANNOTATIONS },
     },
     handler: () =>
       snapshotQuery.getShellSnapshot().pipe(
@@ -212,7 +212,7 @@ export function makeThreadReadTools(input: ThreadReadToolsInput): ReadonlyArray<
     definition: {
       name: "synara_list_threads",
       description:
-        "Discover Synara threads by project, hierarchy, provider, model, status, title, creation source, or update window. Archived threads are hidden unless includeArchived is true.",
+        "Discover Metis threads by project, hierarchy, provider, model, status, title, creation source, or update window. Archived threads are hidden unless includeArchived is true.",
       inputSchema: {
         type: "object",
         properties: {
@@ -237,7 +237,7 @@ export function makeThreadReadTools(input: ThreadReadToolsInput): ReadonlyArray<
         },
         additionalProperties: false,
       },
-      annotations: { title: "List Synara threads", ...READ_ONLY_TOOL_ANNOTATIONS },
+      annotations: { title: "List Metis threads", ...READ_ONLY_TOOL_ANNOTATIONS },
     },
     handler: (args, context) =>
       Effect.gen(function* () {
@@ -288,7 +288,7 @@ export function makeThreadReadTools(input: ThreadReadToolsInput): ReadonlyArray<
     requiredCapability: "thread:read",
     definition: {
       name: "synara_read_thread",
-      description: `Read one Synara thread's status and recent messages (newest last). Pass nextCursor as cursor to page older messages. To read one settled long message losslessly, pass the summary's index, messageId, and messageVersion with messageOffsetChars 0, then follow messagePage.nextOffsetChars with the same identity and version.`,
+      description: `Read one Metis thread's status and recent messages (newest last). Pass nextCursor as cursor to page older messages. To read one settled long message losslessly, pass the summary's index, messageId, and messageVersion with messageOffsetChars 0, then follow messagePage.nextOffsetChars with the same identity and version.`,
       inputSchema: {
         type: "object",
         properties: {
@@ -332,7 +332,7 @@ export function makeThreadReadTools(input: ThreadReadToolsInput): ReadonlyArray<
         required: ["threadId"],
         additionalProperties: false,
       },
-      annotations: { title: "Read a Synara thread", ...READ_ONLY_TOOL_ANNOTATIONS },
+      annotations: { title: "Read a Metis thread", ...READ_ONLY_TOOL_ANNOTATIONS },
     },
     handler: (args, context) =>
       Effect.gen(function* () {
@@ -372,7 +372,7 @@ export function makeThreadReadTools(input: ThreadReadToolsInput): ReadonlyArray<
     requiredCapability: "thread:read",
     definition: {
       name: "synara_wait_for_threads",
-      description: `Wait for the pinned turns of 1–20 Synara threads and return every outcome in input order. Assistant summaries are capped at ${WAIT_THREAD_SUMMARY_MAX_CHARS} characters; use each result's readThread call to page the full transcript. Timeouts only report progress; they never retry, replace, cancel, or create work.`,
+      description: `Wait for the pinned turns of 1–20 Metis threads and return every outcome in input order. Assistant summaries are capped at ${WAIT_THREAD_SUMMARY_MAX_CHARS} characters; use each result's readThread call to page the full transcript. Timeouts only report progress; they never retry, replace, cancel, or create work.`,
       inputSchema: {
         type: "object",
         properties: {
@@ -399,7 +399,7 @@ export function makeThreadReadTools(input: ThreadReadToolsInput): ReadonlyArray<
         additionalProperties: false,
       },
       annotations: {
-        title: "Wait for Synara threads",
+        title: "Wait for Metis threads",
         readOnlyHint: true,
         destructiveHint: false,
         idempotentHint: true,

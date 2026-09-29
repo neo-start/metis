@@ -81,6 +81,9 @@ function authFilePaths(ctx: ProviderUsageContext): string[] {
   const push = (value: string) => {
     if (!paths.includes(value)) paths.push(value);
   };
+  if (ctx.codexHomePath) {
+    return [nodePath.join(ctx.codexHomePath, "auth.json")];
+  }
   if (ctx.env.CODEX_HOME) {
     push(nodePath.join(ctx.env.CODEX_HOME, "auth.json"));
   }
@@ -146,10 +149,12 @@ async function resolveCodexAuth(ctx: ProviderUsageContext): Promise<CodexAuth | 
     }
   }
 
-  const keychain = await readKeychainPassword({
-    service: KEYCHAIN_SERVICE,
-    platform: ctx.platform,
-  });
+  const keychain = ctx.codexHomePath
+    ? null
+    : await readKeychainPassword({
+        service: KEYCHAIN_SERVICE,
+        platform: ctx.platform,
+      });
   if (keychain) {
     const parsed = readCodexAuthRecord(asRecord(decodeKeychainJson(keychain)), {
       kind: "keychain",
@@ -166,14 +171,15 @@ async function resolveCodexAuth(ctx: ProviderUsageContext): Promise<CodexAuth | 
 }
 
 function codexAuthCacheKey(ctx: ProviderUsageContext, auth: CodexAuth | null): string {
+  const home = ctx.codexHomePath ?? ctx.homeDir;
   if (!auth) {
-    return `${ctx.homeDir}:none`;
+    return `${home}:none`;
   }
   if (auth.kind === "api-key") {
-    return `${ctx.homeDir}:api-key`;
+    return `${home}:api-key`;
   }
   const stableIdentity = auth.accountId ?? auth.refreshToken ?? auth.accessToken;
-  return `${ctx.homeDir}:${credentialFingerprint(stableIdentity)}`;
+  return `${home}:${credentialFingerprint(stableIdentity)}`;
 }
 
 /** Prefer the access token's own JWT `exp`; fall back to `last_refresh` wall-clock age only when
@@ -290,6 +296,7 @@ async function refreshCodexAuth(
       refreshToken: live.refreshToken,
       clientId: OAUTH_CLIENT_ID,
       bodyFormat: "form",
+      allowProxyFakeIp: true,
     });
     if (refreshed.ok) {
       return {
@@ -403,6 +410,8 @@ function fetchCodexUsage(state: CodexOAuthState) {
     service: "provider-usage-codex",
     url: USAGE_URL,
     allowedOrigins: [new URL(USAGE_URL).origin],
+    // Fixed vendor origin; local TUN proxies resolve it to 198.18.0.0/15.
+    allowProxyFakeIp: true,
     headers: {
       Authorization: `Bearer ${state.accessToken}`,
       Accept: "application/json",
@@ -411,6 +420,22 @@ function fetchCodexUsage(state: CodexOAuthState) {
     },
   });
 }
+
+/** The second Codex account: same endpoint, read strictly from its own CODEX_HOME. */
+export const codexSecondaryUsageFetcher: ProviderUsageFetcher = {
+  provider: "codexSecondary",
+  async cacheKey(ctx) {
+    if (!ctx.codexHomePath) return null;
+    return codexAuthCacheKey(ctx, await resolveCodexAuth(ctx));
+  },
+  async fetch(ctx) {
+    if (!ctx.codexHomePath) {
+      return needsAuthSnapshot("codexSecondary", ctx.nowMs, SOURCE);
+    }
+    const snapshot = await codexUsageFetcher.fetch(ctx);
+    return { ...snapshot, provider: "codexSecondary" };
+  },
+};
 
 export const codexUsageFetcher: ProviderUsageFetcher = {
   provider: "codex",

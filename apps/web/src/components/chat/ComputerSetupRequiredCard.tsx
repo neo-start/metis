@@ -99,7 +99,7 @@ export function ComputerSetupRequiredCard({
     : ready
       ? "Send a message and the agent will pick up where it left off."
       : missingLabels
-        ? "Choose Set up to request missing permissions or open System Settings. Allow access for this Synara app, then return here to recheck."
+        ? "Choose Set up to request missing permissions or open System Settings. Allow access for this Metis app, then return here to recheck."
         : (availabilityView?.description ??
           "Choose Set up to check permissions and prepare computer control.");
   const canSetUp =

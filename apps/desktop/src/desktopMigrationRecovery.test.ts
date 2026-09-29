@@ -26,7 +26,7 @@ describe("desktop migration recovery", () => {
         canOpenReleasePage: true,
       }),
     ).toEqual([
-      { label: "Update Synara and restart", decision: "install-update" },
+      { label: "Update Metis and restart", decision: "install-update" },
       { label: "Download latest release", decision: "open-release-page" },
       { label: "Open logs", decision: "open-logs" },
       { label: "Quit", decision: "quit" },

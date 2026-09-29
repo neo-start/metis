@@ -216,6 +216,7 @@ function EditorChatHistoryMenu(props: {
                 provider={thread.session?.provider ?? thread.modelSelection.provider}
                 tone="header"
                 className="size-3.5 shrink-0"
+                tooltip
               />
               <span className="min-w-0 flex-1 truncate">{thread.title}</span>
               {thread.id === props.activeThreadId ? (
@@ -459,6 +460,7 @@ function EditorRailTabs(props: {
                   provider={thread.provider}
                   tone="header"
                   className="size-3 shrink-0"
+                  tooltip
                 />
               }
               closeLabel={`Close ${thread.title}`}

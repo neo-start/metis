@@ -7,6 +7,7 @@
 // Layer: Server utility (no IO; safe to import from anywhere)
 // Exports: overlay constants, base/overlay home resolvers, write-home + allowlist helpers.
 
+import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 import path from "node:path";
 
@@ -17,11 +18,21 @@ export interface CodexHomePathsInput {
   readonly homePath?: string;
 }
 
+/** Expands a leading `~` so settings such as `~/.codex-secondary` resolve like a shell would. */
+export function expandCodexHomePath(homePath: string): string {
+  if (homePath === "~") return homedir();
+  if (homePath.startsWith("~/") || homePath.startsWith("~\\")) {
+    return path.join(homedir(), homePath.slice(2));
+  }
+  return homePath;
+}
+
 export function resolveBaseCodexHomePath(
   env: NodeJS.ProcessEnv,
   explicitHomePath?: string,
 ): string {
-  return explicitHomePath?.trim() || env.CODEX_HOME?.trim() || path.join(homedir(), ".codex");
+  const configured = explicitHomePath?.trim() || env.CODEX_HOME?.trim();
+  return configured ? expandCodexHomePath(configured) : path.join(homedir(), ".codex");
 }
 
 export function resolveSynaraCodexHomeOverlayPath(
@@ -30,7 +41,16 @@ export function resolveSynaraCodexHomeOverlayPath(
 ): string {
   const runtimeHome = env.SYNARA_HOME?.trim();
   const overlayRoot = runtimeHome || path.join(path.dirname(sourceHomePath), ".synara", "runtime");
-  return path.join(overlayRoot, SYNARA_CODEX_HOME_OVERLAY_DIR);
+  // Each source home needs its own overlay: the overlay links the source's
+  // auth.json, so sharing one directory would cross Codex accounts. The default
+  // home keeps the unsuffixed directory existing installs already use.
+  const defaultSource = path.resolve(resolveBaseCodexHomePath(env));
+  const resolvedSource = path.resolve(sourceHomePath);
+  if (resolvedSource === defaultSource) {
+    return path.join(overlayRoot, SYNARA_CODEX_HOME_OVERLAY_DIR);
+  }
+  const suffix = createHash("sha256").update(resolvedSource).digest("hex").slice(0, 12);
+  return path.join(overlayRoot, `${SYNARA_CODEX_HOME_OVERLAY_DIR}-${suffix}`);
 }
 
 /**

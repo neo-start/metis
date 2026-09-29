@@ -195,7 +195,7 @@ async function resolveDesktopVoiceAuth(
         params: {
           clientInfo: {
             name: "synara-desktop",
-            title: "Synara Desktop",
+            title: "Metis Desktop",
             version: app.getVersion(),
           },
           capabilities: { experimentalApi: true },

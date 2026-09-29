@@ -214,7 +214,7 @@ export function resolveThreadProjectLabel(
   project: Pick<Project, "kind" | "name" | "folderName"> | null | undefined,
 ): string {
   if (!project || project.kind !== "project") {
-    return "Synara";
+    return "Metis";
   }
   return nonEmptyDisplayValue(project.name) ?? project.folderName;
 }
@@ -869,28 +869,55 @@ export interface SidebarThreadTreeRow<
   rootThreadId: T["id"];
 }
 
-function collectActiveThreadAncestorIds<
-  T extends Pick<SidebarThreadSummary, "id" | "parentThreadId">,
->(threadById: Map<T["id"], T>, forceVisibleThreadId: T["id"] | undefined): Set<T["id"]> {
+type SidebarTreeThread = Pick<SidebarThreadSummary, "id" | "parentThreadId"> &
+  Partial<Pick<SidebarThreadSummary, "forkSourceThreadId" | "sidechatSourceThreadId">>;
+
+/**
+ * Tree parent of a row. Subagents hang off `parentThreadId`; a fork hangs off the
+ * chat it branched from so forks read as a tree under their trunk. Side chats are
+ * forks too but live in their own rail, so they never nest here.
+ */
+function resolveSidebarTreeParentId<T extends SidebarTreeThread>(
+  thread: T,
+): { parentId: T["id"]; kind: "subagent" | "fork" } | null {
+  if (thread.parentThreadId) {
+    return { parentId: thread.parentThreadId as T["id"], kind: "subagent" };
+  }
+  if (thread.forkSourceThreadId && !thread.sidechatSourceThreadId) {
+    return { parentId: thread.forkSourceThreadId as T["id"], kind: "fork" };
+  }
+  return null;
+}
+
+function collectActiveThreadAncestorIds<T extends SidebarTreeThread>(
+  threadById: Map<T["id"], T>,
+  forceVisibleThreadId: T["id"] | undefined,
+): Set<T["id"]> {
   const ancestorIds = new Set<T["id"]>();
   let currentThreadId = forceVisibleThreadId;
 
-  while (currentThreadId) {
-    const parentThreadId = threadById.get(currentThreadId)?.parentThreadId ?? undefined;
-    if (!parentThreadId) {
+  // Only nodes reached through a *subagent* link get their subagent children
+  // revealed: opening a fork must not unfold the source chat's subagents. The
+  // walk still follows fork links so a subagent under a fork under a chat works.
+  const visited = new Set<T["id"]>();
+  while (currentThreadId && !visited.has(currentThreadId)) {
+    visited.add(currentThreadId);
+    const current = threadById.get(currentThreadId);
+    const link = current ? resolveSidebarTreeParentId(current) : null;
+    if (!link) {
       break;
     }
-    ancestorIds.add(parentThreadId);
-    currentThreadId = parentThreadId;
+    if (link.kind === "subagent") {
+      ancestorIds.add(link.parentId);
+    }
+    currentThreadId = link.parentId;
   }
 
   return ancestorIds;
 }
 
 // Build the project-local parent/child thread tree while preserving sort order from the input list.
-export function buildProjectThreadTree<
-  T extends Pick<SidebarThreadSummary, "id" | "parentThreadId">,
->(input: {
+export function buildProjectThreadTree<T extends SidebarTreeThread>(input: {
   threads: readonly T[];
   forceVisibleThreadId?: T["id"] | undefined;
 }): SidebarThreadTreeRow<T>[] {
@@ -900,26 +927,42 @@ export function buildProjectThreadTree<
   const roots: T[] = [];
 
   for (const thread of threads) {
-    const parentThreadId = thread.parentThreadId ?? null;
-    if (!parentThreadId) {
+    const link = resolveSidebarTreeParentId(thread);
+    if (!link) {
       roots.push(thread);
       continue;
     }
-    // Subagent threads are only reachable through their parent. When the parent
-    // is not in the list (archived or deleted), its subtree stays hidden instead
-    // of being promoted to top-level rows.
-    if (!threadById.has(parentThreadId)) {
+    const parent = threadById.get(link.parentId);
+    if (!parent) {
+      // Subagent threads are only reachable through their parent. When the parent
+      // is not in the list (archived or deleted), its subtree stays hidden instead
+      // of being promoted to top-level rows. A fork is a full chat in its own
+      // right, so it simply becomes a root when its source is gone.
+      if (link.kind === "fork") {
+        roots.push(thread);
+      }
       continue;
     }
-    const siblings = childrenByParentId.get(parentThreadId) ?? [];
+    if (link.kind === "fork" && parent.parentThreadId) {
+      // Subagent rows fold away unless one is active; a fork nested under one
+      // would vanish with it. Keep such forks at the top level instead.
+      roots.push(thread);
+      continue;
+    }
+    const siblings = childrenByParentId.get(link.parentId) ?? [];
     siblings.push(thread);
-    childrenByParentId.set(parentThreadId, siblings);
+    childrenByParentId.set(link.parentId, siblings);
   }
 
   const activeThreadAncestorIds = collectActiveThreadAncestorIds(threadById, forceVisibleThreadId);
   const orderedRows: SidebarThreadTreeRow<T>[] = [];
+  const visited = new Set<T["id"]>();
 
   const visit = (thread: T, depth: number, rootThreadId: T["id"]) => {
+    if (visited.has(thread.id)) {
+      return;
+    }
+    visited.add(thread.id);
     const childThreads = childrenByParentId.get(thread.id) ?? [];
     const revealsActiveDescendant =
       childThreads.length > 0 && activeThreadAncestorIds.has(thread.id);
@@ -930,12 +973,13 @@ export function buildProjectThreadTree<
       rootThreadId,
     });
 
-    if (!revealsActiveDescendant) {
-      return;
-    }
-
     for (const child of childThreads) {
-      visit(child, depth + 1, rootThreadId);
+      // Subagent rows stay folded until one of them is active; fork rows are
+      // always shown so the branch tree is visible without opening anything.
+      const isFork = resolveSidebarTreeParentId(child)?.kind === "fork";
+      if (isFork || revealsActiveDescendant) {
+        visit(child, depth + 1, rootThreadId);
+      }
     }
   };
 

@@ -1,0 +1,687 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Metis · 手机交互草案</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <!-- Tabler Icons, MIT, Paweł Kuna. Reused from the workspace dependency. -->
+    <svg xmlns="http://www.w3.org/2000/svg" style="display: none" aria-hidden="true">
+      <symbol
+        id="layers"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M12 4l-8 4l8 4l8 -4l-8 -4"></path>
+        <path d="M4 12l8 4l8 -4"></path>
+        <path d="M4 16l8 4l8 -4"></path>
+      </symbol>
+      <symbol
+        id="wifi-off"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M12 18l.01 0"></path>
+        <path d="M9.172 15.172a4 4 0 0 1 5.656 0"></path>
+        <path
+          d="M6.343 12.343a7.963 7.963 0 0 1 3.864 -2.14m4.163 .155a7.965 7.965 0 0 1 3.287 2"
+        ></path>
+        <path d="M3.515 9.515a12 12 0 0 1 3.544 -2.455m3.101 -.92a12 12 0 0 1 10.325 3.374"></path>
+        <path d="M3 3l18 18"></path>
+      </symbol>
+      <symbol
+        id="plus"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M12 5l0 14"></path>
+        <path d="M5 12l14 0"></path>
+      </symbol>
+      <symbol
+        id="laptop"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M3 19l18 0"></path>
+        <path
+          d="M5 7a1 1 0 0 1 1 -1h12a1 1 0 0 1 1 1v8a1 1 0 0 1 -1 1h-12a1 1 0 0 1 -1 -1l0 -8"
+        ></path>
+      </symbol>
+      <symbol
+        id="phone"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path
+          d="M6 5a2 2 0 0 1 2 -2h8a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-8a2 2 0 0 1 -2 -2v-14"
+        ></path>
+        <path d="M11 4h2"></path>
+        <path d="M12 17v.01"></path>
+      </symbol>
+      <symbol
+        id="chevron-down"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M6 9l6 6l6 -6"></path>
+      </symbol>
+      <symbol
+        id="chevron-right"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M9 6l6 6l-6 6"></path>
+      </symbol>
+      <symbol
+        id="alert"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0"></path>
+        <path d="M12 8v4"></path>
+        <path d="M12 16h.01"></path>
+      </symbol>
+      <symbol
+        id="folder"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path
+          d="M5 4h4l3 3h7a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-11a2 2 0 0 1 2 -2"
+        ></path>
+      </symbol>
+      <symbol
+        id="message"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path
+          d="M3 20l1.3 -3.9c-2.324 -3.437 -1.426 -7.872 2.1 -10.374c3.526 -2.501 8.59 -2.296 11.845 .48c3.255 2.777 3.695 7.266 1.029 10.501c-2.666 3.235 -7.615 4.215 -11.574 2.293l-4.7 1"
+        ></path>
+      </symbol>
+      <symbol
+        id="file"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M14 3v4a1 1 0 0 0 1 1h4"></path>
+        <path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2"></path>
+      </symbol>
+      <symbol
+        id="signal"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M6 18l0 -3"></path>
+        <path d="M10 18l0 -6"></path>
+        <path d="M14 18l0 -9"></path>
+        <path d="M18 18l0 -12"></path>
+      </symbol>
+      <symbol
+        id="battery"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path
+          d="M6 7h11a2 2 0 0 1 2 2v.5a.5 .5 0 0 0 .5 .5a.5 .5 0 0 1 .5 .5v3a.5 .5 0 0 1 -.5 .5a.5 .5 0 0 0 -.5 .5v.5a2 2 0 0 1 -2 2h-11a2 2 0 0 1 -2 -2v-6a2 2 0 0 1 2 -2"
+        ></path>
+        <path d="M7 10l0 4"></path>
+        <path d="M10 10l0 4"></path>
+        <path d="M13 10l0 4"></path>
+      </symbol>
+      <symbol
+        id="arrow-left"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M5 12l14 0"></path>
+        <path d="M5 12l6 6"></path>
+        <path d="M5 12l6 -6"></path>
+      </symbol>
+      <symbol
+        id="arrow-right"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M5 12l14 0"></path>
+        <path d="M13 18l6 -6"></path>
+        <path d="M13 6l6 6"></path>
+      </symbol>
+      <symbol
+        id="arrow-up"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M12 5l0 14"></path>
+        <path d="M18 11l-6 -6"></path>
+        <path d="M6 11l6 -6"></path>
+      </symbol>
+      <symbol
+        id="square"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path
+          d="M5 7a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v10a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2l0 -10"
+        ></path>
+      </symbol>
+      <symbol
+        id="check"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M5 12l5 5l10 -10"></path>
+      </symbol>
+      <symbol
+        id="shield"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path
+          d="M11.46 20.846a12 12 0 0 1 -7.96 -14.846a12 12 0 0 0 8.5 -3a12 12 0 0 0 8.5 3a12 12 0 0 1 -.09 7.06"
+        ></path>
+        <path d="M15 19l2 2l4 -4"></path>
+      </symbol>
+      <symbol
+        id="code"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M7 8l-4 4l4 4"></path>
+        <path d="M17 8l4 4l-4 4"></path>
+        <path d="M14 4l-4 16"></path>
+      </symbol>
+      <symbol
+        id="arrows"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M21 17l-18 0"></path>
+        <path d="M6 10l-3 -3l3 -3"></path>
+        <path d="M3 7l18 0"></path>
+        <path d="M18 20l3 -3l-3 -3"></path>
+      </symbol>
+      <symbol
+        id="x"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M18 6l-12 12"></path>
+        <path d="M6 6l12 12"></path>
+      </symbol>
+      <symbol
+        id="clock"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0"></path>
+        <path d="M12 7v5l3 3"></path>
+      </symbol>
+      <symbol
+        id="refresh"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4"></path>
+        <path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4"></path>
+      </symbol>
+      <symbol
+        id="download"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.7"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2"></path>
+        <path d="M7 11l5 5l5 -5"></path>
+        <path d="M12 4l0 12"></path>
+      </symbol>
+    </svg>
+    <header class="page-header">
+      <div class="brand">
+        <svg aria-hidden="true"><use href="#layers" /></svg><span>Metis</span>
+      </div>
+      <span class="draft-label">交互草案 · 示例数据</span>
+    </header>
+    <main>
+      <section class="intro">
+        <div>
+          <h1>离开电脑，也能接着做。</h1>
+          <p>任务留在 Mac 上。手机查看进度、回复问题、处理授权和打开成果。</p>
+        </div>
+        <div class="demo-controls">
+          <button id="network-toggle" class="button outline">
+            <svg aria-hidden="true"><use href="#wifi-off" /></svg>模拟电脑离线</button
+          ><button id="reset" class="button subtle">重置演示</button>
+        </div>
+      </section>
+      <p class="prototype-note">
+        下面可以点击操作。这是界面提案，所有任务、设备、文件和连接状态均为示例，尚未接入真实远程服务。
+      </p>
+      <div class="screen-picker" role="group" aria-label="选择手机界面">
+        <button class="selected" data-screen="tasks" aria-pressed="true">任务</button
+        ><button data-screen="conversation" aria-pressed="false">执行与授权</button
+        ><button data-screen="files" aria-pressed="false">成果</button>
+      </div>
+      <section class="screens" aria-label="三个手机界面">
+        <article class="screen-column selected" id="screen-tasks">
+          <div class="screen-caption">
+            <h2>任务</h2>
+            <span>先看需要你处理的事</span>
+          </div>
+          <div class="phone">
+            <div class="phone-status" aria-hidden="true">
+              <span>9:41</span>
+              <div class="status-right">
+                <svg><use href="#signal" /></svg><span>5G</span><svg><use href="#battery" /></svg>
+              </div>
+            </div>
+            <header class="app-header">
+              <h3>工作台</h3>
+              <button class="icon-button" data-action="new-task" aria-label="新建示例任务">
+                <svg aria-hidden="true"><use href="#plus" /></svg>
+              </button>
+            </header>
+            <button class="host-selector" data-action="devices">
+              <span class="host-icon"
+                ><svg aria-hidden="true"><use href="#laptop" /></svg></span
+              ><span
+                ><strong>Neo 的 MacBook</strong
+                ><small class="host-state">已连接 · 可继续任务</small></span
+              ><svg class="chevron" aria-hidden="true"><use href="#chevron-down" /></svg>
+            </button>
+            <div class="scroll-body task-body">
+              <button class="attention" data-action="approval">
+                <svg aria-hidden="true"><use href="#alert" /></svg
+                ><span
+                  ><strong id="attention-title">1 项操作等待你确认</strong
+                  ><small id="attention-subtitle">检查类型后，就能交付这次修改</small></span
+                ><svg class="chevron" aria-hidden="true"><use href="#chevron-right" /></svg>
+              </button>
+              <div class="list-title">
+                <h4>最近任务</h4>
+                <span id="task-count">4 项</span>
+              </div>
+              <div class="filters" role="group" aria-label="任务状态筛选">
+                <button class="selected" data-filter="all" aria-pressed="true">全部</button
+                ><button data-filter="running" aria-pressed="false">运行中</button
+                ><button data-filter="pending" aria-pressed="false">待处理</button>
+              </div>
+              <div id="task-list"></div>
+              <div class="new-task-hint">
+                <svg aria-hidden="true"><use href="#folder" /></svg
+                ><span>从电脑已有项目开始，文件仍保存在原来的目录。</span>
+              </div>
+            </div>
+            <nav class="bottom-nav" aria-label="任务界面导航">
+              <button class="active" data-screen="tasks" aria-current="page">
+                <svg aria-hidden="true"><use href="#message" /></svg>任务</button
+              ><button data-screen="files">
+                <svg aria-hidden="true"><use href="#file" /></svg>成果</button
+              ><button data-action="devices">
+                <svg aria-hidden="true"><use href="#laptop" /></svg>设备
+              </button>
+            </nav>
+            <div class="home-indicator" aria-hidden="true"></div>
+          </div>
+        </article>
+        <article class="screen-column" id="screen-conversation">
+          <div class="screen-caption">
+            <h2>执行与授权</h2>
+            <span>继续同一段对话</span>
+          </div>
+          <div class="phone chat-phone">
+            <div class="phone-status" aria-hidden="true">
+              <span>9:41</span>
+              <div class="status-right">
+                <svg><use href="#signal" /></svg><span>5G</span><svg><use href="#battery" /></svg>
+              </div>
+            </div>
+            <header class="chat-header">
+              <button class="icon-button" data-screen="tasks" aria-label="返回任务列表">
+                <svg aria-hidden="true"><use href="#arrow-left" /></svg>
+              </button>
+              <div>
+                <h3>修复移动端输入框</h3>
+                <p>Metis · Codex</p>
+              </div>
+              <button class="icon-button" data-action="stop" aria-label="停止示例任务">
+                <svg aria-hidden="true"><use href="#square" /></svg>
+              </button>
+            </header>
+            <div class="connection-line">
+              <span class="connection-dot"></span
+              ><span class="connection-copy">正在连接的电脑上执行</span>
+            </div>
+            <div class="scroll-body conversation-body" id="conversation-scroll">
+              <div class="day-marker">今天 09:36</div>
+              <div class="user-bubble">手机键盘弹出后会挡住输入框，帮我修一下。</div>
+              <div class="agent-label">
+                <span class="provider-mark">C</span><strong>Codex</strong><span>09:38</span>
+              </div>
+              <p class="agent-text">
+                找到原因了：输入区域没有跟随可视高度变化。我已调整布局，准备检查修改是否影响类型。
+              </p>
+              <details class="steps">
+                <summary>
+                  <svg aria-hidden="true"><use href="#check" /></svg>已完成 2 个步骤<svg
+                    class="chevron"
+                    aria-hidden="true"
+                  >
+                    <use href="#chevron-down" />
+                  </svg>
+                </summary>
+                <ol>
+                  <li>读取输入框和键盘布局</li>
+                  <li>修改安全区与滚动位置</li>
+                </ol>
+              </details>
+              <section class="approval-box" id="approval-box" aria-labelledby="approval-title">
+                <div class="approval-heading">
+                  <svg aria-hidden="true"><use href="#shield" /></svg>
+                  <h4 id="approval-title">允许执行这次检查？</h4>
+                </div>
+                <p>将在 Neo 的 MacBook 上运行</p>
+                <pre><code>pnpm typecheck</code></pre>
+                <div class="path-line">项目：Metis</div>
+                <div class="approval-actions">
+                  <button class="button outline remote-action" data-action="deny">拒绝</button
+                  ><button class="button primary remote-action" data-action="approve">
+                    允许本次
+                  </button>
+                </div>
+              </section>
+              <div id="conversation-updates" aria-live="polite"></div>
+            </div>
+            <form id="composer" class="composer">
+              <label class="sr-only" for="message-input">继续给 Codex 的指令</label
+              ><textarea
+                id="message-input"
+                rows="2"
+                placeholder="继续说说你的想法…"
+                maxlength="2000"
+              ></textarea>
+              <div class="composer-footer">
+                <span
+                  >Codex <svg aria-hidden="true"><use href="#chevron-down" /></svg></span
+                ><button class="send-button remote-action" type="submit" aria-label="发送示例消息">
+                  <svg aria-hidden="true"><use href="#arrow-up" /></svg>
+                </button>
+              </div>
+              <p id="composer-hint">示例对话 · 不会发送给真实 Agent</p>
+            </form>
+            <div class="home-indicator" aria-hidden="true"></div>
+          </div>
+        </article>
+        <article class="screen-column" id="screen-files">
+          <div class="screen-caption">
+            <h2>成果</h2>
+            <span>先看结果，再看细节</span>
+          </div>
+          <div class="phone">
+            <div class="phone-status" aria-hidden="true">
+              <span>9:41</span>
+              <div class="status-right">
+                <svg><use href="#signal" /></svg><span>5G</span><svg><use href="#battery" /></svg>
+              </div>
+            </div>
+            <header class="app-header">
+              <h3>成果</h3>
+              <span class="file-total">3 个文件</span>
+            </header>
+            <div class="scroll-body files-body">
+              <p class="section-intro">汇集任务产出的文档和修改，保留它们来自哪段对话。</p>
+              <div class="file-group-label"><span>今天</span><span>Neo 的 MacBook</span></div>
+              <button class="file-row" data-file="changes">
+                <span class="file-icon"
+                  ><svg aria-hidden="true"><use href="#code" /></svg></span
+                ><span class="file-copy"
+                  ><strong>输入框布局修改</strong><small>mobile-composer.patch · 示例</small
+                  ><span class="file-origin">修复移动端输入框</span></span
+                ><svg class="chevron" aria-hidden="true"><use href="#chevron-right" /></svg>
+              </button>
+              <button class="file-row" data-file="notes">
+                <span class="file-icon"
+                  ><svg aria-hidden="true"><use href="#file" /></svg></span
+                ><span class="file-copy"
+                  ><strong>手机体验调研</strong><small>research.md · 示例</small
+                  ><span class="file-origin">整理移动端交互参考</span></span
+                ><svg class="chevron" aria-hidden="true"><use href="#chevron-right" /></svg>
+              </button>
+              <button class="file-row" data-file="release">
+                <span class="file-icon"
+                  ><svg aria-hidden="true"><use href="#file" /></svg></span
+                ><span class="file-copy"
+                  ><strong>本周更新说明</strong><small>release-notes.md · 示例</small
+                  ><span class="file-origin">准备产品更新说明</span></span
+                ><svg class="chevron" aria-hidden="true"><use href="#chevron-right" /></svg>
+              </button>
+              <section class="reading-preview">
+                <div>
+                  <svg aria-hidden="true"><use href="#file" /></svg><span>文档预览</span>
+                </div>
+                <h4>手机体验调研</h4>
+                <p>在外面继续工作时，最常见的动作是看进度、补充一句话，以及确认下一步。</p>
+                <ul>
+                  <li>等待处理的事项优先显示</li>
+                  <li>文件与对应任务一起保留</li>
+                  <li>断线后明确提示连接状态</li>
+                </ul>
+                <button class="button outline" data-file="notes">
+                  打开完整文档<svg aria-hidden="true"><use href="#arrow-right" /></svg>
+                </button>
+              </section>
+            </div>
+            <nav class="bottom-nav" aria-label="成果界面导航">
+              <button data-screen="tasks">
+                <svg aria-hidden="true"><use href="#message" /></svg>任务</button
+              ><button class="active" data-screen="files" aria-current="page">
+                <svg aria-hidden="true"><use href="#file" /></svg>成果</button
+              ><button data-action="devices">
+                <svg aria-hidden="true"><use href="#laptop" /></svg>设备
+              </button>
+            </nav>
+            <div class="home-indicator" aria-hidden="true"></div>
+          </div>
+        </article>
+      </section>
+      <section class="implementation-note">
+        <h2>跨网连接在背后完成</h2>
+        <p>
+          手机登录、选择已授权的电脑，就进入它的任务。账号服务负责设备发现与授权，隧道负责把请求送到
+          Mac；执行记录和文件由同一个本地服务管理。
+        </p>
+        <div class="connection-diagram">
+          <span>手机 · 5G</span><svg aria-hidden="true"><use href="#arrows" /></svg
+          ><span>HTTPS 隧道</span><svg aria-hidden="true"><use href="#arrows" /></svg
+          ><span>Mac · 家中 Wi-Fi</span>
+        </div>
+        <p class="footnote">
+          这是拟定实现。当前演示不联网、不申请权限、不运行命令。模拟离线后可以查看保留的示例内容，发送和授权会暂停。
+        </p>
+      </section>
+    </main>
+    <dialog id="device-dialog" aria-labelledby="devices-title">
+      <div class="dialog-header">
+        <h2 id="devices-title">连接的设备</h2>
+        <button class="icon-button" data-close aria-label="关闭设备面板">
+          <svg aria-hidden="true"><use href="#x" /></svg>
+        </button>
+      </div>
+      <p class="dialog-intro">选择任务在哪台电脑上执行。</p>
+      <div class="device-row">
+        <svg aria-hidden="true"><use href="#laptop" /></svg>
+        <div>
+          <strong>Neo 的 MacBook</strong>
+          <p class="host-state">已连接 · 可继续任务</p>
+        </div>
+        <span class="device-badge">当前电脑</span>
+      </div>
+      <div class="device-row">
+        <svg aria-hidden="true"><use href="#phone" /></svg>
+        <div>
+          <strong>这部手机</strong>
+          <p id="phone-authorization">演示设备 · 已授权</p>
+        </div>
+        <button id="revoke-device" class="button subtle">撤销</button>
+      </div>
+      <button class="button primary wide" id="pair-device">
+        <svg aria-hidden="true"><use href="#plus" /></svg>演示配对另一台电脑
+      </button>
+      <div id="pairing-description" class="pairing-description" hidden>
+        <strong>电脑端确认后完成配对</strong>
+        <p>真实版本会校验一次性配对信息。这份草案不会生成可用凭据，也不会连接你的设备。</p>
+        <button class="button outline" id="confirm-pairing">模拟电脑已确认</button>
+      </div>
+      <p class="footnote">示例设备列表。真实连接需要电脑保持在线。</p>
+    </dialog>
+    <dialog id="file-dialog" aria-labelledby="file-title">
+      <div class="dialog-header">
+        <h2 id="file-title">文件预览</h2>
+        <button class="icon-button" data-close aria-label="关闭文件预览">
+          <svg aria-hidden="true"><use href="#x" /></svg>
+        </button>
+      </div>
+      <p class="dialog-intro" id="file-subtitle"></p>
+      <pre id="file-content" class="file-content"></pre>
+      <button id="download-file" class="button primary wide">
+        <svg aria-hidden="true"><use href="#download" /></svg>下载示例文件
+      </button>
+    </dialog>
+    <dialog id="new-task-dialog" aria-labelledby="new-task-title">
+      <form id="new-task-form">
+        <div class="dialog-header">
+          <h2 id="new-task-title">新建示例任务</h2>
+          <button type="button" class="icon-button" data-close aria-label="关闭新建任务">
+            <svg aria-hidden="true"><use href="#x" /></svg>
+          </button>
+        </div>
+        <label class="field-label" for="task-title">你想做什么？</label
+        ><input
+          id="task-title"
+          name="title"
+          maxlength="80"
+          placeholder="例如：整理今天的工作记录"
+          required
+        />
+        <p class="dialog-intro">将在本页添加一条示例任务，不会调用真实 Agent。</p>
+        <button class="button primary wide remote-action" type="submit">创建示例任务</button>
+      </form>
+    </dialog>
+    <dialog id="stop-dialog" aria-labelledby="stop-title">
+      <div class="dialog-header">
+        <h2 id="stop-title">停止这次执行？</h2>
+        <button class="icon-button" data-close aria-label="关闭停止确认">
+          <svg aria-hidden="true"><use href="#x" /></svg>
+        </button>
+      </div>
+      <p class="dialog-intro">当前步骤会停止，已有对话和成果保留。这里仅改变演示状态。</p>
+      <div class="approval-actions">
+        <button class="button outline" data-close>继续任务</button
+        ><button id="confirm-stop" class="button primary remote-action">停止执行</button>
+      </div>
+    </dialog>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script src="preview.js"></script>
+  </body>
+</html>

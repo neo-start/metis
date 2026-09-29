@@ -1,6 +1,10 @@
 import type { ProviderKind, RuntimeMode } from "@synara/contracts";
 
-const AUTO_RUNTIME_MODE_PROVIDERS = new Set<ProviderKind>(["codex", "claudeAgent"]);
+const AUTO_RUNTIME_MODE_PROVIDERS = new Set<ProviderKind>([
+  "codex",
+  "codexSecondary",
+  "claudeAgent",
+]);
 const RUNTIME_MODE_PRIVILEGE = {
   "approval-required": 0,
   auto: 1,

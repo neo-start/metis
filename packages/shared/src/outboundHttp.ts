@@ -14,6 +14,7 @@ import {
   assertJsonWithinLimits,
   assertOutboundUrlAllowed,
   assertPublicIpAddress,
+  isProxyFakeIpAddress,
   normalizeOutboundOrigin,
   stripOutboundSensitiveHeaders,
 } from "./outboundHttpPolicy";
@@ -52,6 +53,11 @@ export interface OutboundHttpPolicy {
   readonly maxConcurrent: number;
   readonly maxQueued: number;
   readonly requirePublicAddress?: boolean;
+  /**
+   * Accepts local proxy fake IPs (198.18.0.0/15) under `requirePublicAddress`.
+   * Only for fixed, hard-coded vendor origins, never user-supplied hosts.
+   */
+  readonly allowProxyFakeIp?: boolean;
   /** Permits HTTP only for localhost, 127.0.0.1, or ::1. */
   readonly allowLoopbackHttp?: boolean;
 }
@@ -266,6 +272,7 @@ async function resolvePinnedAddress(
   url: URL,
   requirePublicAddress: boolean,
   allowLoopbackHttp: boolean,
+  allowProxyFakeIp: boolean,
   signal: AbortSignal,
 ): Promise<{ readonly address: string; readonly family: 4 | 6 }> {
   if (signal.aborted) throw abortedError(signal.reason);
@@ -276,7 +283,8 @@ async function resolvePinnedAddress(
   const requireLoopbackAddress = allowLoopbackHttp && url.protocol === "http:";
   const assertAddressAllowed = (address: string) => {
     if (requireLoopbackAddress) assertExactLoopbackIpAddress(address);
-    else if (requirePublicAddress) assertPublicIpAddress(address);
+    else if (requirePublicAddress && !(allowProxyFakeIp && isProxyFakeIpAddress(address)))
+      assertPublicIpAddress(address);
   };
   const literalFamily = Net.isIP(hostname);
   if (literalFamily === 4 || literalFamily === 6) {
@@ -340,12 +348,14 @@ async function requestHop(input: {
   readonly maxResponseBytes: number;
   readonly requirePublicAddress: boolean;
   readonly allowLoopbackHttp: boolean;
+  readonly allowProxyFakeIp: boolean;
   readonly signal: AbortSignal;
 }): Promise<OutboundHttpResponse> {
   const pinned = await resolvePinnedAddress(
     input.url,
     input.requirePublicAddress,
     input.allowLoopbackHttp,
+    input.allowProxyFakeIp,
     input.signal,
   );
 
@@ -509,6 +519,7 @@ export class OutboundHttpClient {
           maxResponseBytes: policy.maxResponseBytes,
           requirePublicAddress: policy.requirePublicAddress ?? true,
           allowLoopbackHttp,
+          allowProxyFakeIp: policy.allowProxyFakeIp === true,
           signal: controller.signal,
         });
         if (!isRedirectStatus(response.status)) return response;

@@ -13,6 +13,14 @@ const TooltipProvider = TooltipPrimitive.Provider;
 const Tooltip = TooltipPrimitive.Root;
 
 /**
+ * Hover delay for every tooltip in the app. Base UI defaults to 600ms, which
+ * reads as sluggish on icon buttons; 300ms still avoids popping a tooltip on an
+ * incidental cursor pass. A trigger can override it by passing its own `delay`
+ * (e.g. the activity heatmap uses 0).
+ */
+const DEFAULT_TOOLTIP_DELAY_MS = 300;
+
+/**
  * Tooltip surface variants. Every tooltip in the app is the same `TooltipPopup`;
  * the variant only swaps its chrome, so different tooltips can wear different
  * looks without forking the component. Add a new style here (and a key) to make it
@@ -30,8 +38,14 @@ const TOOLTIP_SURFACE_BY_VARIANT: Record<TooltipVariant, string> = {
   picker: COMPOSER_PICKER_TOOLTIP_SURFACE_CLASS_NAME,
 };
 
-function TooltipTrigger(props: TooltipPrimitive.Trigger.Props) {
-  return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props} />;
+function TooltipTrigger({ delay, ...props }: TooltipPrimitive.Trigger.Props) {
+  return (
+    <TooltipPrimitive.Trigger
+      data-slot="tooltip-trigger"
+      delay={delay ?? DEFAULT_TOOLTIP_DELAY_MS}
+      {...props}
+    />
+  );
 }
 
 function TooltipPopup({

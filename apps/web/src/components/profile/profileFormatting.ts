@@ -2,7 +2,7 @@
 // Purpose: Pure display formatters shared by the Profile page and the shareable card.
 // Layer: web profile feature (no I/O, safe to use during html-to-image render).
 
-import type { ProviderKind } from "@synara/contracts";
+import { PROVIDER_DISPLAY_NAMES, type ProviderKind } from "@synara/contracts";
 
 // Compact token/count formatting matching the reference card ("17bn", "538m", "1.2k").
 export function formatCompact(value: number | null | undefined): string {
@@ -46,7 +46,7 @@ export function toDisplayName(basename: string): string {
     .trim()
     .replace(/\s+/g, " ");
   if (!cleaned) {
-    return "Synara";
+    return "Metis";
   }
   return cleaned
     .split(" ")
@@ -79,7 +79,8 @@ export function formatShortDate(day: string | null): string | null {
 export function formatProviderLabel(provider: ProviderKind): string {
   switch (provider) {
     case "codex":
-      return "Codex";
+    case "codexSecondary":
+      return PROVIDER_DISPLAY_NAMES[provider];
     case "claudeAgent":
       return "Claude";
     case "cursor":

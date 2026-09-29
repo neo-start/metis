@@ -3,10 +3,23 @@ import { describe, expect, it } from "vitest";
 import {
   assertExactLoopbackIpAddress,
   assertOutboundUrlAllowed,
+  isProxyFakeIpAddress,
   isPublicIpAddress,
   normalizeOutboundOrigin,
   OutboundPolicyError,
 } from "./outboundHttpPolicy";
+
+describe("proxy fake-IP range", () => {
+  it("matches only 198.18.0.0/15, which stays non-public", () => {
+    for (const address of ["198.18.0.1", "198.18.1.24", "198.19.255.254"]) {
+      expect(isProxyFakeIpAddress(address)).toBe(true);
+      expect(isPublicIpAddress(address)).toBe(false);
+    }
+    for (const address of ["198.17.255.255", "198.20.0.0", "10.0.0.1", "127.0.0.1", "::1"]) {
+      expect(isProxyFakeIpAddress(address)).toBe(false);
+    }
+  });
+});
 
 describe("outbound HTTP URL policy", () => {
   it("keeps HTTPS as the default", () => {

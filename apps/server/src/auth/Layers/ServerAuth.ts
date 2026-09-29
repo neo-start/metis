@@ -7,11 +7,15 @@ import type {
   AuthWebSocketTokenResult,
 } from "@synara/contracts";
 import { DateTime, Effect, Layer } from "effect";
+import { timingSafeEqual } from "node:crypto";
 
+import { ServerConfig } from "../../config";
+import { isLoopbackHost } from "../../startupAccess";
 import { AuthControlPlane } from "../Services/AuthControlPlane";
 import {
   BootstrapCredentialError,
   BootstrapCredentialService,
+  type BootstrapGrant,
 } from "../Services/BootstrapCredentialService";
 import { ServerAuthPolicy } from "../Services/ServerAuthPolicy";
 import {
@@ -77,11 +81,44 @@ function toAuthenticatedSession(session: {
 }
 
 export const makeServerAuth = Effect.gen(function* () {
+  const config = yield* ServerConfig;
   const policy = yield* ServerAuthPolicy;
   const bootstrapCredentials = yield* BootstrapCredentialService;
   const authControlPlane = yield* AuthControlPlane;
   const sessions = yield* SessionCredentialService;
   const descriptor = yield* policy.getDescriptor();
+
+  const consumeBootstrapCredential = (
+    credential: string,
+  ): Effect.Effect<Pick<BootstrapGrant, "role" | "subject" | "label">, AuthError> => {
+    // Electron already owns this per-process secret for local RPC. Exchange it
+    // for an ordinary revocable HTTP session, never for remote/public servers.
+    if (
+      config.mode === "desktop" &&
+      isLoopbackHost(config.host) &&
+      !config.publicUrl &&
+      config.authToken
+    ) {
+      const expected = Buffer.from(config.authToken);
+      const provided = Buffer.from(credential);
+      if (expected.length === provided.length && timingSafeEqual(expected, provided)) {
+        return Effect.succeed({
+          role: "owner" as const,
+          subject: "desktop-bootstrap",
+          label: "Metis 桌面",
+        });
+      }
+    }
+    // Reasons are fixed strings (unknown/expired/used); never log the credential.
+    return bootstrapCredentials.consume(credential).pipe(
+      Effect.tapError((cause) =>
+        Effect.logWarning("Rejected pairing credential exchange.").pipe(
+          Effect.annotateLogs({ reason: cause.message, status: cause.status }),
+        ),
+      ),
+      Effect.mapError(toBootstrapExchangeAuthError),
+    );
+  };
 
   const authenticateToken = (token: string): Effect.Effect<AuthenticatedSession, AuthError> =>
     sessions.verify(token).pipe(
@@ -144,8 +181,7 @@ export const makeServerAuth = Effect.gen(function* () {
     credential,
     requestMetadata,
   ) =>
-    bootstrapCredentials.consume(credential).pipe(
-      Effect.mapError(toBootstrapExchangeAuthError),
+    consumeBootstrapCredential(credential).pipe(
       Effect.flatMap((grant) =>
         sessions
           .issue({
@@ -184,8 +220,7 @@ export const makeServerAuth = Effect.gen(function* () {
 
   const exchangeBootstrapCredentialForBearerSession: ServerAuthShape["exchangeBootstrapCredentialForBearerSession"] =
     (credential, requestMetadata) =>
-      bootstrapCredentials.consume(credential).pipe(
-        Effect.mapError(toBootstrapExchangeAuthError),
+      consumeBootstrapCredential(credential).pipe(
         Effect.flatMap((grant) =>
           sessions
             .issue({

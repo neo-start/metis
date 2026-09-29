@@ -73,14 +73,18 @@ describe("generatedImagePathFromRuntimeEvent", () => {
 
 describe("resolveCodexGeneratedImagesRoot(s)", () => {
   const previousSynaraHome = process.env.SYNARA_HOME;
+  const previousCodexHome = process.env.CODEX_HOME;
 
   afterEach(() => {
     if (previousSynaraHome === undefined) delete process.env.SYNARA_HOME;
     else process.env.SYNARA_HOME = previousSynaraHome;
+    if (previousCodexHome === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = previousCodexHome;
   });
 
   it("returns the overlay generated_images directory as the active write root by default", () => {
     process.env.SYNARA_HOME = "/synara-test/runtime";
+    process.env.CODEX_HOME = "/codex-test/.codex";
     assert.equal(
       resolveCodexGeneratedImagesRoot("/codex-test/.codex"),
       path.join("/synara-test/runtime", "codex-home-overlay", "generated_images"),
@@ -89,6 +93,7 @@ describe("resolveCodexGeneratedImagesRoot(s)", () => {
 
   it("returns both source and overlay generated_images roots for the allowlist", () => {
     process.env.SYNARA_HOME = "/synara-test/runtime";
+    process.env.CODEX_HOME = "/codex-test/.codex";
     assert.deepEqual(resolveCodexGeneratedImagesRoots("/codex-test/.codex"), [
       path.join("/codex-test/.codex", "generated_images"),
       path.join("/synara-test/runtime", "codex-home-overlay", "generated_images"),

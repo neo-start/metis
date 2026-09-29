@@ -31,6 +31,17 @@ import {
   ExternalMcpRevokeIntegrationInput,
 } from "./externalMcp";
 import {
+  MetisMemoryDeleteInput,
+  MetisMemoryDeleteResult,
+  MetisMemoryDocument,
+  MetisMemoryEntry,
+  MetisMemoryOverview,
+  MetisMemoryReadInput,
+  MetisMemorySoul,
+  MetisMemoryUpdateSoulInput,
+  MetisMemoryWriteInput,
+} from "./memory";
+import {
   DEVICE_WS_METHODS,
   DeviceAttachInput,
   DeviceBootInput,
@@ -1524,6 +1535,36 @@ export const WsSubscribeAutomationEventsRpc = Rpc.make(WS_METHODS.subscribeAutom
   stream: true,
 });
 
+export const WsMemoryGetOverviewRpc = Rpc.make(WS_METHODS.memoryGetOverview, {
+  payload: Schema.Struct({}),
+  success: MetisMemoryOverview,
+  error: WsRpcError,
+});
+
+export const WsMemoryReadRpc = Rpc.make(WS_METHODS.memoryRead, {
+  payload: MetisMemoryReadInput,
+  success: MetisMemoryDocument,
+  error: WsRpcError,
+});
+
+export const WsMemoryWriteRpc = Rpc.make(WS_METHODS.memoryWrite, {
+  payload: MetisMemoryWriteInput,
+  success: MetisMemoryEntry,
+  error: WsRpcError,
+});
+
+export const WsMemoryDeleteRpc = Rpc.make(WS_METHODS.memoryDelete, {
+  payload: MetisMemoryDeleteInput,
+  success: MetisMemoryDeleteResult,
+  error: WsRpcError,
+});
+
+export const WsMemoryUpdateSoulRpc = Rpc.make(WS_METHODS.memoryUpdateSoul, {
+  payload: MetisMemoryUpdateSoulInput,
+  success: MetisMemorySoul,
+  error: WsRpcError,
+});
+
 export const WsBootstrapRpcGroup = RpcGroup.make(WsBootstrapNegotiateRpc);
 
 export const WsFeatureRpcGroup = RpcGroup.make(
@@ -1658,4 +1699,9 @@ export const WsFeatureRpcGroup = RpcGroup.make(
   WsAutomationArchiveRunRpc,
   WsAutomationResolveProposalRpc,
   WsSubscribeAutomationEventsRpc,
+  WsMemoryGetOverviewRpc,
+  WsMemoryReadRpc,
+  WsMemoryWriteRpc,
+  WsMemoryDeleteRpc,
+  WsMemoryUpdateSoulRpc,
 );

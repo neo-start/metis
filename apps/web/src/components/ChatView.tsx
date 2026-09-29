@@ -70,6 +70,7 @@ import { findProviderStatus } from "~/lib/providerAvailability";
 import { serverSettingsQueryOptions } from "~/lib/serverReactQuery";
 import { cn, isMacNavigatorPlatform, newCommandId, newThreadId, randomUUID } from "~/lib/utils";
 import { readNativeApi } from "~/nativeApi";
+import { archiveThreadFromClient } from "../lib/threadArchive";
 import {
   mergeProjectInstructionsIntoThreadNotes,
   useProjectInstructionsStore,
@@ -148,6 +149,13 @@ import {
   providerModelSupportsAutoRuntimeMode,
 } from "../lib/runtimeMode";
 import { addSelectionToSide, startSelectionChat } from "../lib/selectionChat";
+import {
+  consumeForkPointJump,
+  matchForkPointMessageId,
+  peekForkPointJump,
+  useForkBranchesForThread,
+} from "../lib/threadForkPoints";
+import { grantQueuedComposerFirstSend } from "../lib/queuedComposerDrain";
 import { waitForSidechatCreator } from "../lib/sidechatCreatorRegistry";
 import { isStudioContainerProject } from "../lib/studioProjects";
 import { resolveSubagentPresentationForThread } from "../lib/subagentPresentation";
@@ -191,6 +199,8 @@ import {
   type SplitViewPanePanelState,
 } from "../splitViewStore";
 import { useStore } from "../store";
+import { interruptThreadTurn } from "../lib/threadTurnInterrupt";
+import { waitForThreadToSettle } from "../lib/threadQuiescence";
 import {
   createComposerThreadMentionSourcesSelector,
   createProjectSelector,
@@ -719,6 +729,15 @@ export default function ChatView({
         : null,
     [forkSourceThread?.title, forkSourceThreadId],
   );
+  // Branch tree data: forks leaving each turn of this thread, and (for a fork) the
+  // siblings that share its fork point. Child fork points load once via snapshot.
+  const { branchesByMessageId: forkBranchesByMessageId, sourceBranchGroup: forkSiblingBranches } =
+    useForkBranchesForThread(serverThread ?? null);
+  // Inline reply composer under an assistant turn; closes on thread change.
+  const [replyComposerMessageId, setReplyComposerMessageId] = useState<MessageId | null>(null);
+  useEffect(() => {
+    setReplyComposerMessageId(null);
+  }, [threadId]);
   const fallbackDraftProjectId = draftThread?.projectId ?? null;
   const fallbackDraftProject = useStore(
     useMemo(() => createProjectSelector(fallbackDraftProjectId), [fallbackDraftProjectId]),
@@ -1768,6 +1787,42 @@ export default function ChatView({
     },
     [timelineControllerRef],
   );
+  // Branch switch landing: a ForkBranchStrip click recorded the fork point before
+  // navigating here; once this transcript has the matching turn, scroll to it so
+  // the switch reads as "same place, other branch" instead of jumping to the tail.
+  const activeThreadMessagesForJump = activeThread?.messages;
+  const forkPointJumpFrameRef = useRef<number | null>(null);
+  // Thread that was opened by a branch switch; keeps the transcript from
+  // re-anchoring to its end while the user reads at the fork point.
+  const [forkJumpThreadId, setForkJumpThreadId] = useState<ThreadId | null>(null);
+  useEffect(() => {
+    if (!activeThreadId || !activeThreadMessagesForJump || forkPointJumpFrameRef.current !== null) {
+      return;
+    }
+    const key = peekForkPointJump(activeThreadId);
+    if (!key) {
+      return;
+    }
+    setForkJumpThreadId(activeThreadId);
+    const messageId = matchForkPointMessageId(activeThreadMessagesForJump, key);
+    if (!messageId) {
+      // Detail may still be hydrating; a later message update re-runs this.
+      return;
+    }
+    // Let LegendList paint its initial rows before targeting one of them. The
+    // frame is tracked in a ref (not cancelled on re-run) so a streaming
+    // destination cannot keep pushing the scroll back; the intent is consumed
+    // only once a controller actually took it, otherwise a later run retries.
+    forkPointJumpFrameRef.current = requestAnimationFrame(() => {
+      forkPointJumpFrameRef.current = null;
+      const controller = timelineControllerRef.current;
+      if (!controller) {
+        return;
+      }
+      controller.scrollToMessage(messageId);
+      consumeForkPointJump(activeThreadId);
+    });
+  }, [activeThreadId, activeThreadMessagesForJump, timelineEntries.length, timelineControllerRef]);
 
   // Before treating an empty timeline as a genuinely new thread, wait for the
   // detail snapshot: a server thread whose history has not synced yet must show
@@ -1983,6 +2038,42 @@ export default function ChatView({
     },
     [threadId],
   );
+  const onRememberClaudeCacheReviewDecision = useCallback(
+    (decision: Exclude<ClaudeCacheReviewDecision, "cancel">) => {
+      updateSettings({ claudeCacheReviewDecision: decision });
+    },
+    [updateSettings],
+  );
+  // A remembered choice answers each held message once, through the same command
+  // the panel sends. Anything the choice cannot do yet (compaction unavailable,
+  // a failed attempt) leaves the panel up for a manual answer. A failed attempt
+  // comes back as a new pending review with an error, so the guard keys on the
+  // held message and skips errored reviews; keying on reviewId looped forever.
+  const autoAnsweredClaudeCacheReviewsRef = useRef(new Set<string>());
+  const rememberedClaudeCacheReviewDecision = settings.claudeCacheReviewDecision;
+  const pendingClaudeCacheReview = activeThread?.claudeCacheReview;
+  useEffect(() => {
+    if (!pendingClaudeCacheReview || pendingClaudeCacheReview.status !== "pending") return;
+    if (pendingClaudeCacheReview.error) return;
+    if (rememberedClaudeCacheReviewDecision === "ask") return;
+    // A held /compact only offers "continue", which is the compaction itself.
+    const decision: ClaudeCacheReviewDecision = cacheReviewIsCompactionRequest
+      ? "continue"
+      : rememberedClaudeCacheReviewDecision;
+    if (decision === "compact" && claudeCompactDisabledReason !== null) return;
+    const answered = autoAnsweredClaudeCacheReviewsRef.current;
+    if (answered.has(pendingClaudeCacheReview.messageId)) return;
+    answered.add(pendingClaudeCacheReview.messageId);
+    void onRespondToClaudeCacheReview(pendingClaudeCacheReview, decision).catch(() => {
+      // The review stays pending and visible; the user can answer it directly.
+    });
+  }, [
+    cacheReviewIsCompactionRequest,
+    claudeCompactDisabledReason,
+    onRespondToClaudeCacheReview,
+    pendingClaudeCacheReview,
+    rememberedClaudeCacheReviewDecision,
+  ]);
   const activeRootBranch = useMemo(
     () =>
       resolveComposerSlashRootBranch({
@@ -3455,6 +3546,94 @@ export default function ChatView({
     markWorkflowRunDismissed(activeThreadId, workflowTaskId);
   }, [activeThreadId, markWorkflowRunDismissed, workflowRunState]);
 
+  // Picking another provider mid-chat: interrupt the running turn, wait for the
+  // thread to settle, then hand off with the picked model. The server queues the
+  // continuation turn on the new thread when the source was stopped mid-work.
+  // One switch per source thread: the picker can commit again while the first is
+  // still waiting (slider mode keeps it open), and each commit used to create its
+  // own handoff thread. Later picks only replace the target of the pending switch.
+  const pendingProviderSwitchRef = useRef<{
+    threadId: ThreadId;
+    target: { provider: ProviderKind; model: ModelSlug; options?: ComposerModelSelectionOptions };
+  } | null>(null);
+  const switchThreadProvider = useCallback(
+    async (
+      provider: ProviderKind,
+      model: ModelSlug,
+      selectionOptions?: ComposerModelSelectionOptions,
+    ) => {
+      if (!activeThread || !isServerThread) return;
+      const target = {
+        provider,
+        model,
+        ...(selectionOptions ? { options: selectionOptions } : {}),
+      };
+      const pending = pendingProviderSwitchRef.current;
+      if (pending?.threadId === activeThread.id) {
+        pending.target = target;
+        return;
+      }
+      const job = { threadId: activeThread.id, target };
+      pendingProviderSwitchRef.current = job;
+      const toModelSelection = () => {
+        const { provider: nextProvider, model: nextModel, options } = job.target;
+        const resolvedModel = resolveCommittedProviderModel({
+          selectedModel: nextModel,
+          availableOptions: modelOptionsByProvider[nextProvider],
+          fallback: () => resolveAppModelSelection(nextProvider, customModelsByProvider, nextModel),
+        });
+        const runtimeModel = resolveRuntimeModelDescriptor({
+          provider: nextProvider,
+          model: resolvedModel,
+          runtimeModels: runtimeModelsByProvider[nextProvider],
+        });
+        return buildModelSelection(
+          nextProvider,
+          resolvedModel,
+          options?.modelOptions,
+          nextProvider === "claudeAgent" ? runtimeModel?.supportsAutoMode : undefined,
+        );
+      };
+      try {
+        if (!canCreateThreadHandoff({ thread: activeThread })) {
+          await interruptThreadTurn(activeThread.id);
+          const settled = await waitForThreadToSettle(activeThread.id);
+          if (!settled) {
+            throw new Error("The current response did not stop in time. Try again.");
+          }
+        }
+        const latest = createThreadSelector(activeThread.id)(useStore.getState()) ?? activeThread;
+        const modelSelection = toModelSelection();
+        await createThreadHandoff(latest, modelSelection.provider, { modelSelection });
+        // Switching provider continues the same conversation, so the source thread
+        // is archived rather than left as a duplicate row (it stays restorable).
+        const api = readNativeApi();
+        if (api) {
+          await archiveThreadFromClient(api.orchestration, latest.id).catch(() => undefined);
+        }
+      } catch (error) {
+        toastManager.add({
+          type: "error",
+          title: `Could not switch to ${PROVIDER_DISPLAY_NAMES[job.target.provider]}`,
+          description:
+            error instanceof Error ? error.message : "An error occurred while switching provider.",
+        });
+      } finally {
+        if (pendingProviderSwitchRef.current === job) {
+          pendingProviderSwitchRef.current = null;
+        }
+      }
+    },
+    [
+      activeThread,
+      createThreadHandoff,
+      customModelsByProvider,
+      isServerThread,
+      modelOptionsByProvider,
+      runtimeModelsByProvider,
+    ],
+  );
+
   const onProviderModelSelect = useCallback(
     async (
       provider: ProviderKind,
@@ -3463,7 +3642,10 @@ export default function ChatView({
     ) => {
       if (!activeThread) return;
       if (lockedProvider !== null && provider !== lockedProvider) {
+        // A started chat cannot change provider in place: stop it if it is
+        // working, hand it off, and let the server continue it there.
         scheduleComposerFocus();
+        await switchThreadProvider(provider, model, selectionOptions);
         return;
       }
       const resolvedModel = resolveCommittedProviderModel({
@@ -3523,6 +3705,7 @@ export default function ChatView({
       scheduleComposerFocus,
       setComposerDraftModelSelectionAndSticky,
       setComposerDraftProviderModelOptions,
+      switchThreadProvider,
     ],
   );
 
@@ -4386,6 +4569,7 @@ export default function ChatView({
   );
 
   const {
+    createForkThreadFromMessage,
     handleForkFromMessage,
     handleForkTargetSelection,
     handleReviewTargetSelection,
@@ -4620,6 +4804,80 @@ export default function ChatView({
     [navigate],
   );
   const activeProjectIdForNewChat = activeProject?.id ?? null;
+  // Only a saved main chat can be forked (see createForkThreadFromSlashCommand);
+  // drafts and side chats get no Reply action rather than an error after typing.
+  const canReplyFromMessage =
+    isServerThread && !activeThread?.sidechatSourceThreadId && !activeThread?.parentThreadId;
+  const handleReplyFromMessage = useCallback((messageId: MessageId) => {
+    setReplyComposerMessageId(messageId);
+  }, []);
+  const handleCloseReplyComposer = useCallback(() => {
+    setReplyComposerMessageId(null);
+  }, []);
+  // Reply = fork from that turn + send. The prompt is queued on the forked thread
+  // before navigation so the destination ChatView dispatches it through its normal
+  // first-send path (worktree bootstrap, attachments, recovery) — the same route
+  // `startSelectionChat` uses for a new chat from a selection.
+  const sendReplyFromMessage = useCallback(
+    async (messageId: MessageId, prompt: string) => {
+      const forkedThreadId = await createForkThreadFromMessage(messageId, (threadId, envMode) => {
+        const drafts = useComposerDraftStore.getState();
+        drafts.setModelSelection(threadId, selectedModelSelection);
+        drafts.setRuntimeMode(threadId, runtimeMode);
+        drafts.setInteractionMode(threadId, interactionMode);
+        // The fork has no session yet; without this grant the queued first turn
+        // would be held as "disconnected" forever.
+        grantQueuedComposerFirstSend(threadId);
+        drafts.enqueueQueuedTurn(threadId, {
+          id: randomUUID(),
+          kind: "chat",
+          createdAt: new Date().toISOString(),
+          previewText: prompt,
+          prompt,
+          assistantSelections: [],
+          images: [],
+          files: [],
+          browserAnnotations: [],
+          terminalContexts: [],
+          fileComments: [],
+          pastedTexts: [],
+          pullRequestContexts: [],
+          skills: [],
+          mentions: [],
+          selectedProvider: selectedModelSelection.provider,
+          selectedModel: selectedModelSelection.model,
+          selectedPromptEffort,
+          modelSelection: selectedModelSelection,
+          ...(providerOptionsForDispatch ? { providerOptionsForDispatch } : {}),
+          runtimeMode,
+          interactionMode,
+          envMode,
+        });
+      });
+      if (!forkedThreadId) {
+        throw new Error("Only saved chats can start a branch.");
+      }
+      setReplyComposerMessageId(null);
+    },
+    [
+      createForkThreadFromMessage,
+      interactionMode,
+      providerOptionsForDispatch,
+      runtimeMode,
+      selectedModelSelection,
+      selectedPromptEffort,
+    ],
+  );
+  // The transcript caches rendered rows and only redraws them when its extraData
+  // changes, so the callback it receives must be stable across streaming ticks
+  // (`sendReplyFromMessage` re-creates with `activeThread`). A ref-backed wrapper
+  // keeps one identity and still calls the latest closure with current settings.
+  const sendReplyFromMessageRef = useRef(sendReplyFromMessage);
+  sendReplyFromMessageRef.current = sendReplyFromMessage;
+  const handleSendReplyFromMessage = useCallback(
+    (messageId: MessageId, prompt: string) => sendReplyFromMessageRef.current(messageId, prompt),
+    [],
+  );
   const onNewEditorChat = useCallback(() => {
     if (!activeProjectIdForNewChat) {
       return;
@@ -5332,6 +5590,7 @@ export default function ChatView({
                     compactDisabledReason={claudeCompactDisabledReason}
                     isCompactionRequest={cacheReviewIsCompactionRequest}
                     onRespond={onRespondToClaudeCacheReview}
+                    onRememberDecision={onRememberClaudeCacheReviewDecision}
                   />
                 </div>
               ) : null}
@@ -5866,7 +6125,7 @@ export default function ChatView({
                       CHAT_COLUMN_FRAME_CLASS_NAME,
                     )}
                   >
-                    <SynaraLogo aria-label="Synara logo" className="size-10" />
+                    <SynaraLogo aria-label="Metis logo" className="size-10" />
                     <h2
                       data-testid="empty-landing-heading"
                       className="text-[26px] font-normal leading-[1.15] tracking-[-0.015em] text-foreground/95 sm:text-[30px]"
@@ -5950,6 +6209,13 @@ export default function ChatView({
                     canPinMessage={canPinMessage}
                     onTogglePinMessage={handleTogglePinMessageGuarded}
                     onForkFromMessage={handleForkFromMessage}
+                    {...(canReplyFromMessage ? { onReplyFromMessage: handleReplyFromMessage } : {})}
+                    replyComposerMessageId={replyComposerMessageId}
+                    onSendReplyFromMessage={handleSendReplyFromMessage}
+                    onCloseReplyComposer={handleCloseReplyComposer}
+                    forkBranchesByMessageId={forkBranchesByMessageId}
+                    forkSiblingBranches={forkSiblingBranches}
+                    openAtForkPoint={forkJumpThreadId === activeThread.id}
                     goalAchievements={goalAchievements}
                     enteringUserMessageIds={enteringUserMessageIds}
                     tailAnchorMessageId={

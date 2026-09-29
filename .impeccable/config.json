@@ -1,0 +1,14 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "design-system-font",
+        "value": "sans-serif\">",
+        "createdAt": "2026-09-24T03:29:16.479Z",
+        "reason": "Claude triage: generic system fallback stack (system-ui,-apple-system,sans-serif) matches DESIGN.md 'native system stack as fallback'; detector mis-parsed the trailing attribute quote"
+      }
+    ]
+  }
+}

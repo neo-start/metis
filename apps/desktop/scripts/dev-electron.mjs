@@ -114,6 +114,11 @@ function listStaleComputerUsePids() {
 }
 
 function cleanupStaleComputerUseApps() {
+  // This fork's development launcher must not reap helpers owned by a separate
+  // Synara installation. cleanupStaleDevApps already scopes restarts to this root.
+  if (process.env.SYNARA_DESKTOP_FLAVOR === "development") {
+    return;
+  }
   const stalePids = listStaleComputerUsePids();
   if (stalePids.length === 0) {
     return;

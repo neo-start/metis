@@ -122,7 +122,7 @@ function ProfileContent({
             <span>{handle}</span>
             <span aria-hidden>·</span>
             <span className="rounded-full border px-1.5 py-px text-ui leading-snug text-muted-foreground">
-              Synara
+              Metis
             </span>
           </div>
         </div>
@@ -364,7 +364,7 @@ function ModelUsageRow({
       <div className="flex items-center justify-between gap-3 text-ui leading-snug">
         <span className="flex min-w-0 items-center gap-2">
           {provider !== "unknown" ? (
-            <ProviderIcon provider={provider} className="size-3.5 shrink-0" />
+            <ProviderIcon provider={provider} className="size-3.5 shrink-0" tooltip />
           ) : (
             <CentralIcon name="chart-2" className="size-3.5 shrink-0 text-muted-foreground" />
           )}

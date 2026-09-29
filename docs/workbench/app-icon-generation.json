@@ -1,0 +1,35 @@
+{
+  "product": "Metis",
+  "selected": "Folded Volume / Blue",
+  "date": "2026-09-23",
+  "userCorrection": "Dock 图标需要白底、居中显示选定的蔚蓝 Logo，保留三面折叠和中央留白。",
+  "tool": "image_gen.imagegen",
+  "mode": "built-in edit",
+  "sourceLogo": "docs/metis-logo-colors/images/01-blue.png",
+  "steps": [
+    {
+      "prompt": "Use case: precise-object-edit.\nAsset type: macOS Dock application icon, final PNG.\nInput image: exact selected Metis Folded Volume blue logo on transparency. It is the exact artwork to preserve, not inspiration for a replacement.\nTask: place this same blue folded logo, reduced in scale, centered on a clean opaque WHITE rounded-square app-icon tile. The existing mark must be unchanged: same three blue folded ribbon faces, same outer silhouette and rounded corners, same isometric geometry and blue tones. Its central triangular negative space MUST stay open and reveal the pure white tile behind it. It must not become a closed solid cube, nor a blue box. Preserve face connections and the distinctive small right-pointing triangular hole.\nComposition: square image, one front-facing white rounded-square tile centered with even transparent outer margins. White tile is about 82% of the canvas width and height, smoothly rounded macOS app corners about 22% corner radius. The blue logo's actual visible height is about 66% of the white tile height, with visually equal white space on all four sides; it is optically centered. No rotation of the tile, no perspective on the tile. Pure white #FFFFFF tile with restrained thin edge; no strong shadow, no glass, no bevel, no added shine, no gradients on the white tile. The original logo's blue tonal shading remains unchanged.\nBackground: actual transparent alpha outside the tile, no checkerboard drawn in the artwork. Inside the white tile including the triangular opening must be fully opaque white.\nNo text, no wordmark, no labels, no badge, no new symbol. One finished app icon only.",
+      "referenced_image_paths": [
+        "/Users/neo/Stars/agent-workbench/docs/metis-logo-colors/images/01-blue.png"
+      ],
+      "output": "/Users/neo/.codex/generated_images/01a0c8f7-eb9a-7983-b65a-3764a11956b0/exec-d0f7f390-3e98-4f06-9c4c-bbae0fd1301c.png"
+    },
+    {
+      "prompt": "Use case: precise-object-edit.\nEdit ONLY the white app-icon tile and its outside alpha in the provided Metis icon. Keep the blue logo's design, blue colors, exact three folded faces and white triangular center opening, scale, and centered position UNCHANGED.\nRepair the white tile so it is a perfect centered square with smooth macOS rounded corners. Pure opaque #FFFFFF, flat clean finish, no texture, no border, no dark hairline, no shadow. The current rough specks and ragged white pixels around the outside of the tile must be removed. Use a crisp, clean anti-aliased rounded-square silhouette and 100% transparent background outside it, with even margins all around. No stray pixels or irregular edge bumps. The outside transparency must not leak into the white tile or into the white triangular opening of the blue logo. No checkerboard. One production-ready icon, no text. Preserve the blue logo itself.",
+      "referenced_image_paths": [
+        "/Users/neo/.codex/generated_images/01a0c8f7-eb9a-7983-b65a-3764a11956b0/exec-d0f7f390-3e98-4f06-9c4c-bbae0fd1301c.png"
+      ],
+      "output": "/Users/neo/.codex/generated_images/01a0c8f7-eb9a-7983-b65a-3764a11956b0/exec-368af726-a724-4cf9-8e70-1eff9d78687a.png"
+    }
+  ],
+  "files": [
+    "apps/web/public/metis-app-icon-blue.png",
+    "apps/desktop/resources/metis-app-icon-blue.png"
+  ],
+  "imagePolicy": "Final generated PNG copied byte-for-byte; no programmatic image editing. Original selected transparent mark retained for inline UI branding.",
+  "review": "Inspected generated asset: white rounded tile, centered three-face blue mark, visible white triangular opening; no browser screenshot or Dock visual QA performed.",
+  "sha256": "8cbb1f014be25361868e811da60f425244297fdda8456c7ee8591e16cfb9d803",
+  "width": 1254,
+  "height": 1254,
+  "pngColorType": 6
+}

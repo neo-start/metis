@@ -496,6 +496,8 @@ function fetchClaudeUsage(accessToken: string) {
     service: "provider-usage-claude",
     url: USAGE_URL,
     allowedOrigins: [new URL(USAGE_URL).origin],
+    // Fixed vendor origin; local TUN proxies resolve it to 198.18.0.0/15.
+    allowProxyFakeIp: true,
     headers: {
       Authorization: `Bearer ${accessToken}`,
       Accept: "application/json",

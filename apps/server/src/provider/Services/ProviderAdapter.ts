@@ -160,6 +160,16 @@ export interface ProviderAdapterShape<TError> {
   readonly stopTask?: (threadId: ThreadId, taskId: string) => Effect.Effect<void, TError>;
 
   /**
+   * Provider-native task ids the adapter itself still tracks as running.
+   * Returns `undefined` whenever the adapter cannot vouch for the complete set
+   * (a turn or dispatch is in flight, subagent/workflow work is active, or the
+   * provider has not reported its background-task snapshot yet). Callers may
+   * treat a returned set as authoritative: an id missing from it has settled
+   * even if its terminal event was lost.
+   */
+  readonly getLiveTaskIds?: (threadId: ThreadId) => Effect.Effect<ReadonlySet<string> | undefined>;
+
+  /**
    * Move one in-flight foreground task to the background when the adapter supports it.
    */
   readonly backgroundTask?: (threadId: ThreadId, toolUseId: string) => Effect.Effect<void, TError>;

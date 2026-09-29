@@ -102,6 +102,9 @@ export const ServerProviderStatus = Schema.Struct({
   authStatus: ServerProviderAuthStatus,
   authType: Schema.optional(TrimmedNonEmptyString),
   authLabel: Schema.optional(TrimmedNonEmptyString),
+  // Signed-in account (e.g. the ChatGPT email behind a Codex home), shown so
+  // two instances of the same provider can be told apart.
+  accountEmail: Schema.optional(TrimmedNonEmptyString),
   voiceTranscriptionAvailable: Schema.optional(Schema.Boolean),
   supportsAutoRuntimeMode: Schema.optional(Schema.Boolean),
   autoRuntimeModeBinaryPath: Schema.optional(TrimmedNonEmptyString),
@@ -144,6 +147,7 @@ const ServerProviderStatuses = Schema.Array(ServerProviderStatus);
 export const ServerConfig = Schema.Struct({
   cwd: TrimmedNonEmptyString,
   homeDir: Schema.optional(TrimmedNonEmptyString),
+  publicUrl: Schema.optional(TrimmedNonEmptyString),
   chatWorkspaceRoot: Schema.optional(TrimmedNonEmptyString),
   studioWorkspaceRoot: Schema.optional(TrimmedNonEmptyString),
   worktreesDir: TrimmedNonEmptyString,

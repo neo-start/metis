@@ -15,7 +15,7 @@ import { buildPiTurnPrompt } from "./PiAdapter.ts";
 import { takeDevinSynaraHarnessPolicyTextPart } from "./DevinAdapter.ts";
 
 const computerContext = computerToolInstructions();
-const marker = "## Synara computer use";
+const marker = "## Metis computer use";
 
 describe("conditional Computer host context", () => {
   it.each(["default", "plan"] as const)(

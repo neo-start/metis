@@ -61,6 +61,13 @@ interface ChatTranscriptPaneProps {
   canPinMessage?: (messageId: MessageId) => boolean;
   onTogglePinMessage?: (messageId: MessageId) => void;
   onForkFromMessage?: (messageId: MessageId) => void;
+  onReplyFromMessage?: ComponentProps<typeof MessagesTimeline>["onReplyFromMessage"];
+  replyComposerMessageId?: ComponentProps<typeof MessagesTimeline>["replyComposerMessageId"];
+  onSendReplyFromMessage?: ComponentProps<typeof MessagesTimeline>["onSendReplyFromMessage"];
+  onCloseReplyComposer?: ComponentProps<typeof MessagesTimeline>["onCloseReplyComposer"];
+  forkBranchesByMessageId?: ComponentProps<typeof MessagesTimeline>["forkBranchesByMessageId"];
+  forkSiblingBranches?: ComponentProps<typeof MessagesTimeline>["forkSiblingBranches"];
+  openAtForkPoint?: ComponentProps<typeof MessagesTimeline>["openAtForkPoint"];
   goalAchievements?: ComponentProps<typeof MessagesTimeline>["goalAchievements"];
   enteringUserMessageIds?: ComponentProps<typeof MessagesTimeline>["enteringUserMessageIds"];
   tailAnchorMessageId?: ComponentProps<typeof MessagesTimeline>["tailAnchorMessageId"];
@@ -141,6 +148,13 @@ export function ChatTranscriptPane({
   canPinMessage,
   onTogglePinMessage,
   onForkFromMessage,
+  onReplyFromMessage,
+  replyComposerMessageId,
+  onSendReplyFromMessage,
+  onCloseReplyComposer,
+  forkBranchesByMessageId,
+  forkSiblingBranches,
+  openAtForkPoint,
   goalAchievements,
   enteringUserMessageIds,
   tailAnchorMessageId,
@@ -262,6 +276,13 @@ export function ChatTranscriptPane({
             {...(canPinMessage ? { canPinMessage } : {})}
             {...(onTogglePinMessage ? { onTogglePinMessage } : {})}
             {...(onForkFromMessage ? { onForkFromMessage } : {})}
+            {...(onReplyFromMessage ? { onReplyFromMessage } : {})}
+            replyComposerMessageId={replyComposerMessageId ?? null}
+            {...(onSendReplyFromMessage ? { onSendReplyFromMessage } : {})}
+            {...(onCloseReplyComposer ? { onCloseReplyComposer } : {})}
+            {...(forkBranchesByMessageId ? { forkBranchesByMessageId } : {})}
+            forkSiblingBranches={forkSiblingBranches ?? null}
+            openAtForkPoint={openAtForkPoint ?? false}
             {...(goalAchievements ? { goalAchievements } : {})}
             {...(enteringUserMessageIds ? { enteringUserMessageIds } : {})}
             tailAnchorMessageId={tailAnchorMessageId ?? null}

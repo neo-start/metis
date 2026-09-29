@@ -1,4 +1,9 @@
 import { appendAppSnapPromptContext } from "../../provider/appSnapPromptContext.ts";
+import { isTruncatedFork } from "../forkTruncation.ts";
+import {
+  buildHandoffContinuationCommand,
+  shouldContinueAfterHandoff,
+} from "../handoffContinuation.ts";
 import { computerActivationMetadata } from "../../computer/computerActivation.ts";
 import { parseComputerInvocation } from "@synara/shared/computerInvocation";
 import { AgentGatewaySessionRegistry } from "../../agentGateway/Services/AgentGatewaySessionRegistry";
@@ -35,6 +40,7 @@ import {
   type ProviderSession,
   type RuntimeMode,
   TurnId,
+  isCodexProviderKind,
 } from "@synara/contracts";
 import {
   Cache,
@@ -112,7 +118,10 @@ import {
 } from "../../git/Services/TextGeneration.ts";
 import { TextGenerationError } from "../../git/Errors.ts";
 import { resolveTextGenerationInputForSelection } from "../../git/textGenerationSelection.ts";
-import { ProviderService } from "../../provider/Services/ProviderService.ts";
+import {
+  ProviderService,
+  type ProviderLiveRuntimeTask,
+} from "../../provider/Services/ProviderService.ts";
 import { ProviderHealth } from "../../provider/Services/ProviderHealth.ts";
 import { providerDisabledSettingsMessage } from "../../provider/enabledProviderAdapter.ts";
 import { resolveProviderDispatchAttachments } from "../../provider/providerAttachmentPaths.ts";
@@ -297,7 +306,7 @@ export function normalizeSkillMentionTextForProvider(input: {
   readonly messageText: string;
   readonly skills?: ReadonlyArray<ProviderSkillReference>;
 }): string {
-  if (input.provider !== "codex" || !input.skills || input.skills.length === 0) {
+  if (!isCodexProviderKind(input.provider) || !input.skills || input.skills.length === 0) {
     return input.messageText;
   }
 
@@ -409,6 +418,64 @@ const sameClaudeCacheContext = (
   left.model === right.model &&
   left.contextTokens === right.contextTokens &&
   left.lastResponseAt === right.lastResponseAt;
+
+const MAX_NAMED_BLOCKING_TASKS = 3;
+const MAX_BLOCKING_TASK_DESCRIPTION_CHARS = 60;
+
+function describeBlockingTasks(tasks: ReadonlyArray<ProviderLiveRuntimeTask>): string {
+  const count = tasks.length;
+  const noun = count === 1 ? "background task" : "background tasks";
+  const names = tasks
+    .flatMap((task) => {
+      const description = task.description?.trim();
+      if (!description) return [];
+      return [
+        description.length > MAX_BLOCKING_TASK_DESCRIPTION_CHARS
+          ? `"${description.slice(0, MAX_BLOCKING_TASK_DESCRIPTION_CHARS - 1).trimEnd()}…"`
+          : `"${description}"`,
+      ];
+    })
+    .slice(0, MAX_NAMED_BLOCKING_TASKS);
+  const more = count - names.length;
+  const list =
+    names.length === 0 ? "" : `: ${names.join(", ")}${more > 0 ? ` and ${more} more` : ""}`;
+  return `Claude is still running ${count} ${noun}${list}. Wait for ${count === 1 ? "it" : "them"} to finish or stop ${count === 1 ? "it" : "them"} before compacting.`;
+}
+
+/**
+ * Why "Compact, then send" cannot start, or undefined when it can. Each reason
+ * names the actual blocker so the user knows what to resolve.
+ */
+export function claudeCacheCompactionBlocker(input: {
+  readonly compactionSupported: boolean;
+  readonly messageText: string | undefined;
+  readonly busyTasks: boolean;
+  readonly liveTasks: ReadonlyArray<ProviderLiveRuntimeTask> | undefined;
+  readonly pendingApprovalCount: number;
+  readonly pendingUserInputCount: number;
+}): string | undefined {
+  if (!input.compactionSupported) {
+    return "Native compaction is unavailable for this Claude runtime.";
+  }
+  if (input.messageText === undefined) {
+    return "The saved message is no longer available.";
+  }
+  if (/^\/compact(?:\s|$)/.test(input.messageText.trim())) {
+    return "The saved message is already a /compact command.";
+  }
+  if (input.pendingApprovalCount > 0) {
+    return "Claude is waiting for an approval. Resolve it before compacting.";
+  }
+  if (input.pendingUserInputCount > 0) {
+    return "Claude is waiting for your answer to a question. Answer it before compacting.";
+  }
+  if (input.busyTasks) {
+    return input.liveTasks && input.liveTasks.length > 0
+      ? describeBlockingTasks(input.liveTasks)
+      : "Claude is still running background tasks. Wait for them to finish or stop them before compacting.";
+  }
+  return undefined;
+}
 
 const claudeCacheReviewCoversObservation = (
   review: PendingClaudeCacheReview,
@@ -1998,7 +2065,20 @@ const make = Effect.gen(function* () {
     }
 
     let bootstrapTranscriptIfResumeFails = false;
-    if (providerService.forkThread && thread.forkSourceThreadId) {
+    // A fork that carries only part of its source (footer "Fork from here",
+    // inline reply, or a source that moved on) must not resume the source's
+    // native session: the provider would see every later turn the user left
+    // behind. Start it fresh and bootstrap from the imported transcript instead.
+    const forkSourceThread =
+      thread.forkSourceThreadId && !thread.sidechatSourceThreadId
+        ? yield* resolveThread(thread.forkSourceThreadId)
+        : undefined;
+    const forkIsTruncated =
+      forkSourceThread !== undefined && isTruncatedFork(thread.messages, forkSourceThread.messages);
+    if (forkIsTruncated) {
+      bootstrapTranscriptIfResumeFails = shouldRegisterContextBootstrap;
+    }
+    if (providerService.forkThread && thread.forkSourceThreadId && !forkIsTruncated) {
       // P1 activation stickiness: forks mint fresh control state. The child
       // starts at generation 0 with chat intent if and only if the parent's
       // chat intent is live; the fork command itself carries no computer
@@ -2884,7 +2964,7 @@ const make = Effect.gen(function* () {
       // adapters enqueue/fork prompts or launch a process before acceptance;
       // their matching terminal success confirms that recovery was consumed.
       const tracksEscalationAcceptance =
-        interruptEscalation !== undefined && selectedProvider !== "codex";
+        interruptEscalation !== undefined && !isCodexProviderKind(selectedProvider);
       pendingContextBootstrapAttempt =
         tracksDroidContextAcceptance || tracksDurableContextAcceptance || tracksEscalationAcceptance
           ? {
@@ -4039,25 +4119,32 @@ const make = Effect.gen(function* () {
         }
         if (decision === "compact") {
           const message = thread.messages.find((entry) => entry.id === review.messageId);
-          const busyTasks = providerService.hasLiveRuntimeTasks
-            ? yield* providerService.hasLiveRuntimeTasks({ threadId })
-            : false;
+          const liveTasks = providerService.listLiveRuntimeTasks
+            ? yield* providerService.listLiveRuntimeTasks({ threadId })
+            : undefined;
+          const busyTasks =
+            liveTasks !== undefined
+              ? liveTasks.length > 0
+              : providerService.hasLiveRuntimeTasks
+                ? yield* providerService.hasLiveRuntimeTasks({ threadId })
+                : false;
           const pending = yield* pendingInteractions.getPendingCountsByThreadId({ threadId });
-          if (
-            !providerService.startClaudeCompaction ||
-            !message ||
-            /^\/compact(?:\s|$)/.test(message.text.trim()) ||
-            busyTasks ||
-            pending.pendingApprovalCount > 0 ||
-            pending.pendingUserInputCount > 0
-          ) {
+          const startClaudeCompaction = providerService.startClaudeCompaction;
+          const compactionBlocker = claudeCacheCompactionBlocker({
+            compactionSupported: startClaudeCompaction !== undefined,
+            messageText: message?.text,
+            busyTasks,
+            liveTasks,
+            pendingApprovalCount: pending.pendingApprovalCount,
+            pendingUserInputCount: pending.pendingUserInputCount,
+          });
+          if (!startClaudeCompaction || compactionBlocker !== undefined) {
             yield* setClaudeCacheReview(
               threadId,
               {
                 ...review,
                 status: "failed",
-                error:
-                  "Native compaction is unavailable or Claude still has active work. The saved message was not sent.",
+                error: `${compactionBlocker ?? "Native compaction is unavailable for this Claude runtime."} The saved message was not sent.`,
               },
               review.reviewId,
             );
@@ -4115,7 +4202,7 @@ const make = Effect.gen(function* () {
               issue: "The saved message is no longer available for compaction.",
             });
           }
-          yield* providerService.startClaudeCompaction({ threadId, turnId }).pipe(
+          yield* startClaudeCompaction({ threadId, turnId }).pipe(
             Effect.tap(() =>
               Effect.sync(() => {
                 if (isRecoveringClaudeCompactions) startupClaudeCompactionTurns.add(turnId);
@@ -5647,9 +5734,26 @@ const make = Effect.gen(function* () {
           }
           return;
         }
-        case "thread.created":
+        case "thread.created": {
           threadSessionModelSelections.set(event.payload.threadId, event.payload.modelSelection);
+          // A provider switch hands an interrupted chat to the new provider; it
+          // picks the work up on its own instead of waiting for a prompt.
+          if (event.payload.handoff !== null) {
+            const sourceThread = yield* resolveThread(event.payload.handoff.sourceThreadId);
+            if (shouldContinueAfterHandoff(sourceThread)) {
+              yield* orchestrationEngine.dispatch(
+                buildHandoffContinuationCommand({
+                  threadId: event.payload.threadId,
+                  eventId: event.eventId,
+                  runtimeMode: event.payload.runtimeMode,
+                  interactionMode: event.payload.interactionMode,
+                  createdAt: event.occurredAt,
+                }),
+              );
+            }
+          }
           return;
+        }
         case "thread.deleted":
           if (Option.isSome(computerService))
             yield* Effect.promise(() =>

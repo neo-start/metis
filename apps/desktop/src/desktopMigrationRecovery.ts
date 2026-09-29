@@ -62,7 +62,7 @@ export function invalidMigrationStartupRecoveryChoices(input: {
 }): ReadonlyArray<DesktopMigrationRecoveryChoice> {
   const choices: Array<DesktopMigrationRecoveryChoice> = [];
   if (input.canInstallUpdate) {
-    choices.push({ label: "Update Synara and restart", decision: "install-update" });
+    choices.push({ label: "Update Metis and restart", decision: "install-update" });
   }
   if (input.canOpenReleasePage) {
     choices.push({ label: "Download latest release", decision: "open-release-page" });

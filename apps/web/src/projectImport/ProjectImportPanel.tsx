@@ -220,7 +220,7 @@ export function ProjectImportPanel(props: {
         </Button>
       </div>
       <p className={cn("leading-relaxed text-muted-foreground", "text-ui-sm")}>
-        Projects keep their existing folders, and conversations are copied into Synara. Nothing in
+        Projects keep their existing folders, and conversations are copied into Metis. Nothing in
         your current projects changes.
       </p>
       {error ? (

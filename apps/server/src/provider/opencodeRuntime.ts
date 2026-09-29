@@ -1113,7 +1113,7 @@ const makeOpenCodeRuntime = (options?: OpenCodeRuntimeLiveOptions) =>
           if (response !== null && (response.status === 404 || response.status === 405)) {
             return yield* new OpenCodeRuntimeError({
               operation: "startOpenCodeServerProcess",
-              detail: `${cliSpec.displayName} server does not serve the legacy surface Synara requires (GET /provider → HTTP ${response.status}). Install a compatible CLI release (https://opencode.ai) or set an explicit binary path in provider settings.`,
+              detail: `${cliSpec.displayName} server does not serve the legacy surface Metis requires (GET /provider → HTTP ${response.status}). Install a compatible CLI release (https://opencode.ai) or set an explicit binary path in provider settings.`,
             });
           }
           probeStatus = response === null ? null : response.status;

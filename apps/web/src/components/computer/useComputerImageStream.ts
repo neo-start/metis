@@ -181,7 +181,7 @@ export function useComputerImageStream(input: {
         kind: "error",
         message:
           reason === "decode-failed"
-            ? "The computer stream sent a frame Synara could not read."
+            ? "The computer stream sent a frame Metis could not read."
             : "The computer stream disconnected.",
       });
     };

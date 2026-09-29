@@ -356,7 +356,7 @@ export function ComputerSettingsPanel({
     nativePermissionSetupError ??
     (captureBlocked
       ? backend === COMPUTER_MAC_BACKEND
-        ? "The agent can act on the desktop but cannot see it, so screenshots fail. Turn Synara on in System Settings › Privacy & Security › Screen Recording, then press Set up to reconnect."
+        ? "The agent can act on the desktop but cannot see it, so screenshots fail. Turn Metis on in System Settings › Privacy & Security › Screen Recording, then press Set up to reconnect."
         : "The agent can act on the desktop but cannot see it, so screenshots fail. Press Set up to reconnect."
       : availabilityView.description);
   const attentionTone = cn(

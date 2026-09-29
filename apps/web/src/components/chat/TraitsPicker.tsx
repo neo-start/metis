@@ -9,6 +9,7 @@ import {
   type ProviderKind,
   type ProviderModelDescriptor,
   type ThreadId,
+  isCodexProviderKind,
 } from "@synara/contracts";
 import { memo, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { ChevronDownIcon, FastModeIcon, FastModeOutlineIcon, SettingsIcon } from "~/lib/icons";
@@ -566,7 +567,7 @@ export const TraitsPicker = memo(function TraitsPicker({
     runtimeAgents,
   });
 
-  const isCodexStyle = provider === "codex";
+  const isCodexStyle = isCodexProviderKind(provider);
 
   const triggerButton = (
     <Button

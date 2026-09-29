@@ -273,152 +273,152 @@ const SYNARA_COMPUTER_TOOL_PRESENTATIONS = {
 
 function presentComputerTool(present: string, past: string): SynaraMcpToolPresentation {
   return {
-    running: `Synara is ${present}`,
-    completed: `Synara ${past}`,
-    failed: `Synara couldn't finish ${present}`,
+    running: `Metis is ${present}`,
+    completed: `Metis ${past}`,
+    failed: `Metis couldn't finish ${present}`,
   };
 }
 
 const SYNARA_MCP_TOOL_PRESENTATIONS = {
   synara_context: {
-    running: "Synara is checking its context",
-    completed: "Synara checked its context",
-    failed: "Synara couldn't check its context",
+    running: "Metis is checking its context",
+    completed: "Metis checked its context",
+    failed: "Metis couldn't check its context",
   },
   synara_capabilities: {
-    running: "Synara is checking available agents",
-    completed: "Synara checked available agents",
-    failed: "Synara couldn't check available agents",
+    running: "Metis is checking available agents",
+    completed: "Metis checked available agents",
+    failed: "Metis couldn't check available agents",
   },
   synara_overview: {
-    running: "Synara is gathering an overview",
-    completed: "Synara gathered an overview",
-    failed: "Synara couldn't gather an overview",
+    running: "Metis is gathering an overview",
+    completed: "Metis gathered an overview",
+    failed: "Metis couldn't gather an overview",
   },
   synara_list_allowed_projects: {
-    running: "Synara is listing allowed projects",
-    completed: "Synara listed allowed projects",
-    failed: "Synara couldn't list allowed projects",
+    running: "Metis is listing allowed projects",
+    completed: "Metis listed allowed projects",
+    failed: "Metis couldn't list allowed projects",
   },
   synara_create_task: {
-    running: "Synara is creating a task",
-    completed: "Synara created a task",
-    failed: "Synara couldn't create a task",
+    running: "Metis is creating a task",
+    completed: "Metis created a task",
+    failed: "Metis couldn't create a task",
   },
   synara_wait_for_task: {
-    running: "Synara is waiting for a task",
-    completed: "Synara finished waiting for a task",
-    failed: "Synara couldn't wait for a task",
+    running: "Metis is waiting for a task",
+    completed: "Metis finished waiting for a task",
+    failed: "Metis couldn't wait for a task",
   },
   synara_read_task: {
-    running: "Synara is reading a task",
-    completed: "Synara read a task",
-    failed: "Synara couldn't read a task",
+    running: "Metis is reading a task",
+    completed: "Metis read a task",
+    failed: "Metis couldn't read a task",
   },
   synara_list_projects: {
-    running: "Synara is listing projects",
-    completed: "Synara listed projects",
-    failed: "Synara couldn't list projects",
+    running: "Metis is listing projects",
+    completed: "Metis listed projects",
+    failed: "Metis couldn't list projects",
   },
   synara_list_threads: {
-    running: "Synara is listing threads",
-    completed: "Synara listed threads",
-    failed: "Synara couldn't list threads",
+    running: "Metis is listing threads",
+    completed: "Metis listed threads",
+    failed: "Metis couldn't list threads",
   },
   synara_read_thread: {
-    running: "Synara is reading a thread",
-    completed: "Synara read a thread",
-    failed: "Synara couldn't read a thread",
+    running: "Metis is reading a thread",
+    completed: "Metis read a thread",
+    failed: "Metis couldn't read a thread",
   },
   synara_read_thread_activity: {
-    running: "Synara is reading thread activity",
-    completed: "Synara read thread activity",
-    failed: "Synara couldn't read thread activity",
+    running: "Metis is reading thread activity",
+    completed: "Metis read thread activity",
+    failed: "Metis couldn't read thread activity",
   },
   synara_read_thread_events: {
-    running: "Synara is reading thread events",
-    completed: "Synara read thread events",
-    failed: "Synara couldn't read thread events",
+    running: "Metis is reading thread events",
+    completed: "Metis read thread events",
+    failed: "Metis couldn't read thread events",
   },
   synara_read_thread_runtime_events: {
-    running: "Synara is reading thread runtime events",
-    completed: "Synara read thread runtime events",
-    failed: "Synara couldn't read thread runtime events",
+    running: "Metis is reading thread runtime events",
+    completed: "Metis read thread runtime events",
+    failed: "Metis couldn't read thread runtime events",
   },
   synara_diagnose_thread: {
-    running: "Synara is diagnosing a thread",
-    completed: "Synara diagnosed a thread",
-    failed: "Synara couldn't diagnose a thread",
+    running: "Metis is diagnosing a thread",
+    completed: "Metis diagnosed a thread",
+    failed: "Metis couldn't diagnose a thread",
   },
   synara_create_thread: {
-    running: "Synara is creating a thread",
-    completed: "Synara created a thread",
-    failed: "Synara couldn't create a thread",
+    running: "Metis is creating a thread",
+    completed: "Metis created a thread",
+    failed: "Metis couldn't create a thread",
   },
   synara_create_threads: {
-    running: "Synara is creating threads",
-    completed: "Synara created threads",
-    failed: "Synara couldn't create threads",
+    running: "Metis is creating threads",
+    completed: "Metis created threads",
+    failed: "Metis couldn't create threads",
   },
   synara_wait_for_threads: {
-    running: "Synara is waiting for threads",
-    completed: "Synara finished waiting for threads",
-    failed: "Synara couldn't wait for threads",
+    running: "Metis is waiting for threads",
+    completed: "Metis finished waiting for threads",
+    failed: "Metis couldn't wait for threads",
   },
   synara_send_message: {
-    running: "Synara is sending a message",
-    completed: "Synara sent a message",
-    failed: "Synara couldn't send a message",
+    running: "Metis is sending a message",
+    completed: "Metis sent a message",
+    failed: "Metis couldn't send a message",
   },
   synara_interrupt_thread: {
-    running: "Synara is interrupting a thread",
-    completed: "Synara interrupted a thread",
-    failed: "Synara couldn't interrupt a thread",
+    running: "Metis is interrupting a thread",
+    completed: "Metis interrupted a thread",
+    failed: "Metis couldn't interrupt a thread",
   },
   synara_set_thread_title: {
-    running: "Synara is renaming a thread",
-    completed: "Synara renamed a thread",
-    failed: "Synara couldn't rename a thread",
+    running: "Metis is renaming a thread",
+    completed: "Metis renamed a thread",
+    failed: "Metis couldn't rename a thread",
   },
   synara_set_thread_archived: {
-    running: "Synara is updating a thread",
-    completed: "Synara updated a thread",
-    failed: "Synara couldn't update a thread",
+    running: "Metis is updating a thread",
+    completed: "Metis updated a thread",
+    failed: "Metis couldn't update a thread",
   },
   synara_create_automation: {
-    running: "Synara is creating an automation",
-    completed: "Synara created an automation",
-    failed: "Synara couldn't create an automation",
+    running: "Metis is creating an automation",
+    completed: "Metis created an automation",
+    failed: "Metis couldn't create an automation",
   },
   synara_list_automations: {
-    running: "Synara is listing automations",
-    completed: "Synara listed automations",
-    failed: "Synara couldn't list automations",
+    running: "Metis is listing automations",
+    completed: "Metis listed automations",
+    failed: "Metis couldn't list automations",
   },
   synara_view_automation: {
-    running: "Synara is viewing an automation",
-    completed: "Synara viewed an automation",
-    failed: "Synara couldn't view an automation",
+    running: "Metis is viewing an automation",
+    completed: "Metis viewed an automation",
+    failed: "Metis couldn't view an automation",
   },
   synara_update_automation: {
-    running: "Synara is updating an automation",
-    completed: "Synara updated an automation",
-    failed: "Synara couldn't update an automation",
+    running: "Metis is updating an automation",
+    completed: "Metis updated an automation",
+    failed: "Metis couldn't update an automation",
   },
   synara_update_automation_memory: {
-    running: "Synara is updating automation memory",
-    completed: "Synara updated automation memory",
-    failed: "Synara couldn't update automation memory",
+    running: "Metis is updating automation memory",
+    completed: "Metis updated automation memory",
+    failed: "Metis couldn't update automation memory",
   },
   synara_report_automation_result: {
-    running: "Synara is reporting an automation result",
-    completed: "Synara reported an automation result",
-    failed: "Synara couldn't report an automation result",
+    running: "Metis is reporting an automation result",
+    completed: "Metis reported an automation result",
+    failed: "Metis couldn't report an automation result",
   },
   synara_cancel_automation: {
-    running: "Synara is stopping an automation",
-    completed: "Synara stopped an automation",
-    failed: "Synara couldn't stop an automation",
+    running: "Metis is stopping an automation",
+    completed: "Metis stopped an automation",
+    failed: "Metis couldn't stop an automation",
   },
   ...SYNARA_BROWSER_TOOL_PRESENTATIONS,
   ...SYNARA_COMPUTER_TOOL_PRESENTATIONS,
@@ -492,9 +492,9 @@ function fallbackSynaraMcpToolPresentation(toolName: string): SynaraMcpToolPrese
       .replace(/_+/g, " ")
       .trim() || "an action";
   return {
-    running: `Synara is handling ${action}`,
-    completed: `Synara handled ${action}`,
-    failed: `Synara couldn't handle ${action}`,
+    running: `Metis is handling ${action}`,
+    completed: `Metis handled ${action}`,
+    failed: `Metis couldn't handle ${action}`,
   };
 }
 
@@ -586,8 +586,8 @@ export function deriveSynaraMcpToolTitle(input: SynaraMcpToolTitleInput): string
     case "failed":
       return presentation.failed;
     case "cancelled":
-      return presentation.running.startsWith("Synara is ")
-        ? `Synara stopped ${presentation.running.slice("Synara is ".length)}`
+      return presentation.running.startsWith("Metis is ")
+        ? `Metis stopped ${presentation.running.slice("Metis is ".length)}`
         : `Cancelled ${presentation.running}`;
   }
 }
@@ -757,6 +757,8 @@ function humanizeMcpToken(value: string | undefined): string {
     .map((token) => {
       const lower = token.toLowerCase();
       if (lower === "mcp") return "MCP";
+      // The MCP server keeps its upstream id "synara"; the product is Metis.
+      if (lower === "synara") return "Metis";
       if (token.toUpperCase() === token && token.length <= 5) return token;
       return `${lower.charAt(0).toUpperCase()}${lower.slice(1)}`;
     })

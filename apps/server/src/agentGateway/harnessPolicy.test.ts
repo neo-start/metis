@@ -8,8 +8,9 @@ import {
   takeSynaraHarnessPolicyTextPartForProviderSession,
   takeSynaraHarnessPolicyForSession,
 } from "./harnessPolicy.ts";
+import { installMetisMemoryContextSource } from "../metisMemory/memoryContext.ts";
 
-describe("Synara harness policy", () => {
+describe("Metis harness policy", () => {
   it("defers duplicate automation authoring text while preserving tool routing and run rules", () => {
     const inline = renderSynaraHarnessPolicy({ gatewayControlAvailable: true });
     const deferred = renderSynaraHarnessPolicy({
@@ -38,10 +39,10 @@ describe("Synara harness policy", () => {
       "browser_screenshot({kind:'proof'})",
     );
   });
-  it("identifies Synara and explains exact batch coordination when MCP is available", () => {
+  it("identifies Metis and explains exact batch coordination when MCP is available", () => {
     const policy = renderSynaraHarnessPolicy({ gatewayControlAvailable: true });
     assert.include(policy, SYNARA_HARNESS_POLICY_MARKER);
-    assert.include(policy, "Synara is the host and harness");
+    assert.include(policy, "Metis is the host and harness");
     assert.include(policy, "one exact synara_create_threads plan");
     assert.include(policy, "before returning an operationId");
     assert.include(policy, "synara_wait_for_threads");
@@ -55,7 +56,7 @@ describe("Synara harness policy", () => {
     assert.include(policy, "Detailed rules live in each tool description");
     assert.notInclude(policy, "BrowserInterruptedByHuman");
     assert.notInclude(policy, "start with browser_open");
-    assert.include(policy, "do not create Synara threads");
+    assert.include(policy, "do not create Metis threads");
     assert.include(policy, "specific 3–8 word outcome label");
     assert.include(policy, "Assume no chat context");
     assert.include(policy, "notify-versus-silent criteria");
@@ -89,8 +90,76 @@ describe("Synara harness policy", () => {
 
   it("never advertises gateway mutation to providers without scoped MCP", () => {
     const policy = renderSynaraHarnessPolicy({ gatewayControlAvailable: false });
-    assert.include(policy, "Synara MCP control is unavailable");
+    assert.include(policy, "Metis MCP control is unavailable");
     assert.notInclude(policy, "one exact synara_create_threads plan");
+  });
+
+  it("tells gateway sessions how to keep Metis memory, and only them", () => {
+    const gateway = renderSynaraHarnessPolicy({ gatewayControlAvailable: true });
+    assert.include(gateway, "synara_memory_write");
+    assert.include(gateway, "one fact per memory");
+    assert.include(gateway, "synara_memory_delete");
+    assert.include(gateway, "Never store secrets, tokens, credentials");
+    const identityOnly = renderSynaraHarnessPolicy({ gatewayControlAvailable: false });
+    assert.notInclude(identityOnly, "synara_memory_write");
+  });
+
+  it("appends the thread's Metis memory block once, after the host context", () => {
+    const calls: Array<{ threadId: string | undefined; toolsAvailable: boolean }> = [];
+    const uninstall = installMetisMemoryContextSource({
+      renderForThread: (input) => {
+        calls.push(input);
+        return `<metis_memory>\nsoul for ${input.threadId ?? "none"}\n</metis_memory>`;
+      },
+    });
+    try {
+      const state = { threadId: "thread-a" };
+      const first =
+        takeSynaraHarnessPolicyForProviderSession(state, {
+          provider: "cursor",
+          scopedGatewayConnectionAvailable: true,
+        }) ?? "";
+      assert.isTrue(
+        first.endsWith(
+          "</synara_host_context>\n<metis_memory>\nsoul for thread-a\n</metis_memory>",
+        ),
+      );
+      assert.isNull(
+        takeSynaraHarnessPolicyForProviderSession(state, {
+          provider: "cursor",
+          scopedGatewayConnectionAvailable: true,
+        }),
+      );
+      const noControl =
+        takeSynaraHarnessPolicyForProviderSession(
+          {},
+          { provider: "pi", scopedGatewayConnectionAvailable: false, threadId: "thread-b" },
+        ) ?? "";
+      assert.include(noControl, "soul for thread-b");
+      const dropped =
+        takeSynaraHarnessPolicyForProviderSession(
+          { threadId: "thread-c" },
+          {
+            provider: "antigravity",
+            scopedGatewayConnectionAvailable: true,
+            includeMetisMemory: false,
+          },
+        ) ?? "";
+      assert.notInclude(dropped, "<metis_memory>");
+      assert.deepEqual(calls, [
+        { threadId: "thread-a", toolsAvailable: true },
+        { threadId: "thread-b", toolsAvailable: false },
+      ]);
+    } finally {
+      uninstall();
+    }
+    assert.notInclude(
+      takeSynaraHarnessPolicyForSession(
+        { threadId: "thread-a" },
+        { gatewayControlAvailable: true },
+      ) ?? "",
+      "<metis_memory>",
+    );
   });
 
   it("delivers a private host-context block once per provider session", () => {
@@ -132,7 +201,7 @@ describe("Synara harness policy", () => {
           { provider, scopedGatewayConnectionAvailable: false },
         ) ?? "";
       assert.include(text, SYNARA_HARNESS_POLICY_MARKER, provider);
-      assert.include(text, "Synara MCP control is unavailable", provider);
+      assert.include(text, "Metis MCP control is unavailable", provider);
       assert.notInclude(text, "one exact synara_create_threads plan", provider);
     }
   });
@@ -149,7 +218,7 @@ describe("Synara harness policy", () => {
   });
 
   it("keeps the gateway policy below its prompt budget", () => {
-    assert.isAtMost(renderSynaraHarnessPolicy({ gatewayControlAvailable: true }).length, 6_030);
+    assert.isAtMost(renderSynaraHarnessPolicy({ gatewayControlAvailable: true }).length, 6_330);
   });
 
   it("withholds device guidance from sessions with no gateway control", () => {
@@ -169,10 +238,10 @@ describe("Synara harness policy", () => {
         });
         const scope = `${gatewayControlAvailable}/${enableComputerControl}`;
         if (gatewayControlAvailable && enableComputerControl === true) {
-          assert.include(policy, "## Synara computer use", scope);
+          assert.include(policy, "## Metis computer use", scope);
           assert.include(policy, "The computer_* tools are live on this session", scope);
         } else {
-          assert.notInclude(policy, "## Synara computer use", scope);
+          assert.notInclude(policy, "## Metis computer use", scope);
           assert.notInclude(policy, "computer_", scope);
           assert.notInclude(policy, "turn Computer control on in Settings", scope);
         }
@@ -203,7 +272,7 @@ it("adds Computer guidance only for an explicitly enabled scoped session across 
       { provider, scopedGatewayConnectionAvailable: true },
     );
     assert.strictEqual(off, explicitOff);
-    assert.notInclude(off ?? "", "## Synara computer use");
+    assert.notInclude(off ?? "", "## Metis computer use");
     assert.notInclude(off ?? "", "computer_", provider);
     const state = { enableComputerControl: true };
     const on =
@@ -211,7 +280,7 @@ it("adds Computer guidance only for an explicitly enabled scoped session across 
         provider,
         scopedGatewayConnectionAvailable: true,
       }) ?? "";
-    assert.equal(on.split("## Synara computer use").length - 1, 1, provider);
+    assert.equal(on.split("## Metis computer use").length - 1, 1, provider);
     assert.include(on, "never replay it");
     assert.isNull(
       takeSynaraHarnessPolicyForProviderSession(state, {
@@ -224,7 +293,7 @@ it("adds Computer guidance only for an explicitly enabled scoped session across 
         { enableComputerControl: true },
         { provider, scopedGatewayConnectionAvailable: false },
       ) ?? "",
-      "## Synara computer use",
+      "## Metis computer use",
     );
   }
 });

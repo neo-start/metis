@@ -171,7 +171,7 @@ const CURSOR_ACP_SESSION_MODE_ALIASES = {
   approval: ACP_APPROVAL_MODE_ALIASES,
 } as const;
 const CURSOR_PLAN_MODE_PROMPT_PREFIX = [
-  "Synara Cursor plan mode is active.",
+  "Metis Cursor plan mode is active.",
   "Do not implement or mutate files in this turn.",
   "Do not ask follow-up questions or wait for confirmation; if scope is ambiguous, choose a reasonable default and state the assumption in the plan.",
   "When ready, create the final implementation plan.",
@@ -1794,7 +1794,7 @@ export function makeCursorAdapter(
             runtime,
             targetCwd,
             unsupportedIssue:
-              "This Cursor ACP version does not advertise session/fork; Synara will rebuild the fork from its retained transcript.",
+              "This Cursor ACP version does not advertise session/fork; Metis will rebuild the fork from its retained transcript.",
             requestTimeoutMs: CURSOR_ACP_FORK_TIMEOUT_MS,
             timeoutError: cursorForkTimeoutError,
           });
@@ -1807,7 +1807,7 @@ export function makeCursorAdapter(
             provider: PROVIDER,
             operation: "forkThread",
             issue:
-              "The source Cursor session has a turn in flight; Synara will rebuild the fork from its retained transcript.",
+              "The source Cursor session has a turn in flight; Metis will rebuild the fork from its retained transcript.",
           });
         }
         const forked = activeSource

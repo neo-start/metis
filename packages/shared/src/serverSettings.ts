@@ -55,6 +55,12 @@ export function providerStartOptionsFromServerSettings(
       ...(providers.codex.binaryPath ? { binaryPath: providers.codex.binaryPath } : {}),
       ...(providers.codex.homePath ? { homePath: providers.codex.homePath } : {}),
     },
+    codexSecondary: {
+      ...(providers.codexSecondary.binaryPath
+        ? { binaryPath: providers.codexSecondary.binaryPath }
+        : {}),
+      ...(providers.codexSecondary.homePath ? { homePath: providers.codexSecondary.homePath } : {}),
+    },
     claudeAgent: {
       ...(providers.claudeAgent.binaryPath ? { binaryPath: providers.claudeAgent.binaryPath } : {}),
       enableArtifacts: providers.claudeAgent.enableArtifacts,

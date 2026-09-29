@@ -385,6 +385,9 @@ export function PluginLibrary() {
 
   const serverConfigQuery = useQuery(serverConfigQueryOptions());
   const codexCapabilitiesQuery = useQuery(providerComposerCapabilitiesQueryOptions("codex"));
+  const codexSecondaryCapabilitiesQuery = useQuery(
+    providerComposerCapabilitiesQueryOptions("codexSecondary"),
+  );
   const claudeCapabilitiesQuery = useQuery(providerComposerCapabilitiesQueryOptions("claudeAgent"));
   const cursorCapabilitiesQuery = useQuery(providerComposerCapabilitiesQueryOptions("cursor"));
   const antigravityCapabilitiesQuery = useQuery(
@@ -400,6 +403,10 @@ export function PluginLibrary() {
     codex: {
       plugins: supportsPluginDiscovery(codexCapabilitiesQuery.data),
       skills: supportsSkillDiscovery(codexCapabilitiesQuery.data),
+    },
+    codexSecondary: {
+      plugins: supportsPluginDiscovery(codexSecondaryCapabilitiesQuery.data),
+      skills: supportsSkillDiscovery(codexSecondaryCapabilitiesQuery.data),
     },
     claudeAgent: {
       plugins: supportsPluginDiscovery(claudeCapabilitiesQuery.data),

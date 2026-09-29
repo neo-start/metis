@@ -1,0 +1,133 @@
+{
+  "product": "Metis",
+  "created": "2026-09-23",
+  "round": "folded-cube-color-edits",
+  "status": "Blue selected by user on 2026-09-23 as the current Metis logo; other color studies retained.",
+  "editTarget": "/Users/neo/Stars/agent-workbench/docs/metis-cube-logo-options/images/02-folded-cube.png",
+  "imagePolicy": "Each variant independently edited from the selected original with referenced_image_paths. Generated originals preserved and copied byte-for-byte without image postprocessing.",
+  "items": [
+    {
+      "n": 1,
+      "slug": "blue",
+      "name": "蓝色",
+      "file": "images/01-blue.png",
+      "palette": {
+        "top": "#72B7F4",
+        "left": "#2D69CB",
+        "right": "#102F66"
+      },
+      "direction": "sky blue top face, cobalt blue left face, deep navy blue right face",
+      "editTarget": "/Users/neo/Stars/agent-workbench/docs/metis-cube-logo-options/images/02-folded-cube.png",
+      "generationTool": "image_gen.imagegen",
+      "mode": "built-in edit",
+      "status": "color-candidate",
+      "prompt": "Use case: precise-object-edit.\nInput image: the provided transparent green folded cube logo is the EXACT EDIT TARGET. Perform a color-only edit of this existing image. Do not design or redraw a new cube.\nChange only: recolor the three existing connected ribbon faces into sky blue top face, cobalt blue left face, deep navy blue right face. Suggested face colors: top #72B7F4, left #2D69CB, right #102F66. Preserve the source image's relative tonal hierarchy: top is lightest, left is medium, right is darkest. Preserve any original subtle tonal variation without adding new lighting or effects.\nStrict invariants: Preserve the exact outer cube silhouette, all rounded corners, exact three folded-panel connections, exact size and shape and position of the small transparent triangular hole in the center, face boundaries, proportions, isometric projection, image framing, overall logo scale, centered placement and original clear margins. Keep every geometry feature unchanged. The faces must not separate or shift. The result should look like precisely the same logo in a different palette.\nBackground: preserve genuine transparent alpha everywhere the source is transparent, including the central triangular opening. No opaque white or colored background, no checkerboard graphic, no tile, no shadow, no added objects, no text, no label, no wordmark, no mockup. Output one recolored logo image.",
+      "sourcePath": "/Users/neo/.codex/generated_images/01a0ce54-6904-79f3-8b48-ea8d38410ce5/exec-e6320a2d-daa4-4cea-92fe-37fe1848eba6.png",
+      "imageReview": "Viewed the edit result against the provided folded-cube source: no obvious geometric drift in silhouette, panel connections, center triangular void, rounded corners, scale or placement. This is a visual comparison, not a pixel-identical geometry claim.",
+      "width": 1254,
+      "height": 1254,
+      "pngColorType": 6,
+      "sha256": "a8d374d5dba03fef9cc094ec78f71f68db5b169a58e40bafe8ae651083bf0f4b",
+      "alpha": {
+        "min": 0,
+        "max": 255,
+        "fullyTransparentPixels": 915844,
+        "fullyOpaquePixels": 1709
+      }
+    },
+    {
+      "n": 2,
+      "slug": "violet",
+      "name": "紫色",
+      "file": "images/02-violet.png",
+      "palette": {
+        "top": "#B39AEC",
+        "left": "#7C4DBB",
+        "right": "#3A1B61"
+      },
+      "direction": "light lavender top face, violet purple left face, deep purple right face",
+      "editTarget": "/Users/neo/Stars/agent-workbench/docs/metis-cube-logo-options/images/02-folded-cube.png",
+      "generationTool": "image_gen.imagegen",
+      "mode": "built-in edit",
+      "status": "color-candidate",
+      "prompt": "Use case: precise-object-edit.\nInput image: the provided transparent green folded cube logo is the EXACT EDIT TARGET. Perform a color-only edit of this existing image. Do not design or redraw a new cube.\nChange only: recolor the three existing connected ribbon faces into light lavender top face, violet purple left face, deep purple right face. Suggested face colors: top #B39AEC, left #7C4DBB, right #3A1B61. Preserve the source image's relative tonal hierarchy: top is lightest, left is medium, right is darkest. Preserve any original subtle tonal variation without adding new lighting or effects.\nStrict invariants: Preserve the exact outer cube silhouette, all rounded corners, exact three folded-panel connections, exact size and shape and position of the small transparent triangular hole in the center, face boundaries, proportions, isometric projection, image framing, overall logo scale, centered placement and original clear margins. Keep every geometry feature unchanged. The faces must not separate or shift. The result should look like precisely the same logo in a different palette.\nBackground: preserve genuine transparent alpha everywhere the source is transparent, including the central triangular opening. No opaque white or colored background, no checkerboard graphic, no tile, no shadow, no added objects, no text, no label, no wordmark, no mockup. Output one recolored logo image.",
+      "sourcePath": "/Users/neo/.codex/generated_images/01a0ce54-6904-79f3-8b48-ea8d38410ce5/exec-eb8d1f66-6d78-44b0-9329-c56061100248.png",
+      "imageReview": "Viewed the edit result against the provided folded-cube source: no obvious geometric drift in silhouette, panel connections, center triangular void, rounded corners, scale or placement. This is a visual comparison, not a pixel-identical geometry claim.",
+      "width": 1254,
+      "height": 1254,
+      "pngColorType": 6,
+      "sha256": "abe1c0b2d6f23dc6a80365e03707ccdac4bc168a656dcc9070c1e86e7f37490d",
+      "alpha": {
+        "min": 0,
+        "max": 255,
+        "fullyTransparentPixels": 914666,
+        "fullyOpaquePixels": 1671
+      }
+    },
+    {
+      "n": 3,
+      "slug": "orange",
+      "name": "橙色",
+      "file": "images/03-orange.png",
+      "palette": {
+        "top": "#F5BC80",
+        "left": "#E78739",
+        "right": "#A34B21"
+      },
+      "direction": "light apricot orange top face, warm orange left face, deep terracotta right face",
+      "editTarget": "/Users/neo/Stars/agent-workbench/docs/metis-cube-logo-options/images/02-folded-cube.png",
+      "generationTool": "image_gen.imagegen",
+      "mode": "built-in edit",
+      "status": "color-candidate",
+      "prompt": "Use case: precise-object-edit.\nInput image: the provided transparent green folded cube logo is the EXACT EDIT TARGET. Perform a color-only edit of this existing image. Do not design or redraw a new cube.\nChange only: recolor the three existing connected ribbon faces into light apricot orange top face, warm orange left face, deep terracotta right face. Suggested face colors: top #F5BC80, left #E78739, right #A34B21. Preserve the source image's relative tonal hierarchy: top is lightest, left is medium, right is darkest. Preserve any original subtle tonal variation without adding new lighting or effects.\nStrict invariants: Preserve the exact outer cube silhouette, all rounded corners, exact three folded-panel connections, exact size and shape and position of the small transparent triangular hole in the center, face boundaries, proportions, isometric projection, image framing, overall logo scale, centered placement and original clear margins. Keep every geometry feature unchanged. The faces must not separate or shift. The result should look like precisely the same logo in a different palette.\nBackground: preserve genuine transparent alpha everywhere the source is transparent, including the central triangular opening. No opaque white or colored background, no checkerboard graphic, no tile, no shadow, no added objects, no text, no label, no wordmark, no mockup. Output one recolored logo image.",
+      "sourcePath": "/Users/neo/.codex/generated_images/01a0ce54-6904-79f3-8b48-ea8d38410ce5/exec-bfbc0793-fb13-4c07-b84b-6ee93eac2c07.png",
+      "imageReview": "Viewed the edit result against the provided folded-cube source: no obvious geometric drift in silhouette, panel connections, center triangular void, rounded corners, scale or placement. This is a visual comparison, not a pixel-identical geometry claim.",
+      "width": 1254,
+      "height": 1254,
+      "pngColorType": 6,
+      "sha256": "d50178da645f967e14556d0d59535a521912e2b5adaddb6b197bd900ae3f6a59",
+      "alpha": {
+        "min": 0,
+        "max": 255,
+        "fullyTransparentPixels": 917815,
+        "fullyOpaquePixels": 1509
+      }
+    },
+    {
+      "n": 4,
+      "slug": "graphite",
+      "name": "黑灰",
+      "file": "images/04-graphite.png",
+      "palette": {
+        "top": "#C2C6CC",
+        "left": "#7C828B",
+        "right": "#30353C"
+      },
+      "direction": "light cool gray top face, medium graphite gray left face, deep charcoal gray right face; strictly grayscale with only very subtle cool undertone",
+      "editTarget": "/Users/neo/Stars/agent-workbench/docs/metis-cube-logo-options/images/02-folded-cube.png",
+      "generationTool": "image_gen.imagegen",
+      "mode": "built-in edit",
+      "status": "color-candidate",
+      "prompt": "Use case: precise-object-edit.\nInput image: the provided transparent green folded cube logo is the EXACT EDIT TARGET. Perform a color-only edit of this existing image. Do not design or redraw a new cube.\nChange only: recolor the three existing connected ribbon faces into light cool gray top face, medium graphite gray left face, deep charcoal gray right face; strictly grayscale with only very subtle cool undertone. Suggested face colors: top #C2C6CC, left #7C828B, right #30353C. Preserve the source image's relative tonal hierarchy: top is lightest, left is medium, right is darkest. Preserve any original subtle tonal variation without adding new lighting or effects.\nStrict invariants: Preserve the exact outer cube silhouette, all rounded corners, exact three folded-panel connections, exact size and shape and position of the small transparent triangular hole in the center, face boundaries, proportions, isometric projection, image framing, overall logo scale, centered placement and original clear margins. Keep every geometry feature unchanged. The faces must not separate or shift. The result should look like precisely the same logo in a different palette.\nBackground: preserve genuine transparent alpha everywhere the source is transparent, including the central triangular opening. No opaque white or colored background, no checkerboard graphic, no tile, no shadow, no added objects, no text, no label, no wordmark, no mockup. Output one recolored logo image.",
+      "sourcePath": "/Users/neo/.codex/generated_images/01a0ce54-6904-79f3-8b48-ea8d38410ce5/exec-4377bd0e-157c-4025-b1c9-292d446deae8.png",
+      "imageReview": "Viewed the edit result against the provided folded-cube source: no obvious geometric drift in silhouette, panel connections, center triangular void, rounded corners, scale or placement. This is a visual comparison, not a pixel-identical geometry claim.",
+      "width": 1254,
+      "height": 1254,
+      "pngColorType": 6,
+      "sha256": "56043e7d830c3d832fc672e5b109f7c04f24a64f82089eade28cb969e563fe15",
+      "alpha": {
+        "min": 0,
+        "max": 255,
+        "fullyTransparentPixels": 917731,
+        "fullyOpaquePixels": 1644
+      }
+    }
+  ],
+  "editTargetSha256": "5b7cfafc24f84720c9f50512db21dfb42dfc5262ee2ce7dda2c2226138ae3a55",
+  "selected": {
+    "n": 1,
+    "slug": "blue",
+    "decision": "先用蔚蓝这个配色吧",
+    "date": "2026-09-23"
+  }
+}

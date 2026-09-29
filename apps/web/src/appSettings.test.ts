@@ -90,7 +90,7 @@ describe("server-backed provider enablement", () => {
           },
         },
       }),
-    ).toEqual(["opencode", "pi"]);
+    ).toEqual(["codexSecondary", "opencode", "pi"]);
   });
 
   it("keeps server-backed provider disablement out of local settings", () => {
@@ -152,7 +152,10 @@ describe("server-backed provider enablement", () => {
       currentSettings,
     );
 
-    expect(patch.providers).toEqual({ pi: { enabled: false } });
+    expect(patch.providers).toEqual({
+      codexSecondary: { enabled: true },
+      pi: { enabled: false },
+    });
   });
 
   it("omits unchanged provider defaults from a reset patch", () => {
@@ -164,7 +167,7 @@ describe("server-backed provider enablement", () => {
       DEFAULT_SERVER_SETTINGS_VIEW,
     );
 
-    expect(patch.providers).toBeUndefined();
+    expect(patch.providers).toEqual({ codexSecondary: { enabled: true } });
   });
 
   it("invalidates discovery for initial and changed streamed provider settings", () => {
@@ -483,6 +486,7 @@ describe("resolveAppModelSelection", () => {
         "codex",
         {
           codex: ["galapagos-alpha"],
+          codexSecondary: [],
           claudeAgent: [],
           cursor: [],
           devin: [],
@@ -503,6 +507,7 @@ describe("resolveAppModelSelection", () => {
         "codex",
         {
           codex: [],
+          codexSecondary: [],
           claudeAgent: [],
           cursor: [],
           devin: [],
@@ -523,6 +528,7 @@ describe("resolveAppModelSelection", () => {
         "codex",
         {
           codex: [],
+          codexSecondary: [],
           claudeAgent: [],
           cursor: [],
           devin: [],
@@ -543,6 +549,7 @@ describe("resolveAppModelSelection", () => {
         "claudeAgent",
         {
           codex: [],
+          codexSecondary: [],
           claudeAgent: [],
           cursor: [],
           devin: [],
@@ -563,6 +570,7 @@ describe("resolveAppModelSelection", () => {
         "codex",
         {
           codex: [],
+          codexSecondary: [],
           claudeAgent: [],
           cursor: [],
           devin: [],
@@ -719,6 +727,8 @@ describe("getProviderStartOptions", () => {
         claudeBinaryPath: "/usr/local/bin/claude",
         codexBinaryPath: "",
         codexHomePath: "/Users/you/.codex",
+        codexSecondaryBinaryPath: "",
+        codexSecondaryHomePath: "",
         cursorApiEndpoint: "http://localhost:3000",
         cursorBinaryPath: "/usr/local/bin/agent",
         antigravityBinaryPath: "/usr/local/bin/agy",
@@ -760,6 +770,8 @@ describe("getProviderStartOptions", () => {
         claudeBinaryPath: "",
         codexBinaryPath: "",
         codexHomePath: "",
+        codexSecondaryBinaryPath: "",
+        codexSecondaryHomePath: "",
         cursorApiEndpoint: "",
         cursorBinaryPath: "",
         antigravityBinaryPath: "",
@@ -781,6 +793,8 @@ describe("getProviderStartOptions", () => {
         claudeBinaryPath: "claude",
         codexBinaryPath: "codex",
         codexHomePath: "",
+        codexSecondaryBinaryPath: "",
+        codexSecondaryHomePath: "",
         cursorApiEndpoint: "",
         cursorBinaryPath: "cursor-agent",
         antigravityBinaryPath: "agy",
@@ -800,6 +814,7 @@ describe("getProviderStartOptions", () => {
 describe("provider-indexed custom model settings", () => {
   const settings = {
     customCodexModels: ["custom/codex-model"],
+    customCodexSecondaryModels: [],
     customClaudeModels: ["claude/custom-opus"],
     customCursorModels: ["cursor/custom-model"],
     customAntigravityModels: ["Gemini 3.5 Flash (Experimental)"],
@@ -813,6 +828,7 @@ describe("provider-indexed custom model settings", () => {
   it("exports one provider config per provider", () => {
     expect(MODEL_PROVIDER_SETTINGS.map((config) => config.provider)).toEqual([
       "codex",
+      "codexSecondary",
       "claudeAgent",
       "cursor",
       "devin",
@@ -844,6 +860,7 @@ describe("provider-indexed custom model settings", () => {
   it("reads default custom models for each provider", () => {
     const defaults = {
       customCodexModels: ["default/codex-model"],
+      customCodexSecondaryModels: [],
       customClaudeModels: ["claude/default-opus"],
       customCursorModels: ["cursor/default-model"],
       customAntigravityModels: ["Gemini 3.5 Flash (Experimental)"],
@@ -926,6 +943,7 @@ describe("provider-indexed custom model settings", () => {
   it("builds a complete provider-indexed custom model record", () => {
     expect(getCustomModelsByProvider(settings)).toEqual({
       codex: ["custom/codex-model"],
+      codexSecondary: [],
       claudeAgent: ["claude/custom-opus"],
       cursor: ["cursor/custom-model"],
       antigravity: ["Gemini 3.5 Flash (Experimental)"],
@@ -971,6 +989,7 @@ describe("provider-indexed custom model settings", () => {
   it("normalizes and deduplicates custom model options per provider", () => {
     const modelOptionsByProvider = getCustomModelOptionsByProvider({
       customCodexModels: ["  custom/codex-model ", "gpt-5.4", "custom/codex-model"],
+      customCodexSecondaryModels: [],
       customClaudeModels: [" sonnet ", "claude/custom-opus", "claude/custom-opus"],
       customCursorModels: [" composer-2 ", "cursor/custom-model", "cursor/custom-model"],
       customAntigravityModels: [
@@ -1137,6 +1156,8 @@ describe("AppSettingsSchema", () => {
       chatFontSizePx: DEFAULT_CHAT_FONT_SIZE_PX,
       codexBinaryPath: "/usr/local/bin/codex",
       codexHomePath: "",
+      codexSecondaryBinaryPath: "",
+      codexSecondaryHomePath: "~/.codex-secondary",
       grokBinaryPath: "",
       defaultThreadEnvMode: "local",
       confirmThreadDelete: false,

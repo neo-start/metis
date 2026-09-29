@@ -38,6 +38,7 @@ import {
   AppSnapSettingsPanel,
   NotificationsSettingsPanel,
 } from "~/components/settings/DesktopSettingsPanels";
+import { ConnectionsSettingsPanel } from "~/components/settings/ConnectionsSettingsPanel";
 import { ComputerSettingsPanel } from "~/components/settings/ComputerSettingsPanel";
 import { ModelsSettingsPanel } from "~/components/settings/ModelsSettingsPanel";
 import {
@@ -61,6 +62,7 @@ import {
   SettingsSectionShell,
 } from "../components/settings/SettingsPanelPrimitives";
 import { SkillsSettingsPanel } from "../components/settings/SkillsSettingsPanel";
+import { MemorySettingsPanel } from "../components/settings/MemorySettingsPanel";
 import { ThemeModePicker } from "../components/settings/ThemeModePicker";
 import { ThemePackEditor } from "../components/ThemePackEditor";
 import {
@@ -235,9 +237,9 @@ function SettingsRouteView() {
     toastManager.add({
       type: "warning",
       title: "Restart to apply title bar",
-      description: "The window frame updates the next time Synara launches.",
+      description: "The window frame updates the next time Metis launches.",
       actionProps: {
-        "aria-label": "Restart Synara",
+        "aria-label": "Restart Metis",
         children: "Restart",
         onClick: () => {
           void window.desktopBridge?.customTitleBar?.relaunch();
@@ -370,6 +372,9 @@ function SettingsRouteView() {
     ...(settings.diffWordWrap !== defaults.diffWordWrap ? ["Diff line wrapping"] : []),
     ...(settings.showPullRequestDiffColors !== defaults.showPullRequestDiffColors
       ? ["Pull request diff colors"]
+      : []),
+    ...(settings.resumeChatsAfterRestart !== defaults.resumeChatsAfterRestart
+      ? ["Resume after restart"]
       : []),
     ...(settings.confirmThreadDelete !== defaults.confirmThreadDelete
       ? ["Delete confirmation"]
@@ -783,7 +788,7 @@ function SettingsRouteView() {
         <SettingsSection title="App">
           <SettingsRow
             title="App icon"
-            description="Choose the icon Synara uses in the dock or taskbar."
+            description="Choose the icon Metis uses in the dock or taskbar."
             resetAction={
               settings.desktopAppIcon !== defaults.desktopAppIcon ? (
                 <SettingResetButton
@@ -810,8 +815,8 @@ function SettingsRouteView() {
               title="Use custom title bar"
               description={
                 customTitleBarRestartRequired
-                  ? "Restart Synara to apply. Some Linux window managers work better with the system title bar."
-                  : "Replace the system title bar with Synara's frameless chrome and window controls. Restart required to apply."
+                  ? "Restart Metis to apply. Some Linux window managers work better with the system title bar."
+                  : "Replace the system title bar with Metis's frameless chrome and window controls. Restart required to apply."
               }
               status={customTitleBarRestartRequired ? "Restart required" : undefined}
               resetAction={
@@ -1187,6 +1192,15 @@ function SettingsRouteView() {
           resetLabel: "automatically open simulator",
           ariaLabel: "Automatically open simulator",
         })}
+
+        {renderBooleanSettingRow({
+          settingKey: "resumeChatsAfterRestart",
+          title: "Resume after restart",
+          description:
+            "Continue chats that were still running when the app crashed, updated, or restarted. A chat that keeps getting cut off is left for you after three automatic continuations in a row.",
+          resetLabel: "resume after restart",
+          ariaLabel: "Resume running chats after a restart",
+        })}
       </SettingsSection>
 
       <SettingsSection title="Review">
@@ -1238,6 +1252,8 @@ function SettingsRouteView() {
 
   const renderRouteOwnedPanel = () => {
     switch (activeSection) {
+      case "connections":
+        return <ConnectionsSettingsPanel />;
       case "general":
         return renderGeneralPanel();
       case "appearance":
@@ -1250,6 +1266,8 @@ function SettingsRouteView() {
         return <ProfileSettingsPanel />;
       case "skills":
         return <SkillsSettingsPanel />;
+      case "memory":
+        return <MemorySettingsPanel />;
       case "usage":
         return <ProviderUsageSettingsPanel />;
       default:

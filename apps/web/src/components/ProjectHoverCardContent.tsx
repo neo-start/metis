@@ -1,14 +1,14 @@
 // FILE: ProjectHoverCardContent.tsx
 // Purpose: Interactive hover-card body for sidebar project/folder rows — project
 //          name + pin toggle on the header line, then the chat count, the project
-//          path, and a clickable "Edit project" action.
+//          path, and clickable "Edit project" / "Remove project" actions.
 // Layer: Sidebar UI component
 // Exports: ProjectHoverCardContent
 // Why: Rendered inside a Base UI PreviewCard (hover-open + interactive), so the
 //      pin and "Edit project" rows are real controls. Spacing/type mirror the
 //      app's menu rows (12px UI font, compact padding) so it reads as native.
 
-import { MessageCircleIcon, SettingsIcon } from "~/lib/icons";
+import { MessageCircleIcon, SettingsIcon, TrashCanIcon } from "~/lib/icons";
 import { PinStatusIcon, pinActionLabel } from "~/lib/pin";
 import { cn } from "~/lib/utils";
 import { FolderClosed, FolderOpen } from "./FolderClosed";
@@ -25,6 +25,8 @@ export type ProjectHoverCardContentProps = {
   path: string;
   onTogglePin: () => void;
   onEditProject: () => void;
+  /** Runs the shared remove flow (native confirm, then threads + project delete). */
+  onRemoveProject: () => void;
 };
 
 // One shared row rhythm for every line. No dividers: the card separates rows
@@ -48,6 +50,7 @@ export function ProjectHoverCardContent({
   path,
   onTogglePin,
   onEditProject,
+  onRemoveProject,
 }: ProjectHoverCardContentProps) {
   return (
     <div
@@ -89,6 +92,17 @@ export function ProjectHoverCardContent({
       >
         <SettingsIcon className={ICON_CLASS_NAME} aria-hidden />
         <span className="min-w-0 truncate">Edit project</span>
+      </button>
+      <button
+        type="button"
+        onClick={onRemoveProject}
+        className={cn(
+          ROW_CLASS_NAME,
+          "cursor-pointer text-left text-destructive/85 transition-colors hover:bg-destructive/8 hover:text-destructive dark:hover:bg-destructive/16",
+        )}
+      >
+        <TrashCanIcon className="size-3.5 shrink-0" aria-hidden />
+        <span className="min-w-0 truncate">Remove project</span>
       </button>
     </div>
   );
