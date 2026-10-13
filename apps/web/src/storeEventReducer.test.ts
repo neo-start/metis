@@ -14,6 +14,7 @@ import {
   TurnId,
   type PendingClaudeCacheReview,
 } from "@synara/contracts";
+import { buildStalePendingRequestFailureDetail } from "@synara/shared/threadSummary";
 import { describe, expect, it, vi } from "vitest";
 
 import { applyOrchestrationEvents, applyOrchestrationEventsHotPath } from "./storeEventReducer";
@@ -1918,6 +1919,97 @@ describe("store event reducer", () => {
 
     expect(threadsOf(retryable)[0]?.pendingInteractions?.[0]?.status).toBe("retryable");
     expect(threadsOf(retryable)[0]?.hasPendingUserInput).toBe(true);
+  });
+
+  it("expires a question on a stale failure and ignores later answers to it", () => {
+    const requestId = ApprovalRequestId.makeUnsafe("request-expired");
+    const lifecycleGeneration = "generation-expired";
+    const initialState = syncServerReadModel(
+      makeState(makeThread()),
+      makeReadModel(
+        makeReadModelThread({
+          hasPendingUserInput: true,
+          pendingInteractions: [
+            {
+              interactionKind: "userInput",
+              requestId,
+              threadId: ThreadId.makeUnsafe("thread-1"),
+              turnId: null,
+              lifecycleGeneration,
+              status: "pending",
+              decision: null,
+              responseCommandId: null,
+              responseRequestedAt: null,
+              createdAt: "2026-07-14T12:19:00.000Z",
+              resolvedAt: null,
+            },
+          ],
+          activities: [
+            makeActivity({
+              id: "activity-requested-expired",
+              createdAt: "2026-07-14T12:19:00.000Z",
+              kind: "user-input.requested",
+              summary: "Need more input",
+              payload: {
+                requestId,
+                lifecycleGeneration,
+                questions: [
+                  {
+                    id: "q1",
+                    header: "Continue",
+                    question: "Continue?",
+                    options: [{ label: "Yes", description: "Continue the task" }],
+                  },
+                ],
+              },
+              sequence: 1,
+            }),
+          ],
+        }),
+      ),
+    );
+
+    // Reconciliation reports the callback gone without any response claim.
+    const expired = applyOrchestrationEvents(initialState, [
+      makeDomainEvent("thread.activity-appended", {
+        threadId: ThreadId.makeUnsafe("thread-1"),
+        activity: makeActivity({
+          id: "activity-expired",
+          createdAt: "2026-07-14T12:40:00.000Z",
+          kind: "provider.user-input.respond.failed",
+          payload: {
+            requestId,
+            lifecycleGeneration,
+            detail: buildStalePendingRequestFailureDetail("user-input", requestId),
+          },
+          sequence: 2,
+        }),
+      }),
+    ]);
+    expect(threadsOf(expired)[0]?.pendingInteractions?.[0]).toMatchObject({
+      status: "uncertain",
+      resolvedAt: "2026-07-14T12:40:00.000Z",
+    });
+    expect(threadsOf(expired)[0]?.hasPendingUserInput).toBe(false);
+
+    // An answer submitted from a stale card cannot reclaim the expired row.
+    const answered = applyOrchestrationEvents(expired, [
+      makeDomainEvent(
+        "thread.user-input-response-requested",
+        {
+          threadId: ThreadId.makeUnsafe("thread-1"),
+          requestId,
+          answers: { q1: "Yes" },
+          lifecycleGeneration,
+          createdAt: "2026-07-14T12:41:00.000Z",
+        },
+        { commandId: CommandId.makeUnsafe("command-response-too-late") },
+      ),
+    ]);
+    expect(threadsOf(answered)[0]?.pendingInteractions?.[0]).toMatchObject({
+      status: "uncertain",
+      resolvedAt: "2026-07-14T12:40:00.000Z",
+    });
   });
 
   it("clears pending approval summary state when an approval response is requested", () => {

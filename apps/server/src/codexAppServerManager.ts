@@ -303,6 +303,8 @@ interface CodexVoiceTranscriptionAuthContext {
 
 export interface CodexAppServerSendTurnInput {
   readonly threadId: ThreadId;
+  /** Durable backend delivery identity; consumed by the host facade, never sent to Codex. */
+  readonly deliveryId?: string;
   readonly input?: string;
   readonly attachments?: ReadonlyArray<CodexImageInputItem>;
   readonly skills?: ReadonlyArray<ProviderSkillReference>;
@@ -2696,6 +2698,20 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
       .map(({ session }) => ({
         ...session,
       }));
+  }
+
+  /** Read-only adoption facts; never resume or mutate a surviving protocol connection. */
+  inspectPersistentSessions() {
+    return Array.from(this.sessions.values()).map((context) => ({
+      session: { ...context.session },
+      providerPid: context.child.pid ?? 0,
+      sessionAttemptId: context.sessionAttemptId,
+      ...(context.lifecycleGeneration !== undefined
+        ? { lifecycleGeneration: context.lifecycleGeneration }
+        : {}),
+      routable: this.isContextRoutable(context),
+      awaitingHuman: this.hasPendingHumanRequests(context),
+    }));
   }
 
   hasSession(threadId: ThreadId): boolean {

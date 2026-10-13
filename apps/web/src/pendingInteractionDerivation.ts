@@ -127,6 +127,7 @@ function retainActionableSettlements<T extends { requestId: ApprovalRequestId }>
                 status: settlement.status,
                 responseRequestedAt: settlement.responseRequestedAt,
                 requestedAt: responseClaimReferenceAt,
+                resolvedAt: settlement.resolvedAt,
               }))),
       )
       .map((settlement) =>

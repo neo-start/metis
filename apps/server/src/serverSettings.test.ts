@@ -31,6 +31,7 @@ describe("ServerSettingsService", () => {
     );
 
     expect(settings.providers.codex.binaryPath).toBe("codex");
+    expect(settings.providers.codex.runtimeHost).toBe("backend");
     expect(settings.providers.grok.binaryPath).toBe("grok");
     expect(settings.defaultThreadEnvMode).toBe("local");
     expect(settings.enableProviderUpdateChecks).toBe(true);
@@ -52,6 +53,7 @@ describe("ServerSettingsService", () => {
               enabled: false,
               binaryPath: "/usr/local/bin/codex",
               customModels: ["gpt-custom"],
+              runtimeHost: "persistent-native",
             },
           },
         });
@@ -64,6 +66,7 @@ describe("ServerSettingsService", () => {
     expect(result.updated.enableProviderUpdateChecks).toBe(false);
     expect(result.updated.providers.codex.enabled).toBe(false);
     expect(result.updated.providers.codex.binaryPath).toBe("/usr/local/bin/codex");
+    expect(result.updated.providers.codex.runtimeHost).toBe("persistent-native");
     expect(result.parsed).toMatchObject({
       revision: 1,
       migrationVersion: 3,
@@ -75,6 +78,7 @@ describe("ServerSettingsService", () => {
             enabled: false,
             binaryPath: "/usr/local/bin/codex",
             customModels: ["gpt-custom"],
+            runtimeHost: "persistent-native",
           },
         },
       },

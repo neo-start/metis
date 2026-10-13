@@ -19,5 +19,23 @@
       "target": "apps/web/src/pairingBootstrap.ts",
       "changes": "Manual pairing-code entry, fragment auto-submit and per-cause failure messages ported to Synara's pre-app DOM page; same /api/auth/bootstrap, no hosted pairing."
     }
+  },
+  "agentOrchestrator": {
+    "url": "https://github.com/OrchestratorInc/agent-orchestrator",
+    "commit": "e06b1a824e64ab882c041da4d58ec7c0c24cc188",
+    "role": "design reference; no Go code copied",
+    "deliveryFeedbackReference": {
+      "sources": ["backend/pkg/contract/kanban.go", "backend/internal/lifecycle/reactions.go"],
+      "targets": ["apps/server/src/pullRequests", "apps/web/src/components/kanban"],
+      "changes": "Keep Synara runtime-derived columns, PR/GitHub service and orchestration commands; add separate delivery summaries, explicit per-thread feedback policy and durable bounded feedback receipts. Do not copy AO send-before-dedup persistence."
+    },
+    "persistentHostReference": {
+      "source": "backend/internal/adapters/chatdriver/persistenthost",
+      "targets": [
+        "apps/server/src/provider/persistentHost",
+        "apps/server/src/provider/Layers/CodexAdapter.ts"
+      ],
+      "changes": "Reuse Synara CodexAppServerManager, shared process and JSONL boundaries and durable provider event pipeline. Local private authenticated host, explicit controller detach versus stop, retained protocol responders and event acknowledgements. Primary Codex native-only opt-in; no claim of ACP or Windows support."
+    }
   }
 }

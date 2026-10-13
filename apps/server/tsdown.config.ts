@@ -22,7 +22,12 @@ const migrationRuntimeSourceDigest = createHash("sha256")
   .digest("hex");
 
 export default defineConfig({
-  entry: ["src/index.ts", "src/restoreMigrationBackup.ts", "src/runtimeDependencySmoke.ts"],
+  entry: [
+    "src/index.ts",
+    "src/restoreMigrationBackup.ts",
+    "src/runtimeDependencySmoke.ts",
+    "src/persistentProviderHostMain.ts",
+  ],
   format: ["esm"],
   outDir: "dist",
   // Bun builtins only resolve at runtime under Bun; MigrationBackup.ts guards

@@ -282,6 +282,33 @@ export const GrokIcon: Icon = (props) => (
   </svg>
 );
 
+export const KimiIcon: Icon = ({ color, ...props }) => (
+  <svg
+    {...props}
+    viewBox="0 0 256 256"
+    fill="none"
+    preserveAspectRatio="xMidYMid"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    {/* Moonshot Kimi — geometric K mark */}
+    <rect
+      x="46"
+      y="46"
+      width="164"
+      height="164"
+      rx="32"
+      fill={typeof color === "string" ? color : "#0057FF"}
+    />
+    <path
+      d="M100 72v112M100 128h56M100 100l40 48M100 156l40-48"
+      stroke="#fff"
+      strokeWidth="14"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
 export const PiIcon: Icon = (props) => (
   <svg {...props} viewBox="0 0 800 800" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path

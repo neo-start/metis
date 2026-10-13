@@ -156,6 +156,8 @@ import {
   PullRequestCommentInput,
   PullRequestDetailInput,
   PullRequestReviewRequestCountInput,
+  PullRequestDeliveryInput,
+  PullRequestSetFeedbackEnabledInput,
   PullRequestSetPinnedInput,
   PullRequestsListInput,
 } from "./pullRequests";
@@ -243,6 +245,8 @@ export const WS_METHODS = {
   pullRequestsAction: "pullRequests.action",
   pullRequestsComment: "pullRequests.comment",
   pullRequestsSetPinned: "pullRequests.setPinned",
+  pullRequestsSetFeedbackEnabled: "pullRequests.setFeedbackEnabled",
+  pullRequestsDelivery: "pullRequests.delivery",
 
   // Terminal methods
   terminalOpen: "terminal.open",
@@ -472,6 +476,8 @@ const WebSocketRequestBody = Schema.Union([
   tagRequestBody(WS_METHODS.pullRequestsAction, PullRequestActionInput),
   tagRequestBody(WS_METHODS.pullRequestsComment, PullRequestCommentInput),
   tagRequestBody(WS_METHODS.pullRequestsSetPinned, PullRequestSetPinnedInput),
+  tagRequestBody(WS_METHODS.pullRequestsSetFeedbackEnabled, PullRequestSetFeedbackEnabledInput),
+  tagRequestBody(WS_METHODS.pullRequestsDelivery, PullRequestDeliveryInput),
 
   // Terminal methods
   tagRequestBody(WS_METHODS.terminalOpen, TerminalOpenInput),

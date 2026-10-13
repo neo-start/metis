@@ -9,6 +9,7 @@ import { Option, Schema, SchemaTransformation } from "effect";
 import {
   type AssistantDeliveryMode,
   ClaudeCacheReviewDefault,
+  CodexRuntimeHost,
   CODEX_SECONDARY_DEFAULT_HOME_PATH,
   DesktopAppIcon,
   DEFAULT_GIT_TEXT_GENERATION_MODEL,
@@ -279,6 +280,7 @@ export const AppSettingsSchema = Schema.Struct({
   ),
   codexBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
   codexHomePath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
+  codexRuntimeHost: CodexRuntimeHost.pipe(withDefaults(() => "backend" as const)),
   codexSecondaryBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(
     withDefaults(() => ""),
   ),
@@ -782,6 +784,7 @@ function serverSettingsToAppSettings(settings: ServerSettingsView): Partial<AppS
     claudeCacheReviewDecision: settings.providers.claudeAgent.cacheReviewDecision,
     codexBinaryPath: settings.providers.codex.binaryPath,
     codexHomePath: settings.providers.codex.homePath,
+    codexRuntimeHost: settings.providers.codex.runtimeHost,
     codexSecondaryBinaryPath: settings.providers.codexSecondary.binaryPath,
     codexSecondaryHomePath: settings.providers.codexSecondary.homePath,
     cursorApiEndpoint: settings.providers.cursor.apiEndpoint,
@@ -914,11 +917,15 @@ export function appSettingsPatchToServerSettingsPatch(
   if (
     hasOwn(patch, "codexBinaryPath") ||
     hasOwn(patch, "codexHomePath") ||
+    hasOwn(patch, "codexRuntimeHost") ||
     hasOwn(patch, "customCodexModels")
   ) {
     providers.codex = {
       ...(hasOwn(patch, "codexBinaryPath") ? { binaryPath: patch.codexBinaryPath ?? "" } : {}),
       ...(hasOwn(patch, "codexHomePath") ? { homePath: patch.codexHomePath ?? "" } : {}),
+      ...(hasOwn(patch, "codexRuntimeHost")
+        ? { runtimeHost: patch.codexRuntimeHost ?? "backend" }
+        : {}),
       ...(hasOwn(patch, "customCodexModels")
         ? { customModels: patch.customCodexModels ?? [] }
         : {}),
@@ -1078,6 +1085,7 @@ function buildInitialServerSettingsMigrationPatch(settings: AppSettings): Server
     "claudeCacheReviewDecision",
     "codexBinaryPath",
     "codexHomePath",
+    "codexRuntimeHost",
     "codexSecondaryBinaryPath",
     "codexSecondaryHomePath",
     "cursorApiEndpoint",
@@ -1346,7 +1354,8 @@ export function getProviderStartOptions(
     | "openCodeServerUrl"
     | "piAgentDir"
     | "piBinaryPath"
-  >,
+  > &
+    Partial<Pick<AppSettings, "codexRuntimeHost">>,
 ): ProviderStartOptions | undefined {
   const claudeBinaryPath = normalizeProviderBinaryPathOverride(
     "claudeAgent",
@@ -1374,11 +1383,16 @@ export function getProviderStartOptions(
     openCodeBinaryPath || settings.openCodeExperimentalWebSockets || settings.openCodeServerUrl,
   );
   const providerOptions: ProviderStartOptions = {
-    ...(codexBinaryPath || settings.codexHomePath
+    ...(codexBinaryPath ||
+    settings.codexHomePath ||
+    settings.codexRuntimeHost === "persistent-native"
       ? {
           codex: {
             ...(codexBinaryPath ? { binaryPath: codexBinaryPath } : {}),
             ...(settings.codexHomePath ? { homePath: settings.codexHomePath } : {}),
+            ...(settings.codexRuntimeHost === "persistent-native"
+              ? { runtimeHost: settings.codexRuntimeHost }
+              : {}),
           },
         }
       : {}),

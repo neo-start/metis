@@ -109,6 +109,8 @@ export interface GitHubPullRequestDetailData {
   readonly deletions: number;
   readonly changedFiles: number;
   readonly headBranch: string;
+  /** GitHub's current headRefOid, never inferred from the paginated commits list. */
+  readonly headSha?: string | null;
   readonly baseBranch: string;
   readonly createdAt: string;
   readonly updatedAt: string;

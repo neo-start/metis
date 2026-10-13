@@ -81,6 +81,8 @@ export interface ProjectionPendingInteractionRepositoryShape {
    * command. Claims `pending`/`retryable`/`uncertain` rows, plus `responding`
    * rows whose claim is old enough to be considered orphaned — a permanently
    * unclaimable row would strand its prompt with no way to answer or dismiss.
+   * An expired row (`uncertain` with `resolvedAt`, stamped when its provider
+   * callback was reported gone) is terminal and never claimed.
    */
   readonly claimResponse: (
     input: typeof ClaimProjectionPendingInteractionResponseInput.Type,

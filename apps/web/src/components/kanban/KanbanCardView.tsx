@@ -29,6 +29,7 @@ import { cn } from "~/lib/utils";
 import { formatElapsed } from "../../session-logic";
 import { RAISED_SURFACE_CHROME_CLASS_NAME } from "../chat/composerPickerStyles";
 import { KanbanStatusIcon } from "./KanbanStatusIcon";
+import { KanbanDeliverySummary } from "./KanbanDeliverySummary";
 import { KANBAN_COLUMN_LABELS, kanbanThreadCardId, type KanbanCard } from "./kanban.logic";
 
 /** Resolved PR badge per thread from the board root's useThreadPullRequests call. */
@@ -130,105 +131,109 @@ function KanbanCardViewComponent({
       : null;
 
   return (
-    <button
-      type="button"
-      tabIndex={isOverlay ? -1 : 0}
-      onClick={onOpen ? () => onOpen(card) : undefined}
-      onContextMenu={onContextMenu ? (event) => onContextMenu(card, event) : undefined}
+    <div
       className={cn(
-        "flex w-full cursor-pointer flex-col gap-1.5 rounded-lg bg-card/70 px-3 py-2.5 text-left transition-colors",
+        "overflow-hidden rounded-lg bg-card/70",
         RAISED_SURFACE_CHROME_CLASS_NAME,
-        // The shared raised chrome drops its border in dark mode (shadow-only),
-        // which leaves kanban cards edgeless against the column. Re-add a faint
-        // hairline so each card stays visually separated in dark mode.
         "dark:border dark:border-white/[0.05]",
-        "hover:bg-card focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none",
         isOverlay && "bg-card shadow-lg dark:shadow-lg",
         isDragSource && "opacity-40",
       )}
     >
-      <span className="flex min-w-0 items-start gap-1.5">
-        <span className="line-clamp-2 min-w-0 flex-1 text-ui-lg leading-snug font-medium text-foreground/90">
-          {card.title}
-        </span>
-        {card.thread?.isPinned ? (
-          <span title="Pinned" className="flex shrink-0 items-center pt-0.5">
-            <PinFilledIcon className="size-3 text-muted-foreground/60" aria-hidden />
-          </span>
-        ) : null}
-      </span>
-      {showDraftPreview ? (
-        <span className="line-clamp-2 text-ui leading-snug text-muted-foreground">
-          {card.draftPrompt}
-        </span>
-      ) : null}
-      <span className="flex min-w-0 items-center gap-2 pt-0.5">
-        {card.isTerminal ? null : (
-          <ProviderIcon
-            provider={card.provider}
-            className="size-3.5 shrink-0 opacity-80"
-            fallback={
-              <span className="size-3.5 shrink-0 rounded-full border border-dashed border-muted-foreground/40" />
-            }
-            tooltip
-          />
+      <button
+        type="button"
+        tabIndex={isOverlay ? -1 : 0}
+        onClick={onOpen ? () => onOpen(card) : undefined}
+        onContextMenu={onContextMenu ? (event) => onContextMenu(card, event) : undefined}
+        className={cn(
+          "flex w-full cursor-pointer flex-col gap-1.5 rounded-lg px-3 py-2.5 text-left transition-colors motion-reduce:transition-none",
+          "hover:bg-card active:bg-muted/50 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring focus-visible:outline-none",
         )}
-        {card.branch ? (
-          <span className="flex min-w-0 items-center gap-1 text-ui-sm leading-snug text-muted-foreground/70">
-            <GitBranchIcon className="size-3 shrink-0" aria-hidden />
-            <span className="max-w-32 truncate">{card.branch}</span>
+      >
+        <span className="flex min-w-0 items-start gap-1.5">
+          <span className="line-clamp-2 min-w-0 flex-1 text-ui-lg leading-snug font-medium text-foreground/90">
+            {card.title}
           </span>
-        ) : null}
-        {worktreeBadgeLabel ? (
-          <span title={worktreeBadgeLabel} className="flex shrink-0 items-center">
-            <WorktreeIcon className="size-3 text-muted-foreground/70" aria-hidden />
-          </span>
-        ) : null}
-        {isForked ? (
-          <span title="Forked thread" className="flex shrink-0 items-center">
-            <GoRepoForked
-              className="size-3 text-emerald-600 dark:text-emerald-300/90"
-              aria-hidden
-            />
-          </span>
-        ) : null}
-        {pr ? <PrStateChip pr={pr} /> : null}
-        {card.draftHasAttachments ? (
-          <PaperclipIcon className="size-3 shrink-0 text-muted-foreground/70" aria-hidden />
-        ) : null}
-        <span className="ml-auto flex min-w-0 shrink-0 items-center gap-2">
-          {card.isOptimisticDispatch ? (
-            // Optimistically In Progress — the thread's real status (Draft/Completed)
-            // would contradict the column until the first runtime signal arrives.
-            <>
-              <span className="flex shrink-0 items-center gap-1.5 text-ui-sm leading-snug text-sky-600 dark:text-sky-300/90">
-                <LoaderIcon className="size-3 shrink-0 animate-spin" aria-hidden />
-                Starting…
-              </span>
-              {activeWorkElapsed ? (
-                <span className="shrink-0 text-ui-sm leading-snug text-muted-foreground/70">
-                  Worked for {activeWorkElapsed}
-                </span>
-              ) : null}
-            </>
-          ) : (
-            <>
-              <KanbanCardStatusPill card={card} />
-              {activeWorkElapsed ? (
-                <span className="shrink-0 text-ui-sm leading-snug text-muted-foreground/70">
-                  Worked for {activeWorkElapsed}
-                </span>
-              ) : card.timestamp ? (
-                <span className="shrink-0 text-ui-sm leading-snug text-muted-foreground/70">
-                  {formatRelativeTime(card.timestamp)}
-                </span>
-              ) : null}
-            </>
-          )}
-          <KanbanCardColumnLabel card={card} />
+          {card.thread?.isPinned ? (
+            <span title="Pinned" className="flex shrink-0 items-center pt-0.5">
+              <PinFilledIcon className="size-3 text-muted-foreground/60" aria-hidden />
+            </span>
+          ) : null}
         </span>
-      </span>
-    </button>
+        {showDraftPreview ? (
+          <span className="line-clamp-2 text-ui leading-snug text-muted-foreground">
+            {card.draftPrompt}
+          </span>
+        ) : null}
+        <span className="flex min-w-0 items-center gap-2 pt-0.5">
+          {card.isTerminal ? null : (
+            <ProviderIcon
+              provider={card.provider}
+              className="size-3.5 shrink-0 opacity-80"
+              fallback={
+                <span className="size-3.5 shrink-0 rounded-full border border-dashed border-muted-foreground/40" />
+              }
+              tooltip
+            />
+          )}
+          {card.branch ? (
+            <span className="flex min-w-0 items-center gap-1 text-ui-sm leading-snug text-muted-foreground/70">
+              <GitBranchIcon className="size-3 shrink-0" aria-hidden />
+              <span className="max-w-32 truncate">{card.branch}</span>
+            </span>
+          ) : null}
+          {worktreeBadgeLabel ? (
+            <span title={worktreeBadgeLabel} className="flex shrink-0 items-center">
+              <WorktreeIcon className="size-3 text-muted-foreground/70" aria-hidden />
+            </span>
+          ) : null}
+          {isForked ? (
+            <span title="Forked thread" className="flex shrink-0 items-center">
+              <GoRepoForked
+                className="size-3 text-emerald-600 dark:text-emerald-300/90"
+                aria-hidden
+              />
+            </span>
+          ) : null}
+          {pr ? <PrStateChip pr={pr} /> : null}
+          {card.draftHasAttachments ? (
+            <PaperclipIcon className="size-3 shrink-0 text-muted-foreground/70" aria-hidden />
+          ) : null}
+          <span className="ml-auto flex min-w-0 shrink-0 items-center gap-2">
+            {card.isOptimisticDispatch ? (
+              // Optimistically In Progress — the thread's real status (Draft/Completed)
+              // would contradict the column until the first runtime signal arrives.
+              <>
+                <span className="flex shrink-0 items-center gap-1.5 text-ui-sm leading-snug text-sky-600 dark:text-sky-300/90">
+                  <LoaderIcon className="size-3 shrink-0 animate-spin" aria-hidden />
+                  Starting…
+                </span>
+                {activeWorkElapsed ? (
+                  <span className="shrink-0 text-ui-sm leading-snug text-muted-foreground/70">
+                    Worked for {activeWorkElapsed}
+                  </span>
+                ) : null}
+              </>
+            ) : (
+              <>
+                <KanbanCardStatusPill card={card} />
+                {activeWorkElapsed ? (
+                  <span className="shrink-0 text-ui-sm leading-snug text-muted-foreground/70">
+                    Worked for {activeWorkElapsed}
+                  </span>
+                ) : card.timestamp ? (
+                  <span className="shrink-0 text-ui-sm leading-snug text-muted-foreground/70">
+                    {formatRelativeTime(card.timestamp)}
+                  </span>
+                ) : null}
+              </>
+            )}
+            <KanbanCardColumnLabel card={card} />
+          </span>
+        </span>
+      </button>
+      <KanbanDeliverySummary card={card} isOverlay={isOverlay} />
+    </div>
   );
 }
 

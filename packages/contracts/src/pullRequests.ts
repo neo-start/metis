@@ -5,6 +5,7 @@ import {
   NonNegativeInt,
   PositiveInt,
   ProjectId,
+  ThreadId,
   TrimmedNonEmptyString,
 } from "./baseSchemas";
 import { GitPullRequestMergeability } from "./git";
@@ -80,6 +81,7 @@ export const PullRequestComment = Schema.Struct({
   url: Schema.NullOr(Schema.String),
   path: Schema.NullOr(Schema.String),
   reviewState: Schema.NullOr(Schema.String),
+  commitSha: Schema.optional(Schema.NullOr(Schema.String)),
 });
 export type PullRequestComment = typeof PullRequestComment.Type;
 
@@ -230,6 +232,7 @@ export const PullRequestDetailInput = Schema.Struct({
 export type PullRequestDetailInput = typeof PullRequestDetailInput.Type;
 
 export const PullRequestDetail = Schema.Struct({
+  headSha: Schema.optional(Schema.NullOr(Schema.String)),
   projectId: ProjectId,
   projectTitle: TrimmedNonEmptyString,
   workspaceRoot: TrimmedNonEmptyString,
@@ -342,3 +345,53 @@ export class PullRequestsUnavailableError extends Schema.TaggedErrorClass<PullRe
     message: TrimmedNonEmptyString,
   },
 ) {}
+
+/** Delivery is independent of whether the agent's latest turn has completed. */
+export const PullRequestDeliveryState = Schema.Struct({
+  threadId: ThreadId,
+  enabled: Schema.Boolean,
+  number: Schema.NullOr(PositiveInt),
+  url: Schema.NullOr(Schema.String),
+  headSha: Schema.NullOr(Schema.String),
+  status: Schema.Literals([
+    "checks-pending",
+    "checks-failed",
+    "changes-requested",
+    "conflicts",
+    "ready",
+    "merged",
+    "closed",
+    "unknown",
+  ]),
+  needsAttention: Schema.Boolean,
+  summary: Schema.String,
+  checkedAt: Schema.NullOr(IsoDateTime),
+  stale: Schema.Boolean,
+  error: Schema.NullOr(Schema.String),
+  feedbackStatus: Schema.Literals([
+    "disabled",
+    "idle",
+    "deferred",
+    "delivered",
+    "exhausted",
+    "error",
+  ]),
+  deferredReason: Schema.NullOr(Schema.String),
+});
+export type PullRequestDeliveryState = typeof PullRequestDeliveryState.Type;
+
+export const PullRequestDeliveryInput = Schema.Struct({
+  threadIds: Schema.Array(ThreadId).check(Schema.isMaxLength(1000)),
+});
+export type PullRequestDeliveryInput = typeof PullRequestDeliveryInput.Type;
+
+export const PullRequestDeliveryResult = Schema.Struct({
+  items: Schema.Array(PullRequestDeliveryState),
+});
+export type PullRequestDeliveryResult = typeof PullRequestDeliveryResult.Type;
+
+export const PullRequestSetFeedbackEnabledInput = Schema.Struct({
+  threadId: ThreadId,
+  enabled: Schema.Boolean,
+});
+export type PullRequestSetFeedbackEnabledInput = typeof PullRequestSetFeedbackEnabledInput.Type;

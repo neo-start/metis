@@ -174,6 +174,10 @@ import {
   PullRequestDiffResult,
   PullRequestReviewRequestCountInput,
   PullRequestReviewRequestCountResult,
+  PullRequestDeliveryInput,
+  PullRequestSetFeedbackEnabledInput,
+  PullRequestDeliveryResult,
+  PullRequestDeliveryState,
   PullRequestSetPinnedInput,
   PullRequestSetPinnedResult,
   PullRequestsListInput,
@@ -1061,6 +1065,21 @@ export const WsPullRequestsCommentRpc = Rpc.make(WS_METHODS.pullRequestsComment,
   error: PullRequestsRpcError,
 });
 
+export const WsPullRequestsDeliveryRpc = Rpc.make(WS_METHODS.pullRequestsDelivery, {
+  payload: PullRequestDeliveryInput,
+  success: PullRequestDeliveryResult,
+  error: WsRpcError,
+});
+
+export const WsPullRequestsSetFeedbackEnabledRpc = Rpc.make(
+  WS_METHODS.pullRequestsSetFeedbackEnabled,
+  {
+    payload: PullRequestSetFeedbackEnabledInput,
+    success: PullRequestDeliveryState,
+    error: WsRpcError,
+  },
+);
+
 export const WsPullRequestsSetPinnedRpc = Rpc.make(WS_METHODS.pullRequestsSetPinned, {
   payload: PullRequestSetPinnedInput,
   success: PullRequestSetPinnedResult,
@@ -1627,6 +1646,8 @@ export const WsFeatureRpcGroup = RpcGroup.make(
   WsPullRequestsActionRpc,
   WsPullRequestsCommentRpc,
   WsPullRequestsSetPinnedRpc,
+  WsPullRequestsSetFeedbackEnabledRpc,
+  WsPullRequestsDeliveryRpc,
   WsGitListBranchesRpc,
   WsGitListRecentCommitsRpc,
   WsGitCreateWorktreeRpc,

@@ -768,6 +768,77 @@ describe("planProviderRuntimeReconciliation", () => {
     expect(plans[0]?.reason).toContain("runtime-event pump is recovering");
   });
 
+  it("preserves a live owned turn beyond the shell inactivity deadline", () => {
+    const old = "2026-07-23T19:00:00.000Z";
+    expect(
+      planProviderRuntimeReconciliation({
+        threads: [
+          threadShell({ updatedAt: old, session: { ...threadShell().session!, updatedAt: old } }),
+        ],
+        bindings: [binding()],
+        liveSessions: [liveSession({ status: "running", activeTurnId: OLD_TURN_ID })],
+        pumpHealth: [],
+        nowMs: NOW,
+      }),
+    ).toEqual([]);
+  });
+
+  it("repairs starting and interrupted projections while the original turn remains live", () => {
+    const old = "2026-07-23T19:00:00.000Z";
+    for (const status of ["starting", "interrupted"] as const) {
+      const plans = planProviderRuntimeReconciliation({
+        threads: [
+          threadShell({
+            updatedAt: old,
+            session: { ...threadShell().session!, status, activeTurnId: null, updatedAt: old },
+            latestTurn: { ...threadShell().latestTurn!, state: "interrupted" },
+          }),
+        ],
+        bindings: [binding(null)],
+        liveSessions: [liveSession({ status: "running", activeTurnId: OLD_TURN_ID })],
+        pumpHealth: [],
+        nowMs: NOW,
+      });
+      expect(plans).toEqual([
+        expect.objectContaining({ action: "align-running-turn", runtimeTurnId: OLD_TURN_ID }),
+      ]);
+    }
+  });
+
+  it("does not abandon a running turn that is waiting on the user's answer", () => {
+    // A live runtime blocked on AskUserQuestion makes no progress by design.
+    // Settling it by age alone interrupted the projection and cleared the
+    // binding's turn while the provider callback was still alive, so the
+    // runtime's own resolution was later dropped and the card was stranded.
+    const abandonedAt = "2026-07-23T19:00:00.000Z";
+    const waitingThread = threadShell({
+      updatedAt: abandonedAt,
+      session: { ...threadShell().session!, updatedAt: abandonedAt },
+    });
+    const plan = (thread: OrchestrationThreadShell, sessions: ReadonlyArray<ProviderSession>) =>
+      planProviderRuntimeReconciliation({
+        threads: [thread],
+        bindings: [binding()],
+        liveSessions: sessions,
+        pumpHealth: [],
+        nowMs: NOW,
+        staleAfterMs: 10_000,
+        maxTurnAgeMs: 30 * 60_000,
+      });
+    const running = [liveSession({ status: "running" })];
+
+    expect(plan({ ...waitingThread, hasPendingUserInput: true }, running)).toEqual([]);
+    expect(plan({ ...waitingThread, hasPendingApprovals: true }, running)).toEqual([]);
+    // Without an open request the same quiet turn is still abandoned.
+    expect(plan(waitingThread, running)).toEqual([
+      expect.objectContaining({ action: "settle-interrupted", projectedTurnId: OLD_TURN_ID }),
+    ]);
+    // Without a live runtime nothing can answer, so the turn still settles.
+    expect(plan({ ...waitingThread, hasPendingUserInput: true }, [])).toEqual([
+      expect.objectContaining({ action: "settle-interrupted", projectedTurnId: OLD_TURN_ID }),
+    ]);
+  });
+
   it("does not treat an actively streaming turn as stale when only the session row is quiet", () => {
     // thread.updatedAt advances on every appended message. A turn that is
     // streaming output must never become a settle candidate just because the

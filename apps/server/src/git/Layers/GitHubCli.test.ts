@@ -1040,6 +1040,69 @@ layer("GitHubCliLive", (it) => {
     }),
   );
 
+  it.effect("preserves the canonical head and review commit identities independently", () =>
+    Effect.gen(function* () {
+      mockedRunProcess.mockResolvedValueOnce({
+        stdout: JSON.stringify({
+          number: 9,
+          title: "Review current head",
+          url: "https://github.com/acme/app/pull/9",
+          headRefName: "feature",
+          headRefOid: " current-head ",
+          baseRefName: "main",
+          createdAt: "2026-07-01T00:00:00Z",
+          updatedAt: "2026-07-02T00:00:00Z",
+          commits: [{ oid: "older-listed-commit", committedDate: "2026-07-01T01:00:00Z" }],
+          reviews: [
+            {
+              id: "old-review",
+              state: "CHANGES_REQUESTED",
+              submittedAt: "2026-07-01T02:00:00Z",
+              commit: { oid: " old-head " },
+            },
+            {
+              id: "current-review",
+              state: "APPROVED",
+              submittedAt: "2026-07-02T02:00:00Z",
+              commit: { oid: "current-head" },
+            },
+            {
+              id: "unknown-review",
+              state: "COMMENTED",
+              submittedAt: "2026-07-02T03:00:00Z",
+              commit: null,
+            },
+            {
+              id: "blank-review",
+              state: "COMMENTED",
+              submittedAt: "2026-07-02T04:00:00Z",
+              commit: { oid: " " },
+            },
+          ],
+        }),
+        stderr: "",
+        code: 0,
+        signal: null,
+        timedOut: false,
+      });
+      const gh = yield* GitHubCli;
+      const detail = yield* gh.getPullRequestDetail({
+        cwd: "/repo",
+        repository: "acme/app",
+        number: 9,
+      });
+
+      expect(detail.headSha).toBe("current-head");
+      expect(detail.comments.map(({ id, commitSha }) => ({ id, commitSha }))).toEqual([
+        { id: "old-review", commitSha: "old-head" },
+        { id: "current-review", commitSha: "current-head" },
+        { id: "unknown-review", commitSha: null },
+        { id: "blank-review", commitSha: null },
+      ]);
+      expect(mockedRunProcess.mock.calls[0]?.[1]?.at(-1)?.split(",")).toContain("headRefOid");
+    }),
+  );
+
   it.effect("accepts commits with empty or missing headlines and omits the files field", () =>
     Effect.gen(function* () {
       mockedRunProcess.mockResolvedValueOnce({
@@ -1086,6 +1149,9 @@ layer("GitHubCliLive", (it) => {
         detail.commits.map((commit) => commit.messageHeadline),
         ["", ""],
       );
+      // The list can be truncated: its final commit must never stand in for headRefOid.
+      expect(detail.headSha).toBeNull();
+      expect(detail.comments[0]?.commitSha).toBeNull();
       // Avatars are derived from real user logins only: "platform" is a Team (slug), and a
       // slug-derived URL could show an unrelated user who happens to share the name.
       assert.deepStrictEqual(detail.reviewers, [

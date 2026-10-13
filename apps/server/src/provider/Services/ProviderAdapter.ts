@@ -45,6 +45,7 @@ import type {
 } from "@synara/contracts";
 import type { Effect } from "effect";
 import type { Stream } from "effect";
+import type { ProviderRuntimeBinding } from "./ProviderSessionDirectory.ts";
 
 export type ProviderSessionModelSwitchMode = "in-session" | "restart-session" | "unsupported";
 
@@ -285,6 +286,20 @@ export interface ProviderAdapterShape<TError> {
    * Stop all sessions owned by this adapter.
    */
   readonly stopAll: () => Effect.Effect<void, TError>;
+
+  /** Authenticate and adopt surviving hosts before startup orphan reconciliation. */
+  readonly adoptPersistentSessions?: (
+    bindings: ReadonlyArray<ProviderRuntimeBinding>,
+  ) => Effect.Effect<void, TError>;
+  readonly preparePersistentRecovery?: (
+    bindings: ReadonlyArray<ProviderRuntimeBinding>,
+  ) => Effect.Effect<void, TError>;
+  /** Only sessions whose persistent process ownership was verified, never configuration guesses. */
+  readonly listPersistentSessionThreadIds?: () => Effect.Effect<ReadonlyArray<ThreadId>>;
+  /** Release backend ownership while retaining persistent provider processes. */
+  readonly closeForBackendShutdown?: () => Effect.Effect<void, TError>;
+  /** Called only after durable acceptance (or deliberate stale-generation rejection). */
+  readonly acknowledgeRuntimeEvent?: (event: ProviderRuntimeEvent) => Effect.Effect<void, TError>;
 
   /**
    * Canonical runtime event stream emitted by this adapter.

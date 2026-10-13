@@ -1772,24 +1772,24 @@ const makeOrchestrationProjectionPipeline = Effect.gen(function* () {
               activity.payload,
               "responseCommandId",
             );
-            if (responseCommandIdValue === null) {
-              // Reconciliation (server restart, provider session restart)
-              // reports stale requests without a claiming response command: no
-              // response was in flight, but the provider callback that could
-              // consume the interaction is gone. Settle the row anyway —
-              // leaving it `pending` kept threads answerable-looking forever
-              // while every actual response hit a dead provider.
-              if (
-                existingRow.value.status === "confirmed" ||
-                !createStalePendingInteractionMatcher([activity])(existingRow.value)
-              ) {
+            if (createStalePendingInteractionMatcher([activity])(existingRow.value)) {
+              // The provider callback for this request instance is gone:
+              // reconciliation (server restart, provider session restart, a
+              // settled turn) or an answer that reached a dead runtime said so.
+              // Whoever held the response claim, nothing can answer the request
+              // any more. Stamp the settlement time so readers can tell this
+              // terminal state from an ambiguous delivery, which stays
+              // `uncertain` without `resolvedAt` and remains retryable.
+              if (existingRow.value.status === "confirmed") {
                 return;
               }
               nextRow = {
                 ...existingRow.value,
                 status: "uncertain",
-                resolvedAt: null,
+                resolvedAt: activity.createdAt,
               };
+            } else if (responseCommandIdValue === null) {
+              return;
             } else {
               if (existingRow.value.status !== "responding") {
                 return;

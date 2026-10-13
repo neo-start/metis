@@ -74,6 +74,7 @@ import {
   requireThreadArchived,
   requireThreadNotArchived,
   threadHasInFlightTurn,
+  THREAD_DELIVERY_PRECONDITION_DETAIL,
   threadHasCheckpointRevertInProgress,
   threadResumePreconditionDetail,
   threadResumePreconditionViolation,
@@ -1719,6 +1720,21 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         threadId: command.threadId,
       });
       yield* validateSidechatExecutionAvailable(command, targetThread);
+      if (
+        command.deliveryPrecondition !== undefined &&
+        (targetThread.updatedAt !== command.deliveryPrecondition.expectedThreadUpdatedAt ||
+          targetThread.archivedAt != null ||
+          threadHasInFlightTurn(targetThread) ||
+          targetThread.hasPendingApprovals ||
+          targetThread.hasPendingUserInput ||
+          targetThread.hasActionableProposedPlan ||
+          targetThread.claudeCacheReview)
+      ) {
+        return yield* new OrchestrationCommandInvariantError({
+          commandType: command.type,
+          detail: THREAD_DELIVERY_PRECONDITION_DETAIL,
+        });
+      }
       if (command.resumePrecondition !== undefined) {
         // Quit-resume continuations are only valid while the thread is exactly as
         // it was recorded; checked here so it holds inside the serialized dispatch.

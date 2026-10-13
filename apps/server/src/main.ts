@@ -54,6 +54,7 @@ import { createClaudeCredentialKeepaliveController } from "./provider/claudeCred
 import { ProjectionSnapshotQuery } from "./orchestration/Services/ProjectionSnapshotQuery";
 import { ProviderSessionReaperLive } from "./provider/Layers/ProviderSessionReaper";
 import { ProviderRuntimeReconcilerLive } from "./provider/Layers/ProviderRuntimeReconciler";
+import { ProjectionPendingInteractionRepositoryLive } from "./persistence/Layers/ProjectionPendingInteractions";
 import { Server } from "./effectServer";
 import { ServerLoggerLive } from "./serverLogger";
 import { ServerSettingsService } from "./serverSettings";
@@ -357,6 +358,7 @@ const LayerLive = (input: CliInput) => {
   );
   const providerRuntimeReconcilerLayer = ProviderRuntimeReconcilerLive.pipe(
     Layer.provide(ProviderRuntimeEventRepositoryLive),
+    Layer.provide(ProjectionPendingInteractionRepositoryLive),
     Layer.provideMerge(runtimeServicesLayer),
     Layer.provideMerge(providerLayer),
   );

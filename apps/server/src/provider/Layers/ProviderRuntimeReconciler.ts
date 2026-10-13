@@ -12,12 +12,18 @@ import {
   EventId,
   type OrchestrationSession,
   type OrchestrationThreadShell,
+  type ProviderSession,
 } from "@synara/contracts";
 import { Cause, Duration, Effect, Layer, Schedule } from "effect";
 
 import { OrchestrationEngineService } from "../../orchestration/Services/OrchestrationEngine.ts";
 import { OrchestrationReactor } from "../../orchestration/Services/OrchestrationReactor.ts";
 import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
+import {
+  buildStalePendingRequestSettlementCommand,
+  pendingInteractionRequestKind,
+} from "../../orchestration/stalePendingInteractions.ts";
+import { ProjectionPendingInteractionRepository } from "../../persistence/Services/ProjectionPendingInteractions.ts";
 import {
   PROVIDER_RUNTIME_INGESTION_CONSUMER,
   ProviderRuntimeEventRepository,
@@ -70,6 +76,7 @@ const make = (options?: ProviderRuntimeReconcilerLiveOptions) =>
     const providerService = yield* ProviderService;
     const directory = yield* ProviderSessionDirectory;
     const runtimeEvents = yield* ProviderRuntimeEventRepository;
+    const pendingInteractions = yield* ProjectionPendingInteractionRepository;
     const intervalMs = Math.max(
       250,
       Math.floor(options?.intervalMs ?? DEFAULT_RECONCILIATION_INTERVAL_MS),
@@ -98,10 +105,57 @@ const make = (options?: ProviderRuntimeReconcilerLiveOptions) =>
       current.activeTurnId === next.activeTurnId &&
       current.lastError === next.lastError;
 
+    /**
+     * Settles the human requests a settled turn can no longer answer.
+     *
+     * The provider callback behind an approval or question lives in the
+     * runtime. Once this reconciler settles the turn, the runtime's own
+     * terminal events are missing by definition, so nothing else would close
+     * the durable row: the question card stayed up and every answer failed as
+     * stale. Only act on evidence that the callback is gone. A live session
+     * that is still running or connecting may yet deliver an answer; a settled
+     * (`ready`/`closed`/`error`) session no longer owns the settled turn; and
+     * a missing session owns no callback at all, whatever turn it came from.
+     */
+    const settleUnanswerablePendingInteractions = Effect.fnUntraced(function* (input: {
+      readonly plan: ProviderRuntimeReconciliationPlan;
+      readonly key: string;
+      readonly liveSession: ProviderSession | undefined;
+      readonly now: string;
+    }) {
+      const { plan, liveSession } = input;
+      if (plan.action === "align-running-turn") return;
+      if (liveSession?.status === "running" || liveSession?.status === "connecting") return;
+      const rows = yield* pendingInteractions.listUnsettled({ threadId: plan.threadId });
+      for (const row of rows) {
+        if (
+          liveSession !== undefined &&
+          (plan.projectedTurnId === null || row.turnId !== plan.projectedTurnId)
+        ) {
+          continue;
+        }
+        const requestKind = pendingInteractionRequestKind(row.interactionKind);
+        yield* orchestrationEngine.dispatch(
+          buildStalePendingRequestSettlementCommand({
+            threadId: plan.threadId,
+            // Stable per repair and request, so a retried tick deduplicates.
+            commandId: CommandId.makeUnsafe(
+              `${input.key}:stale-pending-${requestKind}:${row.requestId}`,
+            ),
+            requestKind,
+            requestId: row.requestId,
+            lifecycleGeneration: row.lifecycleGeneration,
+            now: input.now,
+          }),
+        );
+      }
+    });
+
     const applyPlan = Effect.fnUntraced(function* (input: {
       readonly plan: ProviderRuntimeReconciliationPlan;
       readonly thread: OrchestrationThreadShell;
       readonly binding: ProviderRuntimeBinding | undefined;
+      readonly liveSession: ProviderSession | undefined;
       readonly now: string;
     }) {
       const { plan, thread, now } = input;
@@ -194,6 +248,13 @@ const make = (options?: ProviderRuntimeReconcilerLiveOptions) =>
         createdAt: now,
       });
 
+      yield* settleUnanswerablePendingInteractions({
+        plan,
+        key,
+        liveSession: input.liveSession,
+        now,
+      });
+
       // The durable binding still advertises the turn that was just settled,
       // which keeps the thread a reconciliation candidate forever. Only merge
       // into an existing row: an upsert would otherwise resurrect a binding for
@@ -213,10 +274,16 @@ const make = (options?: ProviderRuntimeReconcilerLiveOptions) =>
 
     const reconcileNow = Effect.gen(function* () {
       const nowMs = Date.now();
-      const candidateThreadIds = yield* projectionSnapshotQuery.listStaleInFlightThreadIds({
+      const staleThreadIds = yield* projectionSnapshotQuery.listStaleInFlightThreadIds({
         updatedBefore: new Date(nowMs - staleAfterMs).toISOString(),
         limit: candidateLimit,
       });
+      const blockedRecovery = new Set(
+        yield* providerService.listPersistentRecoveryBlockedThreadIds?.() ?? Effect.succeed([]),
+      );
+      const candidateThreadIds = staleThreadIds.filter(
+        (threadId) => !blockedRecovery.has(threadId),
+      );
       if (candidateThreadIds.length === 0) return;
       const [bindings, liveSessions, pumpHealth, runtimeJournalLagging] = yield* Effect.all(
         [
@@ -235,6 +302,9 @@ const make = (options?: ProviderRuntimeReconcilerLiveOptions) =>
       const threads = yield* projectionSnapshotQuery.getThreadShellsByIds(candidateThreadIds);
       const threadById = new Map(threads.map((thread) => [thread.id, thread]));
       const bindingByThreadId = new Map(bindings.map((binding) => [binding.threadId, binding]));
+      const liveSessionByThreadId = new Map(
+        liveSessions.map((session) => [session.threadId, session]),
+      );
       const plans = planProviderRuntimeReconciliation({
         threads,
         bindings,
@@ -260,6 +330,7 @@ const make = (options?: ProviderRuntimeReconcilerLiveOptions) =>
             plan,
             thread,
             binding: bindingByThreadId.get(plan.threadId),
+            liveSession: liveSessionByThreadId.get(plan.threadId),
             now,
           }).pipe(
             Effect.catchCause((cause) =>

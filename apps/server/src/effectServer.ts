@@ -9,6 +9,7 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 import { agentGatewayRouteLayer } from "./agentGateway/httpRoute";
 import { AgentGatewayCredentials } from "./agentGateway/Services/AgentGatewayCredentials";
 import { AutomationRunReactor } from "./automation/Services/AutomationRunReactor";
+import { PullRequestFeedbackService } from "./pullRequests/Services/PullRequestFeedbackService";
 import { AutomationScheduler } from "./automation/Services/AutomationScheduler";
 import { FeishuBridge } from "./feishu/Services/FeishuBridge";
 import { AutomationService } from "./automation/Services/AutomationService";
@@ -76,6 +77,7 @@ export interface ServerShape {
     | ManagedAttachmentCleanup
     | AutomationRunReactor
     | AutomationScheduler
+    | PullRequestFeedbackService
     | FeishuBridge
     | AutomationService
     | ServerLifecycleEvents
@@ -138,6 +140,7 @@ export const createEffectServer = Effect.fn(function* (
   const agentGatewayCredentials = yield* AgentGatewayCredentials;
   const automationRunReactor = yield* AutomationRunReactor;
   const automationScheduler = yield* AutomationScheduler;
+  const pullRequestFeedback = yield* PullRequestFeedbackService;
   const feishuBridge = yield* FeishuBridge;
   const keybindings = yield* Keybindings;
   const managedAttachmentCleanup = yield* ManagedAttachmentCleanup;
@@ -226,7 +229,9 @@ export const createEffectServer = Effect.fn(function* (
       Effect.provideService(OrchestrationEngineService, orchestrationEngine),
     ),
   );
+  yield* providerService.adoptPersistentHostSessions?.() ?? Effect.void;
   yield* Scope.provide(orchestrationReactor.start, subscriptionsScope);
+  yield* providerService.preparePersistentHostRecovery?.() ?? Effect.void;
   yield* Scope.provide(automationScheduler.start(), subscriptionsScope);
   yield* Scope.provide(automationRunReactor.start(), subscriptionsScope);
   yield* Scope.provide(feishuBridge.start(), subscriptionsScope);
@@ -257,6 +262,7 @@ export const createEffectServer = Effect.fn(function* (
   // Same for the previous graceful shutdown's snapshot of in-flight chats.
   const restartResumeSnapshot = yield* claimRestartResumeSnapshotAtStartup;
   yield* runtimeStartup.markCommandReady;
+  yield* Scope.provide(pullRequestFeedback.start(), subscriptionsScope);
   // The recorded chats get their continuation turn now that the orphaned turns
   // above are settled. Forked so the (rare) dispatch work never delays readiness.
   // Restart resume runs after quit resume and skips the threads it covers.

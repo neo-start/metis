@@ -54,12 +54,14 @@ export function providerStartOptionsFromServerSettings(
     codex: {
       ...(providers.codex.binaryPath ? { binaryPath: providers.codex.binaryPath } : {}),
       ...(providers.codex.homePath ? { homePath: providers.codex.homePath } : {}),
+      runtimeHost: providers.codex.runtimeHost,
     },
     codexSecondary: {
       ...(providers.codexSecondary.binaryPath
         ? { binaryPath: providers.codexSecondary.binaryPath }
         : {}),
       ...(providers.codexSecondary.homePath ? { homePath: providers.codexSecondary.homePath } : {}),
+      runtimeHost: "backend",
     },
     claudeAgent: {
       ...(providers.claudeAgent.binaryPath ? { binaryPath: providers.claudeAgent.binaryPath } : {}),

@@ -232,6 +232,26 @@ it.effect("preserves Pi model selections through the JSON codec", () =>
   }),
 );
 
+it.effect("preserves the primary Codex host selection while accepting legacy options", () =>
+  Effect.gen(function* () {
+    const parsed = yield* decodeProviderStartOptions({
+      codex: { runtimeHost: "persistent-native" },
+      codexSecondary: { runtimeHost: "backend" },
+    });
+    assert.deepStrictEqual(parsed, {
+      codex: { runtimeHost: "persistent-native" },
+      codexSecondary: { runtimeHost: "backend" },
+    });
+    assert.deepStrictEqual(yield* decodeProviderStartOptions({ codex: {} }), { codex: {} });
+  }),
+);
+
+it("rejects unknown hosts and persistent hosting for the secondary Codex account", () => {
+  const decode = Schema.decodeUnknownSync(ProviderStartOptions);
+  assert.throws(() => decode({ codex: { runtimeHost: "remote" } }));
+  assert.throws(() => decode({ codexSecondary: { runtimeHost: "persistent-native" } }));
+});
+
 it.effect("drops legacy provider passwords from decoded provider options", () =>
   Effect.gen(function* () {
     const parsed = yield* decodeProviderStartOptions({

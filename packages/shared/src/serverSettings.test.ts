@@ -1,7 +1,12 @@
-import { DEFAULT_SERVER_SETTINGS, ProviderSessionStartInput } from "@synara/contracts";
+import {
+  DEFAULT_SERVER_SETTINGS,
+  ProviderSessionStartInput,
+  ServerSettings,
+  ServerSettingsPatch,
+} from "@synara/contracts";
 import { Schema } from "effect";
 import { describe, expect, it } from "vitest";
-import { providerStartOptionsFromServerSettings } from "./serverSettings";
+import { applyServerSettingsPatch, providerStartOptionsFromServerSettings } from "./serverSettings";
 
 const decodeProviderSessionStartInput = Schema.decodeUnknownSync(ProviderSessionStartInput);
 
@@ -68,8 +73,8 @@ describe("providerStartOptionsFromServerSettings", () => {
         runtimeMode: "full-access",
       }),
     ).not.toThrow();
-    expect(providerOptions.codex).toEqual({});
-    expect(providerOptions.codexSecondary).toEqual({});
+    expect(providerOptions.codex).toEqual({ runtimeHost: "backend" });
+    expect(providerOptions.codexSecondary).toEqual({ runtimeHost: "backend" });
     expect(providerOptions.claudeAgent).toEqual({ enableArtifacts: false });
     expect(providerOptions.cursor).toEqual({});
     expect(providerOptions.antigravity).toEqual({});
@@ -108,6 +113,7 @@ describe("providerStartOptionsFromServerSettings", () => {
     expect(providerOptions.codex).toEqual({
       binaryPath: "/custom/bin/codex",
       homePath: "/custom/codex-home",
+      runtimeHost: "backend",
     });
     expect(providerOptions.opencode).toEqual({
       binaryPath: "/custom/bin/opencode",
@@ -115,5 +121,24 @@ describe("providerStartOptionsFromServerSettings", () => {
       experimentalWebSockets: true,
     });
     expect(providerOptions.devin).toEqual({ binaryPath: "/custom/bin/devin" });
+  });
+
+  it("carries the persisted primary host selection into launch options", () => {
+    const patch = Schema.decodeUnknownSync(ServerSettingsPatch)({
+      providers: {
+        codex: { runtimeHost: "persistent-native" },
+        codexSecondary: { runtimeHost: "persistent-native" },
+      },
+    });
+    const settings = applyServerSettingsPatch(DEFAULT_SERVER_SETTINGS, patch);
+    const decoded = Schema.decodeUnknownSync(ServerSettings)(JSON.parse(JSON.stringify(settings)));
+    const providerOptions = providerStartOptionsFromServerSettings(decoded);
+
+    expect(decoded.providers.codex.runtimeHost).toBe("persistent-native");
+    expect(decoded.providers.codexSecondary).not.toHaveProperty("runtimeHost");
+    expect(providerOptions.codex?.runtimeHost).toBe("persistent-native");
+    expect(providerOptions.codexSecondary?.runtimeHost).toBe("backend");
+    expect(providerOptions.codex?.binaryPath).toBe("codex");
+    expect(providerOptions.codexSecondary?.homePath).toBe("~/.codex-secondary");
   });
 });

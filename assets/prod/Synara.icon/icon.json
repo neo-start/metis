@@ -6,18 +6,18 @@
       "layers": [
         {
           "image-name": "glyph.png",
-          "name": "Y",
-          "glass": true
+          "name": "Metis",
+          "glass": false
         }
       ],
       "lighting": "individual",
       "shadow": {
-        "kind": "layer-color",
-        "opacity": 0.5
+        "kind": "neutral",
+        "opacity": 0
       },
-      "specular": true,
+      "specular": false,
       "translucency": {
-        "enabled": true,
+        "enabled": false,
         "value": 0.4
       }
     },
@@ -39,7 +39,9 @@
     }
   ],
   "supported-platforms": {
-    "circles": ["watchOS"],
+    "circles": [
+      "watchOS"
+    ],
     "squares": "shared"
   }
 }

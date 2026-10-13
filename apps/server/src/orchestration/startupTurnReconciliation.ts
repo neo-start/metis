@@ -1,8 +1,11 @@
 /**
  * startupTurnReconciliation - heal restart-orphaned turns at server boot.
  *
- * Provider runtimes (Codex app-server, ACP children, etc.) are purely
- * in-memory: every one of them dies with the server process. A turn only
+ * Backend-owned provider runtimes (Codex app-server, ACP children, etc.) are
+ * in-memory and die with the server process. Explicit independent Codex hosts
+ * are adopted before this pass and retain their turns and human callbacks;
+ * uncertain host recovery is fenced separately rather than blindly resumed.
+ * A turn only
  * leaves the "running" state when its runtime emits a terminal event, so any
  * turn that was still in flight when the process exited has no surviving runtime
  * to ever complete it. After a restart its persisted projection rows still say
@@ -49,6 +52,7 @@ import {
 } from "@synara/shared/threadSummary";
 import { Array as Arr, Effect, Option } from "effect";
 import { randomUUID } from "node:crypto";
+import { persistentSessionThreadIds } from "../provider/persistentSessionRecovery.ts";
 import type { ProjectionPendingInteraction } from "../persistence/Services/ProjectionPendingInteractions.ts";
 import { ProjectionPendingInteractionRepository } from "../persistence/Services/ProjectionPendingInteractions.ts";
 import {
@@ -276,6 +280,7 @@ export function planRestartTurnReconciliation(input: {
   readonly threads: ReadonlyArray<ReconcilableThread>;
   readonly pendingInteractions?: ReadonlyArray<ReconcilablePendingInteraction>;
   readonly now: string;
+  readonly persistentThreadIds?: ReadonlySet<string>;
 }): ReadonlyArray<RestartReconciliationCommand> {
   const pendingInteractions = input.pendingInteractions ?? [];
   const pendingByThread = new Map<string, ReconcilablePendingInteraction[]>();
@@ -286,6 +291,7 @@ export function planRestartTurnReconciliation(input: {
   }
   const commands: RestartReconciliationCommand[] = [];
   for (const thread of input.threads) {
+    if (input.persistentThreadIds?.has(thread.id)) continue;
     const hasInFlightTurn = threadHasInFlightTurn(thread);
     commands.push(
       ...planStalePendingRequestCommands({
@@ -377,6 +383,7 @@ export const reconcileRestartStuckTurns: Effect.Effect<
   const engine = yield* OrchestrationEngineService;
   const snapshotQuery = yield* ProjectionSnapshotQuery;
   const readModel = yield* engine.getReadModel();
+  const persistentThreadIds = yield* persistentSessionThreadIds;
 
   const pendingInteractions = yield* ProjectionPendingInteractionRepository;
   const unsettled = yield* pendingInteractions
@@ -391,7 +398,7 @@ export const reconcileRestartStuckTurns: Effect.Effect<
   const unsettledByThread = new Map(Object.entries(Arr.groupBy(unsettled, (row) => row.threadId)));
   const now = new Date().toISOString();
   const orphanedChats = captureRestartResumeCandidates({
-    threads: readModel.threads,
+    threads: readModel.threads.filter((thread) => !persistentThreadIds.has(thread.id)),
     threadIdsWithUnsettledRequests: new Set(unsettledByThread.keys()),
   });
   const orphanCapture: RestartResumeCapture | null =
@@ -400,11 +407,12 @@ export const reconcileRestartStuckTurns: Effect.Effect<
       : null;
   const threadsNeedingRestartCleanup = readModel.threads.filter(
     (thread) =>
-      needsRestartReconciliation(thread) ||
-      threadHasCheckpointRevertInProgress(thread) ||
-      thread.hasPendingApprovals ||
-      thread.hasPendingUserInput ||
-      unsettledByThread.has(thread.id),
+      !persistentThreadIds.has(thread.id) &&
+      (needsRestartReconciliation(thread) ||
+        threadHasCheckpointRevertInProgress(thread) ||
+        thread.hasPendingApprovals ||
+        thread.hasPendingUserInput ||
+        unsettledByThread.has(thread.id)),
   );
   if (threadsNeedingRestartCleanup.length === 0) {
     return orphanCapture;
@@ -431,6 +439,7 @@ export const reconcileRestartStuckTurns: Effect.Effect<
   const commands = planRestartTurnReconciliation({
     threads: reconcilableThreads,
     pendingInteractions: unsettled,
+    persistentThreadIds,
     now,
   });
   if (commands.length === 0) {

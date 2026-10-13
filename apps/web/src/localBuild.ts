@@ -30,6 +30,12 @@ export interface LocalBuildChange {
 /** Newest first. Prepend an entry and bump `change` for every change. */
 export const LOCAL_BUILD_CHANGES: readonly LocalBuildChange[] = [
   {
+    change: 8,
+    date: "2026-10-12",
+    summary:
+      "Kanban delivery summaries and attention filter, opt-in PR/CI feedback, and an optional persistent native Codex host.",
+  },
+  {
     change: 7,
     date: "2026-09-28",
     summary:

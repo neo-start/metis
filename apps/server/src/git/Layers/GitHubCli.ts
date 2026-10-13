@@ -42,7 +42,7 @@ const GITHUB_HOST = "github.com";
 export const PULL_REQUEST_LIST_JSON_FIELDS =
   "number,title,url,author,headRefName,baseRefName,state,isDraft,additions,deletions,updatedAt,createdAt,reviewDecision,reviewRequests,labels,mergedAt,mergeable";
 export const PULL_REQUEST_DETAIL_JSON_FIELDS =
-  "number,title,body,url,author,state,isDraft,mergeable,mergeStateStatus,additions,deletions,changedFiles,headRefName,baseRefName,reviewDecision,reviewRequests,reviews,comments,statusCheckRollup,commits,labels,maintainerCanModify,createdAt,updatedAt,mergedAt,closedAt";
+  "number,title,body,url,author,state,isDraft,mergeable,mergeStateStatus,additions,deletions,changedFiles,headRefName,headRefOid,baseRefName,reviewDecision,reviewRequests,reviews,comments,statusCheckRollup,commits,labels,maintainerCanModify,createdAt,updatedAt,mergedAt,closedAt";
 
 function normalizeGitHubCliError(operation: "execute" | "stdout", error: unknown): GitHubCliError {
   if (error instanceof Error) {
@@ -226,6 +226,9 @@ const RawReviewSchema = Schema.Struct({
   updatedAt: Schema.optional(Schema.NullOr(Schema.String)),
   url: Schema.optional(Schema.NullOr(Schema.String)),
   author: Schema.optional(Schema.NullOr(RawActorSchema)),
+  commit: Schema.optional(
+    Schema.NullOr(Schema.Struct({ oid: Schema.optional(Schema.NullOr(Schema.String)) })),
+  ),
 });
 
 const RawIssueCommentSchema = Schema.Struct({
@@ -279,6 +282,7 @@ const RawPullRequestNumberSchema = Schema.Struct({
 
 const RawPullRequestDetailSchema = Schema.Struct({
   ...RawPullRequestListItemSchema.fields,
+  headRefOid: Schema.optional(Schema.NullOr(Schema.String)),
   body: Schema.optional(Schema.NullOr(Schema.String)),
   mergeable: Schema.optional(Schema.NullOr(Schema.String)),
   mergeStateStatus: Schema.optional(Schema.NullOr(Schema.String)),
@@ -758,6 +762,7 @@ function normalizeDetailComments(
         url: comment.url?.trim() || null,
         path: null,
         reviewState: null,
+        commitSha: null,
       },
     ];
   });
@@ -775,6 +780,7 @@ function normalizeDetailComments(
         url: review.url?.trim() || null,
         path: null,
         reviewState: review.state?.trim() || null,
+        commitSha: review.commit?.oid?.trim() || null,
       },
     ];
   });
@@ -794,6 +800,7 @@ function normalizePullRequestDetail(
   }
   return {
     ...normalizePullRequestListItem(raw),
+    headSha: raw.headRefOid?.trim() || null,
     body: raw.body ?? "",
     mergeable: raw.mergeable?.trim() || null,
     mergeStateStatus: raw.mergeStateStatus?.trim() || null,

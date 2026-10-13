@@ -179,6 +179,7 @@ import {
   makeCursorSafeSnapshotLiveStream,
   makeResnapshotEscalationTracker,
 } from "./wsSnapshotLiveStream";
+import { PullRequestFeedbackService } from "./pullRequests/Services/PullRequestFeedbackService";
 import { PullRequestService } from "./pullRequests/Services/PullRequestService";
 import { resolveGitHubRepository } from "./pullRequests/repositoryResolution";
 import {
@@ -390,6 +391,7 @@ const makeWsRpcHandlersLayer = () =>
       const sidechatExpiryReactor = yield* SidechatExpiryReactor;
       const path = yield* Path.Path;
       const pullRequests = yield* PullRequestService;
+      const pullRequestFeedback = yield* PullRequestFeedbackService;
       const profileStatsQuery = yield* ProfileStatsQuery;
       const projectionReadModelQuery = yield* ProjectionSnapshotQuery;
       const providerAdapterRegistry = yield* ProviderAdapterRegistry;
@@ -1551,6 +1553,13 @@ const makeWsRpcHandlersLayer = () =>
           rpcEffect(
             refreshGitStatusAfter(input.cwd, gitManager.preparePullRequestThread(input)),
             "Failed to prepare pull request thread",
+          ),
+        [WS_METHODS.pullRequestsDelivery]: (input) =>
+          rpcEffect(pullRequestFeedback.delivery(input), "Failed to load PR delivery"),
+        [WS_METHODS.pullRequestsSetFeedbackEnabled]: (input) =>
+          rpcEffect(
+            pullRequestFeedback.setEnabled(input),
+            "Failed to update automatic PR feedback",
           ),
         [WS_METHODS.pullRequestsList]: (input) =>
           pullRequestsEffect(pullRequests.list(input), "Failed to list pull requests"),

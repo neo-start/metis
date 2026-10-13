@@ -15,6 +15,8 @@
  *    so the next boot would see nothing. The server therefore writes the chats
  *    in flight at the start of shutdown to `restart-resume.json`, which the next
  *    boot claims (atomic rename, like the quit-resume record).
+ *    Verified independent hosts and fenced host recovery are excluded: a
+ *    backend restart does not authorize a second prompt into those sessions.
  *
  * At boot, with the server setting `resumeChatsAfterRestart` on, each candidate
  * gets one continuation turn built by the same planner as quit-resume
@@ -47,6 +49,7 @@ import type {
   OrchestrationThread,
   ThreadId as ThreadIdType,
 } from "@synara/contracts";
+import { persistentSessionThreadIds } from "../provider/persistentSessionRecovery.ts";
 import {
   IsoDateTime,
   NonNegativeInt,
@@ -417,7 +420,10 @@ export const recordRestartResumeSnapshotAtShutdown: Effect.Effect<
   const config = yield* ServerConfig;
   const engine = yield* OrchestrationEngineService;
   const readModel = yield* engine.getReadModel();
-  const threads = captureRestartResumeCandidates({ threads: readModel.threads });
+  const persistentThreadIds = yield* persistentSessionThreadIds;
+  const threads = captureRestartResumeCandidates({
+    threads: readModel.threads.filter((thread) => !persistentThreadIds.has(thread.id)),
+  });
   if (threads.length === 0) {
     return;
   }
@@ -486,11 +492,22 @@ export const resumeRestartInterruptedChats = (input: {
 > =>
   Effect.gen(function* () {
     const captures: RestartResumeCapture[] = [];
+    const persistentThreadIds = yield* persistentSessionThreadIds;
     if (input.snapshot.kind === "capture") {
-      captures.push(input.snapshot.capture);
+      captures.push({
+        ...input.snapshot.capture,
+        threads: input.snapshot.capture.threads.filter(
+          (thread) => !persistentThreadIds.has(thread.threadId),
+        ),
+      });
     }
     if (input.bootOrphans && input.bootOrphans.threads.length > 0) {
-      captures.push(input.bootOrphans);
+      captures.push({
+        ...input.bootOrphans,
+        threads: input.bootOrphans.threads.filter(
+          (thread) => !persistentThreadIds.has(thread.threadId),
+        ),
+      });
     }
     const config = yield* ServerConfig;
     const fs = yield* FileSystem.FileSystem;

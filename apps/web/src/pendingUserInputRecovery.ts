@@ -1,9 +1,15 @@
 import {
   ApprovalRequestId,
   UserInputQuestion,
+  type OrchestrationPendingInteraction,
   type OrchestrationThreadActivity,
 } from "@synara/contracts";
-import { createStalePendingInteractionMatcher } from "@synara/shared/pendingInteractions";
+import {
+  createStalePendingInteractionMatcher,
+  formatUserInputAnswerPairs,
+  isExpiredPendingInteraction,
+  staleUserInputAnswerMessageId,
+} from "@synara/shared/pendingInteractions";
 import { pendingRequestInstanceKey } from "@synara/shared/threadSummary";
 import { Schema } from "effect";
 import type { PendingUserInput } from "./pendingInteractionDerivation";
@@ -66,10 +72,27 @@ export function normalizePendingUserInputDrafts(
 export function expiredUserInputDrafts(
   drafts: Record<string, PendingUserInputRecoveryDraft>,
   activities: ReadonlyArray<OrchestrationThreadActivity>,
+  settlements?: ReadonlyArray<OrchestrationPendingInteraction>,
 ): Array<[string, PendingUserInputRecoveryDraft]> {
   const isStale = createStalePendingInteractionMatcher(activities);
-  return Object.entries(drafts).filter(([, draft]) =>
-    isStale({ ...draft.request, interactionKind: "userInput" }),
+  // The stale-failure activity can fall outside the bounded thread-detail
+  // window, so the durable settlement is authoritative on its own.
+  const expiredKeys = new Set(
+    (settlements ?? [])
+      .filter(
+        (settlement) =>
+          settlement.interactionKind === "userInput" && isExpiredPendingInteraction(settlement),
+      )
+      .map((settlement) =>
+        pendingRequestInstanceKey(
+          settlement.requestId,
+          settlement.lifecycleGeneration ?? undefined,
+        ),
+      ),
+  );
+  return Object.entries(drafts).filter(
+    ([key, draft]) =>
+      expiredKeys.has(key) || isStale({ ...draft.request, interactionKind: "userInput" }),
   );
 }
 
@@ -77,11 +100,41 @@ export function restoreUserInputDraft(
   prompt: string,
   draft: PendingUserInputRecoveryDraft,
 ): string {
-  const pairs = draft.request.questions.flatMap((question) => {
-    const answer = resolvePendingUserInputAnswer(question, draft.answers[question.id]);
-    return answer === null
-      ? []
-      : [`${question.question}\n${Array.isArray(answer) ? answer.join(", ") : answer}`];
-  });
-  return [prompt, pairs.join("\n\n")].filter((part) => part.length > 0).join("\n\n");
+  const pairs = formatUserInputAnswerPairs(
+    draft.request.questions,
+    Object.fromEntries(
+      draft.request.questions.map((question) => [
+        question.id,
+        resolvePendingUserInputAnswer(question, draft.answers[question.id]),
+      ]),
+    ),
+  );
+  return [prompt, pairs].filter((part) => part.length > 0).join("\n\n");
+}
+
+/**
+ * Request keys whose expired answer the server already forwarded as a
+ * follow-up message. Their drafts were delivered, so offering to restore them
+ * would only invite sending the same answer twice.
+ */
+export function forwardedUserInputDraftKeys(
+  settlements: ReadonlyArray<OrchestrationPendingInteraction> | undefined,
+  messageIds: ReadonlySet<string>,
+): Set<string> {
+  return new Set(
+    (settlements ?? [])
+      .filter(
+        (settlement) =>
+          settlement.interactionKind === "userInput" &&
+          isExpiredPendingInteraction(settlement) &&
+          settlement.responseCommandId !== null &&
+          messageIds.has(staleUserInputAnswerMessageId(settlement.responseCommandId)),
+      )
+      .map((settlement) =>
+        pendingRequestInstanceKey(
+          settlement.requestId,
+          settlement.lifecycleGeneration ?? undefined,
+        ),
+      ),
+  );
 }

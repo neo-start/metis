@@ -57,6 +57,7 @@ import {
 } from "effect";
 import { nonEmptyTrimmed } from "@synara/shared/text";
 import { computerApprovalGate } from "../../computer/ComputerApprovalGate.ts";
+import { assertPersistentHostPlatform } from "../../platform/persistentHostProcess.ts";
 
 import {
   type ProviderAdapterError,
@@ -1777,7 +1778,14 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
       runProviderRuntimeEventPump({
         provider: adapter.provider,
         stream: adapter.streamEvents,
-        processEvent: processRuntimeEvent,
+        processEvent: (event) =>
+          processRuntimeEvent(event).pipe(
+            Effect.andThen(
+              options?.persistRuntimeEvent
+                ? (adapter.acknowledgeRuntimeEvent?.(event) ?? Effect.void)
+                : Effect.void,
+            ),
+          ),
         updateHealth: runtimeEventPumpHealth.update,
         isPermanentFailure: (cause) =>
           Option.match(Cause.findErrorOption(cause), {
@@ -1785,7 +1793,12 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
             onSome: (error) => error instanceof PersistenceDecodeError,
           }),
         ...(options?.quarantineRuntimeEvent !== undefined
-          ? { quarantineEvent: options.quarantineRuntimeEvent }
+          ? {
+              quarantineEvent: (event: ProviderRuntimeEvent, cause: string) =>
+                options.quarantineRuntimeEvent!(event, cause).pipe(
+                  Effect.andThen(adapter.acknowledgeRuntimeEvent?.(event) ?? Effect.void),
+                ),
+            }
           : {}),
         ...(options?.runtimeEventRetryBaseDelayMs !== undefined
           ? { retryBaseDelayMs: options.runtimeEventRetryBaseDelayMs }
@@ -1795,6 +1808,100 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
           : {}),
       }).pipe(Effect.forkIn(runtimeEventProducerScope)),
     ).pipe(Effect.asVoid);
+
+    const blockedPersistentRecovery = new Map<
+      ThreadId,
+      { binding: ProviderRuntimeBinding; detail: string }
+    >();
+    const blockPersistentRecovery = (
+      provider: ProviderKind,
+      bindings: ReadonlyArray<ProviderRuntimeBinding>,
+      cause: Cause.Cause<unknown>,
+    ) =>
+      Effect.gen(function* () {
+        const reason = Cause.pretty(cause).split("\n")[0]?.slice(0, 1_000) ?? "Host unavailable";
+        const detail = `Independent Codex host recovery is unavailable. No replacement prompt was sent. ${reason}`;
+        for (const binding of bindings) {
+          if (
+            binding.provider !== provider ||
+            readPersistedProviderOptions(binding.runtimePayload)?.codex?.runtimeHost !==
+              "persistent-native"
+          )
+            continue;
+          blockedPersistentRecovery.set(binding.threadId, { binding, detail });
+          yield* processRuntimeEvent({
+            type: "session.state.changed",
+            eventId: EventId.makeUnsafe(randomUUID()),
+            provider,
+            threadId: binding.threadId,
+            createdAt: new Date().toISOString(),
+            ...(binding.lifecycleGeneration
+              ? { lifecycleGeneration: binding.lifecycleGeneration }
+              : {}),
+            payload: { state: "starting", reason: detail },
+          }).pipe(Effect.catchCause(() => Effect.void));
+          yield* processRuntimeEvent({
+            type: "runtime.warning",
+            eventId: EventId.makeUnsafe(randomUUID()),
+            provider,
+            threadId: binding.threadId,
+            createdAt: new Date().toISOString(),
+            ...(binding.lifecycleGeneration
+              ? { lifecycleGeneration: binding.lifecycleGeneration }
+              : {}),
+            payload: { message: detail },
+          }).pipe(Effect.catchCause(() => Effect.void));
+        }
+        yield* Effect.logWarning("provider.persistent_host.recovery_blocked", {
+          provider,
+          detail,
+          cause: Cause.pretty(cause),
+        });
+      });
+    const persistentAdoption = yield* Effect.cached(
+      Effect.gen(function* () {
+        const bindings = yield* directory.listBindings();
+        yield* Effect.forEach(
+          adapters,
+          (adapter) =>
+            (adapter.adoptPersistentSessions?.(bindings) ?? Effect.void).pipe(
+              Effect.catchCause((cause) =>
+                blockPersistentRecovery(adapter.provider, bindings, cause),
+              ),
+            ),
+          { discard: true },
+        );
+      }),
+    );
+    const adoptPersistentHostSessions = () => persistentAdoption;
+    const persistentRecovery = yield* Effect.cached(
+      Effect.gen(function* () {
+        yield* persistentAdoption;
+        const bindings = yield* directory.listBindings();
+        yield* Effect.forEach(
+          adapters,
+          (adapter) =>
+            [...blockedPersistentRecovery.values()].some(
+              ({ binding }) => binding.provider === adapter.provider,
+            )
+              ? Effect.void
+              : (adapter.preparePersistentRecovery?.(bindings) ?? Effect.void).pipe(
+                  Effect.catchCause((cause) =>
+                    blockPersistentRecovery(adapter.provider, bindings, cause),
+                  ),
+                ),
+          { discard: true },
+        );
+      }),
+    );
+    const preparePersistentHostRecovery = () => persistentRecovery;
+    const listPersistentRecoveryBlockedThreadIds = () =>
+      Effect.succeed([...blockedPersistentRecovery.keys()]);
+    const listPersistentSessionThreadIds = () =>
+      Effect.forEach(
+        adapters,
+        (adapter) => adapter.listPersistentSessionThreadIds?.() ?? Effect.succeed([]),
+      ).pipe(Effect.map((ids) => ids.flat()));
 
     const findLiveSessionAdapter = (threadId: ThreadId) =>
       Effect.gen(function* () {
@@ -1816,6 +1923,14 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
       readonly allowRecovery: boolean;
     }) =>
       Effect.gen(function* () {
+        const recoveryBlock = blockedPersistentRecovery.get(input.threadId);
+        if (recoveryBlock) {
+          return yield* new ProviderValidationError({
+            operation: input.operation,
+            issue: recoveryBlock.detail,
+            reason: "runtime-unavailable",
+          });
+        }
         const binding = Option.getOrUndefined(yield* directory.getBinding(input.threadId));
         if (!binding) {
           // Startup extension prompts can fire before startSession has persisted
@@ -1908,12 +2023,43 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
           threadId,
           provider: resolvedProvider,
         };
+        const recoveryBlock = blockedPersistentRecovery.get(threadId);
+        if (recoveryBlock)
+          return yield* toValidationError("ProviderService.startSession", recoveryBlock.detail);
         yield* ensureProviderEnabled(input.provider, "ProviderService.startSession");
         yield* validateAutoRuntimeMode(
           "ProviderService.startSession",
           input.provider,
           input.runtimeMode,
         );
+        if (input.provider === "codex") {
+          const prior = Option.getOrUndefined(yield* directory.getBinding(threadId));
+          const startOptions =
+            input.providerOptions ??
+            (prior?.provider === "codex"
+              ? readPersistedProviderOptions(prior.runtimePayload)
+              : undefined);
+          if (startOptions?.codex?.runtimeHost === "persistent-native") {
+            const computerControl =
+              input.enableComputerControl ??
+              (prior?.provider === "codex" && readPersistedComputerControl(prior.runtimePayload));
+            if (computerControl) {
+              return yield* toValidationError(
+                "ProviderService.startSession",
+                "Independent native Codex host cannot provide Metis computer control. Disable computer control or select Backend host.",
+              );
+            }
+            yield* Effect.try({
+              try: () => assertPersistentHostPlatform(),
+              catch: (cause) =>
+                new ProviderValidationError({
+                  operation: "ProviderService.startSession",
+                  issue: cause instanceof Error ? cause.message : String(cause),
+                  cause,
+                }),
+            });
+          }
+        }
         // An explicit start is the recovery authority for a failed retirement,
         // but it must never interleave with one still in progress. Capture the
         // exact settled fence so this replacement cannot delete a newer fence
@@ -2703,8 +2849,26 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
             }
 
             const boundActiveTurnId = runtimeActiveTurnId(binding.runtimePayload);
+            // The durable cache can be cleared by projection reconciliation
+            // while the same provider runtime still owns a running turn. Read
+            // that runtime under the generation fence; never treat a UI turn
+            // id as proof of ownership. Child stops retain their exact target.
+            const liveSession =
+              input.providerThreadId === undefined
+                ? (yield* routed.adapter.listSessions()).find(
+                    (session) =>
+                      session.threadId === input.threadId &&
+                      session.provider === routed.adapter.provider,
+                  )
+                : undefined;
+            const liveTurnId =
+              liveSession?.status === "running"
+                ? nonEmptyTrimmed(liveSession.activeTurnId)
+                : undefined;
             const providerTurnId =
-              input.providerThreadId !== undefined ? input.turnId : boundActiveTurnId;
+              input.providerThreadId !== undefined
+                ? input.turnId
+                : (liveTurnId ?? boundActiveTurnId);
             if (providerTurnId === undefined) {
               return yield* toValidationError(
                 "ProviderService.interruptTurn",
@@ -3017,6 +3181,9 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
           schema: ProviderStopSessionInput,
           payload: rawInput,
         });
+        const recoveryBlock = blockedPersistentRecovery.get(input.threadId);
+        if (recoveryBlock)
+          return yield* toValidationError("ProviderService.stopSession", recoveryBlock.detail);
         yield* waitForRuntimeIdleStop(input.threadId);
         clearRuntimeIdleTimer(input.threadId);
         return yield* lifecycle.run(input.threadId, (lease) =>
@@ -3063,6 +3230,12 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
           schema: ProviderStopSessionInput,
           payload: rawInput,
         });
+        const recoveryBlock = blockedPersistentRecovery.get(input.threadId);
+        if (recoveryBlock)
+          return yield* toValidationError(
+            "ProviderService.stopRuntimeSession",
+            recoveryBlock.detail,
+          );
         const isExpectedIdleStopCurrent = () =>
           expectedIdleGeneration === undefined ||
           isRuntimeIdleGenerationCurrent(input.threadId, expectedIdleGeneration);
@@ -3291,6 +3464,12 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
           schema: ClearSessionResumeCursorInput,
           payload: rawInput,
         });
+        const recoveryBlock = blockedPersistentRecovery.get(input.threadId);
+        if (recoveryBlock)
+          return yield* toValidationError(
+            "ProviderService.clearSessionResumeCursor",
+            recoveryBlock.detail,
+          );
         yield* waitForRuntimeIdleStop(input.threadId);
         clearRuntimeIdleTimer(input.threadId);
         // Share the runtime-event binding lock so a delayed session.exited
@@ -3358,6 +3537,20 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
           persistedBindings.map((binding) => [binding.threadId, binding] as const),
         );
 
+        for (const [threadId, { binding, detail }] of blockedPersistentRecovery) {
+          if (activeSessions.some((session) => session.threadId === threadId)) continue;
+          const activeTurnId = runtimeActiveTurnId(binding.runtimePayload);
+          activeSessions.push({
+            threadId,
+            provider: binding.provider,
+            status: "connecting",
+            runtimeMode: binding.runtimeMode ?? "approval-required",
+            createdAt: binding.lastSeenAt ?? new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            ...(activeTurnId ? { activeTurnId: TurnId.makeUnsafe(activeTurnId) } : {}),
+            lastError: detail,
+          });
+        }
         return activeSessions.map((session) => {
           const binding = bindingsByThreadId.get(session.threadId);
           if (!binding) {
@@ -3515,6 +3708,10 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
         const stoppedAt = new Date().toISOString();
         shutdownStartedAt = stoppedAt;
         const runtimeCursorWriteBaseline = runtimeCursorWriteVersion;
+        const retainedThreadIds = new Set([
+          ...(yield* listPersistentSessionThreadIds()),
+          ...blockedPersistentRecovery.keys(),
+        ]);
         const activeSessionByThreadId = new Map(
           (yield* Effect.forEach(adapters, (adapter) =>
             adapter
@@ -3525,7 +3722,9 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
             .map(({ adapter, session }) => [session.threadId, { adapter, session }] as const),
         );
         const activeSessionWrites = yield* Effect.forEach(
-          activeSessionByThreadId.values(),
+          [...activeSessionByThreadId.values()].filter(
+            ({ session }) => !retainedThreadIds.has(session.threadId),
+          ),
           ({ adapter, session }) =>
             Deferred.make<void>().pipe(Effect.map((started) => ({ adapter, session, started }))),
         );
@@ -3561,7 +3760,10 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
         const persistInactiveSessions = Effect.gen(function* () {
           const threadIds = yield* directory.listThreadIds();
           yield* Effect.forEach(
-            threadIds.filter((threadId) => !activeSessionByThreadId.has(threadId)),
+            threadIds.filter(
+              (threadId) =>
+                !activeSessionByThreadId.has(threadId) && !retainedThreadIds.has(threadId),
+            ),
             (threadId) => withBindingWriteLock(threadId, markThreadStopped(threadId, stoppedAt)),
           );
         });
@@ -3569,7 +3771,14 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
           activeSessionWrites,
           ({ started }) => Deferred.await(started),
           { concurrency: "unbounded", discard: true },
-        ).pipe(Effect.andThen(settleConcurrentTeardowns(adapters, (adapter) => adapter.stopAll())));
+        ).pipe(
+          Effect.andThen(
+            settleConcurrentTeardowns(
+              adapters,
+              (adapter) => adapter.closeForBackendShutdown?.() ?? adapter.stopAll(),
+            ),
+          ),
+        );
 
         // Each active-session write signals after it is queued on its per-thread
         // lock. Provider teardown can therefore begin without waiting for an
@@ -3634,6 +3843,10 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
     yield* Effect.addFinalizer(() => closeRuntimeEvents);
 
     return {
+      adoptPersistentHostSessions,
+      preparePersistentHostRecovery,
+      listPersistentSessionThreadIds,
+      listPersistentRecoveryBlockedThreadIds,
       startSession,
       startSessionWithOutcome,
       completePriorTranscriptBootstrap,

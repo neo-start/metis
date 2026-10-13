@@ -113,10 +113,17 @@ type ProviderInstallBooleanField = {
   readonly label: string;
   readonly description: ReactNode;
 };
+type ProviderInstallRuntimeHostField = {
+  readonly kind: "runtime-host";
+  readonly settingsKey: "codexRuntimeHost";
+  readonly label: string;
+  readonly description: ReactNode;
+};
 type ProviderInstallField =
   | ProviderInstallTextField
   | ProviderInstallPasswordField
-  | ProviderInstallBooleanField;
+  | ProviderInstallBooleanField
+  | ProviderInstallRuntimeHostField;
 type ProviderInstallSettings = {
   readonly provider: ProviderKind;
   readonly docs: ReadonlyArray<{ readonly label: string; readonly href: string }>;
@@ -155,6 +162,13 @@ const PROVIDER_INSTALL_SETTINGS: readonly ProviderInstallSettings[] = [
         label: "CODEX_HOME path",
         placeholder: "CODEX_HOME",
         description: "Optional custom Codex home and config directory.",
+      },
+      {
+        kind: "runtime-host",
+        settingsKey: "codexRuntimeHost",
+        label: "Persistent native Codex host",
+        description:
+          "Keep Codex running across Metis backend restarts on macOS/Linux. Metis cross-thread, memory, browser, device and computer tools are unavailable in this mode. Applies to new or restarted sessions.",
       },
     ],
   },
@@ -448,7 +462,9 @@ function createProviderInstallDisclosureState(
       config.fields.some((field) =>
         field.kind === "password"
           ? settings[field.configuredKey]
-          : Boolean(settings[field.settingsKey]),
+          : field.kind === "runtime-host"
+            ? settings[field.settingsKey] === "persistent-native"
+            : Boolean(settings[field.settingsKey]),
       ),
     ]),
   ) as Record<ProviderKind, boolean>;
@@ -647,7 +663,13 @@ function ProviderInstallFieldControl(props: {
   updateSettings: (patch: Partial<AppSettings>) => void;
 }) {
   const id = `provider-install-${props.field.settingsKey}`;
-  if (props.field.kind === "boolean") {
+  if (props.field.kind === "boolean" || props.field.kind === "runtime-host") {
+    const runtimeHostField = props.field.kind === "runtime-host";
+    const checked = runtimeHostField
+      ? props.settings.codexRuntimeHost === "persistent-native"
+      : Boolean(props.settings[props.field.settingsKey]);
+    const blockedByComputerControl =
+      runtimeHostField && !checked && props.settings.computerControlEnabled;
     return (
       <label
         htmlFor={id}
@@ -660,12 +682,22 @@ function ProviderInstallFieldControl(props: {
           <span className="mt-1 block text-ui leading-snug text-muted-foreground">
             {props.field.description}
           </span>
+          {blockedByComputerControl ? (
+            <span className="mt-1 block text-ui leading-snug text-muted-foreground">
+              Turn off computer control in Settings before enabling this mode.
+            </span>
+          ) : null}
         </span>
         <Switch
           id={id}
-          checked={props.settings[props.field.settingsKey]}
+          checked={checked}
+          disabled={blockedByComputerControl}
           onCheckedChange={(checked) =>
-            props.updateSettings({ [props.field.settingsKey]: Boolean(checked) })
+            props.updateSettings(
+              runtimeHostField
+                ? { codexRuntimeHost: checked ? "persistent-native" : "backend" }
+                : { [props.field.settingsKey]: Boolean(checked) },
+            )
           }
         />
       </label>

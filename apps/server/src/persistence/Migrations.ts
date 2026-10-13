@@ -122,6 +122,7 @@ import AsyncUserInputMigration from "./Migrations/105_AsyncUserInput.ts";
 import ClaudeTokenAccountingMigration from "./Migrations/103_ClaudeTokenAccounting.ts";
 import Migration0104 from "./Migrations/104_ProjectionThreadsClaudeCacheReview.ts";
 import ProjectImportOriginsMigration from "./Migrations/106_ProjectImportOrigins.ts";
+import Migration0109 from "./Migrations/109_PullRequestFeedback.ts";
 import Migration0108 from "./Migrations/108_GatewayCompletions.ts";
 import Migration0107 from "./Migrations/107_ProjectionThreadsHumanMessage.ts";
 
@@ -248,6 +249,7 @@ export const migrationEntries = [
   [106, "ProjectImportOrigins", ProjectImportOriginsMigration],
   [107, "ProjectionThreadsHumanMessage", Migration0107],
   [108, "GatewayCompletions", Migration0108],
+  [109, "PullRequestFeedback", Migration0109],
 ] as const;
 
 export const makeMigrationLoader = (throughId?: number) =>

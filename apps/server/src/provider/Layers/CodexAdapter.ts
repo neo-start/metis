@@ -89,6 +89,10 @@ import { synaraSkillsDir } from "../skillsCatalog.ts";
 import { makeBoundedCallbackIngress } from "../boundedCallbackIngress.ts";
 import { assignDerivedProviderRuntimeEventIds } from "../providerRuntimeEventIdentity.ts";
 import {
+  makePersistentCodexManager,
+  type PersistentCodexManagerControl,
+} from "../persistentCodexManager.ts";
+import {
   compactProviderRuntimeEventForIngress,
   isTerminalProviderRuntimeEvent,
   PROVIDER_RUNTIME_CALLBACK_BUFFER_MAX_BYTES,
@@ -1959,7 +1963,7 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
           return options.manager;
         }
         const services = yield* Effect.services<never>();
-        return (
+        const local =
           options?.makeManager?.(services) ??
           new CodexAppServerManager(services, {
             synaraSkillsDir: synaraSkillsDir(serverConfig.baseDir),
@@ -1983,11 +1987,21 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
                   },
                 }
               : {}),
-          })
-        );
+          });
+        return options?.gatewayProvider === CODEX_SECONDARY_PROVIDER
+          ? local
+          : makePersistentCodexManager(local, { stateDir: serverConfig.stateDir });
       }),
-      (manager) => Effect.promise(() => manager.stopAll()),
+      (manager) =>
+        Effect.promise(
+          () =>
+            (
+              manager as CodexAppServerManager & Partial<PersistentCodexManagerControl>
+            ).closeForBackendShutdown?.() ?? manager.stopAll(),
+        ),
     );
+    const persistentManager = manager as CodexAppServerManager &
+      Partial<PersistentCodexManagerControl>;
 
     const runtimeEventQueue = yield* Queue.bounded<ProviderRuntimeEvent>(
       PROVIDER_ADAPTER_RUNTIME_EVENT_BUFFER_CAPACITY,
@@ -2158,7 +2172,10 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
 
     const sendTurn: CodexAdapterShape["sendTurn"] = (input) =>
       Effect.gen(function* () {
-        const managerInput = yield* prepareCodexManagerTurnInput(input, "turn/start");
+        const managerInput = {
+          ...(yield* prepareCodexManagerTurnInput(input, "turn/start")),
+          ...(input.deliveryId ? { deliveryId: input.deliveryId } : {}),
+        };
 
         return yield* Effect.tryPromise({
           try: () => manager.sendTurn(managerInput),
@@ -2176,7 +2193,10 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
 
     const steerTurn: CodexAdapterShape["steerTurn"] = (input) =>
       Effect.gen(function* () {
-        const managerInput = yield* prepareCodexManagerTurnInput(input, "turn/steer");
+        const managerInput = {
+          ...(yield* prepareCodexManagerTurnInput(input, "turn/steer")),
+          ...(input.deliveryId ? { deliveryId: input.deliveryId } : {}),
+        };
 
         return yield* Effect.tryPromise({
           try: () => manager.steerTurn(managerInput),
@@ -2498,6 +2518,7 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
             )
             .map(compactProviderRuntimeEventForIngress);
           const runtimeEvents = sizedRuntimeEvents.map((item) => item.event);
+          persistentManager.registerPersistentRuntimeEvents?.(event, runtimeEvents);
           trackTurnWatchdogActivity(event.threadId, runtimeEvents);
           const nativeEvent = compactCodexNativeEventForIngress(
             hasUnmappedEvent ? sanitizeUnmappedProviderEvent(event) : event,
@@ -2538,6 +2559,71 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
     );
 
     return {
+      ...(persistentManager.prepareHostReplacement
+        ? {
+            prepareSessionReplacement: (input) =>
+              Effect.tryPromise({
+                try: () =>
+                  persistentManager.prepareHostReplacement!({
+                    threadId: input.threadId,
+                    persistentNative:
+                      input.providerOptions?.codex?.runtimeHost === "persistent-native",
+                  }),
+                catch: (cause) => toRequestError(input.threadId, "host/replacement", cause),
+              }).pipe(
+                Effect.map((previousSession) =>
+                  previousSession ? { previousSession, startSession } : undefined,
+                ),
+              ),
+          }
+        : {}),
+      ...(persistentManager.adoptPersistentSessions
+        ? {
+            adoptPersistentSessions: (bindings) =>
+              Effect.tryPromise({
+                try: async () => {
+                  await persistentManager.adoptPersistentSessions!(bindings);
+                  for (const session of manager.listSessions()) {
+                    if (session.activeTurnId)
+                      armTurnWatchdog(session.threadId, session.activeTurnId);
+                  }
+                },
+                catch: (cause) =>
+                  toRequestError(ThreadId.makeUnsafe("codex:persistent-host"), "host/adopt", cause),
+              }),
+          }
+        : {}),
+      ...(persistentManager.preparePersistentRecovery
+        ? {
+            preparePersistentRecovery: (bindings) =>
+              Effect.tryPromise({
+                try: () => persistentManager.preparePersistentRecovery!(bindings),
+                catch: (cause) =>
+                  toRequestError(
+                    ThreadId.makeUnsafe("codex:persistent-host"),
+                    "host/replay",
+                    cause,
+                  ),
+              }),
+            listPersistentSessionThreadIds: () =>
+              Effect.sync(() => persistentManager.listPersistentSessionThreadIds!()),
+            acknowledgeRuntimeEvent: (event) =>
+              Effect.tryPromise({
+                try: () => persistentManager.acknowledgeRuntimeEvent!(event),
+                catch: (cause) => toRequestError(event.threadId, "host/acknowledge", cause),
+              }),
+            closeForBackendShutdown: () =>
+              Effect.tryPromise({
+                try: () => persistentManager.closeForBackendShutdown!(),
+                catch: (cause) =>
+                  toRequestError(
+                    ThreadId.makeUnsafe("codex:persistent-host"),
+                    "host/detach",
+                    cause,
+                  ),
+              }),
+          }
+        : {}),
       provider: PROVIDER,
       capabilities: {
         sessionModelSwitch: "in-session",

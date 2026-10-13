@@ -10,7 +10,11 @@ import nodePath from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { outboundHttp } from "@synara/shared/outboundHttp";
-import { codexUsageFetcher } from "./codex";
+import {
+  __resetCodexUsageRateLimitState,
+  codexSecondaryUsageFetcher,
+  codexUsageFetcher,
+} from "./codex";
 
 const { readKeychainPasswordMock } = vi.hoisted(() => ({
   readKeychainPasswordMock: vi.fn(),
@@ -54,6 +58,13 @@ function stubOutboundFetch(
   });
 }
 
+function rateLimited(): Response {
+  return new Response(JSON.stringify({ error: "rate_limited" }), {
+    status: 429,
+    headers: { "Content-Type": "application/json", "Retry-After": "120" },
+  });
+}
+
 /** An unsigned JWT carrying only `exp`, enough for expiry-window checks. */
 function makeJwt(expMs: number): string {
   const encode = (value: unknown): string =>
@@ -93,6 +104,7 @@ const USAGE_BODY = {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  __resetCodexUsageRateLimitState();
   readKeychainPasswordMock.mockReset();
   for (const dir of tempDirs.splice(0)) {
     rmSync(dir, { recursive: true, force: true });
@@ -296,5 +308,98 @@ describe("codexUsageFetcher", () => {
     const tokens = readAuthFile(authPath).tokens as Record<string, unknown>;
     expect(tokens.access_token).toBe(freshJwt);
     expect(tokens.refresh_token).toBe("rotated-refresh-token");
+  });
+
+  describe("rate-limit resilience", () => {
+    const validAuth = (accountId: string) => ({
+      tokens: {
+        access_token: makeJwt(NOW_MS + 8 * 24 * 60 * 60 * 1000),
+        refresh_token: `${accountId}-refresh`,
+        account_id: accountId,
+      },
+    });
+
+    it("re-serves the last good snapshot as ok+stale on a 429 and skips the network during cooldown", async () => {
+      const { codexHome } = makeCodexHome(validAuth("acct-a"));
+      const fetchMock = vi
+        .fn<(url: string | URL | Request, init?: RequestInit) => Promise<Response>>()
+        .mockResolvedValueOnce(jsonResponse(USAGE_BODY))
+        .mockResolvedValueOnce(rateLimited());
+      stubOutboundFetch(fetchMock);
+
+      const first = await codexUsageFetcher.fetch(makeCtx(codexHome));
+      expect(first.status).toBe("ok");
+      expect(first.stale).toBeUndefined();
+
+      const throttled = await codexUsageFetcher.fetch({
+        ...makeCtx(codexHome),
+        nowMs: NOW_MS + 60_000,
+      });
+      expect(throttled.status).toBe("ok");
+      expect(throttled.stale).toBe(true);
+      expect(throttled.limits).toEqual(first.limits);
+      expect(throttled.updatedAt).toBe(first.updatedAt);
+      expect(throttled.detail).toContain("retrying in ~2m");
+
+      const duringCooldown = await codexUsageFetcher.fetch({
+        ...makeCtx(codexHome),
+        nowMs: NOW_MS + 90_000,
+      });
+      expect(duringCooldown.status).toBe("ok");
+      expect(duringCooldown.stale).toBe(true);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it("returns an error snapshot on a 429 when the account has no prior good read", async () => {
+      const { codexHome } = makeCodexHome(validAuth("acct-cold"));
+      stubOutboundFetch(async () => rateLimited());
+
+      const snapshot = await codexUsageFetcher.fetch(makeCtx(codexHome));
+
+      expect(snapshot.status).toBe("error");
+      expect(snapshot.limits).toEqual([]);
+      expect(snapshot.detail).toContain("rate-limiting");
+    });
+
+    it("keeps last-good data and cooldowns isolated between Codex accounts", async () => {
+      const primary = makeCodexHome(validAuth("acct-primary"));
+      const secondary = makeCodexHome(validAuth("acct-secondary"));
+      const fetchMock = vi
+        .fn<(url: string | URL | Request, init?: RequestInit) => Promise<Response>>()
+        .mockResolvedValueOnce(jsonResponse(USAGE_BODY))
+        .mockResolvedValueOnce(rateLimited())
+        .mockResolvedValueOnce(rateLimited())
+        .mockResolvedValueOnce(jsonResponse(USAGE_BODY));
+      stubOutboundFetch(fetchMock);
+      const secondaryCtx = (nowMs: number) => ({
+        ...makeCtx(secondary.codexHome),
+        codexHomePath: secondary.codexHome,
+        nowMs,
+      });
+
+      expect((await codexUsageFetcher.fetch(makeCtx(primary.codexHome))).status).toBe("ok");
+      const primaryThrottled = await codexUsageFetcher.fetch({
+        ...makeCtx(primary.codexHome),
+        nowMs: NOW_MS + 1_000,
+      });
+      expect(primaryThrottled).toMatchObject({ provider: "codex", status: "ok", stale: true });
+
+      // The primary account's cooldown and last-good snapshot must not leak into the secondary.
+      const secondaryThrottled = await codexSecondaryUsageFetcher.fetch(
+        secondaryCtx(NOW_MS + 2_000),
+      );
+      expect(secondaryThrottled).toMatchObject({ provider: "codexSecondary", status: "error" });
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      const secondaryHeaders = fetchMock.mock.calls[2]?.[1]?.headers as Record<string, string>;
+      expect(secondaryHeaders["ChatGPT-Account-Id"]).toBe("acct-secondary");
+
+      // Once the secondary's own cooldown lapses it fetches fresh, independent of the primary.
+      const secondaryRecovered = await codexSecondaryUsageFetcher.fetch(
+        secondaryCtx(NOW_MS + 2_000 + 121_000),
+      );
+      expect(secondaryRecovered).toMatchObject({ provider: "codexSecondary", status: "ok" });
+      expect(secondaryRecovered.stale).toBeUndefined();
+      expect(fetchMock).toHaveBeenCalledTimes(4);
+    });
   });
 });

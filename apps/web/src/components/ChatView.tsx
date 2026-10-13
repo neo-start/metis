@@ -1616,7 +1616,9 @@ export default function ChatView({
   const activeTurnInProgress = activeTurnLayoutLive || keepSettledActiveTurnLayout;
   const isComposerApprovalState = activePendingApproval !== null;
   const isSidechatExpired = Boolean(activeThread?.sidechatExpiredAt);
-  const isComposerEditorDisabled = isConnecting || isComposerApprovalState || isSidechatExpired;
+  // Starting a provider gates dispatch, not drafting. Keep the editor focusable
+  // while startup/reconnection is pending; the footer still guards submission.
+  const isComposerEditorDisabled = isComposerApprovalState || isSidechatExpired;
   const canCollapsePastedTextToDraft = shouldEnableComposerPastedTextCollapse({
     isComposerApprovalState,
     hasPendingUserInput: pendingUserInputs.length > 0,

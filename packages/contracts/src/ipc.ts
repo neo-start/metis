@@ -122,6 +122,10 @@ import type {
   PullRequestDiffResult,
   PullRequestReviewRequestCountInput,
   PullRequestReviewRequestCountResult,
+  PullRequestDeliveryInput,
+  PullRequestSetFeedbackEnabledInput,
+  PullRequestDeliveryResult,
+  PullRequestDeliveryState,
   PullRequestSetPinnedInput,
   PullRequestSetPinnedResult,
   PullRequestsListInput,
@@ -953,6 +957,10 @@ export interface NativeApi {
     action: (input: PullRequestActionInput) => Promise<PullRequestActionResult>;
     comment: (input: PullRequestCommentInput) => Promise<PullRequestActionResult>;
     setPinned: (input: PullRequestSetPinnedInput) => Promise<PullRequestSetPinnedResult>;
+    delivery: (input: PullRequestDeliveryInput) => Promise<PullRequestDeliveryResult>;
+    setFeedbackEnabled: (
+      input: PullRequestSetFeedbackEnabledInput,
+    ) => Promise<PullRequestDeliveryState>;
   };
   contextMenu: {
     show: <T extends string>(

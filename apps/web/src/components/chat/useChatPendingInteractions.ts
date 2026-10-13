@@ -33,7 +33,10 @@ import {
   togglePendingUserInputOptionSelection,
   type PendingUserInputDraftAnswer,
 } from "../../pendingUserInput";
-import { expiredUserInputDrafts } from "../../pendingUserInputRecovery";
+import {
+  expiredUserInputDrafts,
+  forwardedUserInputDraftKeys,
+} from "../../pendingUserInputRecovery";
 import { derivePendingApprovals, derivePendingUserInputs } from "../../session-logic";
 import { useStore } from "../../store";
 import {
@@ -44,6 +47,7 @@ import { type Thread } from "../../types";
 import { resolveRuntimeModeAfterApprovalDecision } from "../ChatView.logic";
 import { usePendingUserInputDrafts } from "./usePendingUserInputDrafts";
 const EMPTY_ACTIVITIES: Thread["activities"] = [];
+const EMPTY_MESSAGES: Thread["messages"] = [];
 const EMPTY_PENDING_USER_INPUT_ANSWERS: Record<string, PendingUserInputDraftAnswer> = {};
 interface ChatPendingInteractionsInput {
   threadId: ThreadId;
@@ -68,6 +72,7 @@ export function useChatPendingInteractions({
 }: ChatPendingInteractionsInput) {
   const activeThreadId = activeThread?.id ?? null;
   const threadActivities = activeThread?.activities ?? EMPTY_ACTIVITIES;
+  const threadMessages = activeThread?.messages ?? EMPTY_MESSAGES;
   const setStoreThreadError = useStore((store) => store.setError);
   const setComposerDraftRuntimeMode = useComposerDraftStore((state) => state.setRuntimeMode);
   const [respondingRequestKeys, setRespondingRequestKeys] = useState<string[]>([]);
@@ -119,30 +124,67 @@ export function useChatPendingInteractions({
     }, delayMs);
     return () => window.clearTimeout(timeoutId);
   }, [nextUserInputResponseReclaimAt]);
+  // Questions the user cancelled. Cancel must close the card even when the
+  // provider callback is gone and the empty answer can only fail, so the
+  // dismissal is local and does not wait for a settlement.
+  const [dismissedUserInputKeys, setDismissedUserInputKeys] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const pendingUserInputs = useMemo(
     () =>
       derivePendingUserInputs(threadActivities, activeThread?.pendingInteractions, {
         authoritativeHasPending: activeThread?.hasPendingUserInput,
         latestTurnId: activeThread?.latestTurn?.turnId,
         responseClaimReferenceAt: userInputResponseClaimReferenceAt,
-      }),
+      }).filter(
+        (request) =>
+          !dismissedUserInputKeys.has(
+            `${threadId}:${pendingRequestInstanceKey(request.requestId, request.lifecycleGeneration)}`,
+          ),
+      ),
     [
       activeThread?.hasPendingUserInput,
       activeThread?.latestTurn?.turnId,
       activeThread?.pendingInteractions,
+      dismissedUserInputKeys,
       threadActivities,
+      threadId,
       userInputResponseClaimReferenceAt,
     ],
+  );
+  const forwardedUserInputKeys = useMemo(
+    () =>
+      forwardedUserInputDraftKeys(
+        activeThread?.pendingInteractions,
+        new Set(threadMessages.map((message) => message.id)),
+      ),
+    [activeThread?.pendingInteractions, threadMessages],
   );
   const {
     answers: pendingUserInputAnswersByRequestId,
     answersRef: pendingUserInputAnswersByRequestIdRef,
     setAnswers: setPendingUserInputAnswersByRequestId,
+    discard: discardPendingUserInputDraft,
     drafts: pendingUserInputDrafts,
-  } = usePendingUserInputDrafts(threadId, pendingUserInputs, activeThread?.pendingInteractions);
+  } = usePendingUserInputDrafts(
+    threadId,
+    pendingUserInputs,
+    activeThread?.pendingInteractions,
+    forwardedUserInputKeys,
+  );
   const expiredQuestionDrafts = useMemo(
-    () => expiredUserInputDrafts(pendingUserInputDrafts, threadActivities),
-    [pendingUserInputDrafts, threadActivities],
+    () =>
+      expiredUserInputDrafts(
+        pendingUserInputDrafts,
+        threadActivities,
+        activeThread?.pendingInteractions,
+      ).filter(([key]) => !forwardedUserInputKeys.has(key)),
+    [
+      activeThread?.pendingInteractions,
+      forwardedUserInputKeys,
+      pendingUserInputDrafts,
+      threadActivities,
+    ],
   );
   const activePendingUserInput = pendingUserInputs[0] ?? null;
   const activePendingUserInputKey = activePendingUserInput
@@ -361,13 +403,23 @@ export function useChatPendingInteractions({
   );
 
   const onCancelActivePendingUserInput = useCallback(() => {
-    if (!activePendingUserInput || activePendingIsResponding) {
+    if (!activePendingUserInput || !activePendingUserInputKey) {
       return;
     }
     promptRef.current = "";
     setPrompt("");
     setComposerCursor(0);
     setComposerTrigger(null);
+    // Close the card and drop the discarded answers first: a stale callback
+    // rejects the cancel just like an answer, and the user asked for it gone.
+    setDismissedUserInputKeys(
+      (existing) => new Set([...existing, `${threadId}:${activePendingUserInputKey}`]),
+    );
+    discardPendingUserInputDraft(activePendingUserInputKey);
+    if (activePendingIsResponding) {
+      return;
+    }
+    // Still tell a live provider, so a waiting turn is not left blocked.
     void onRespondToUserInput(
       activePendingUserInput.requestId,
       {},
@@ -379,8 +431,11 @@ export function useChatPendingInteractions({
     setComposerTrigger,
     activePendingIsResponding,
     activePendingUserInput,
+    activePendingUserInputKey,
     onRespondToUserInput,
+    discardPendingUserInputDraft,
     setPrompt,
+    threadId,
   ]);
 
   const setActivePendingUserInputQuestionIndex = useCallback(

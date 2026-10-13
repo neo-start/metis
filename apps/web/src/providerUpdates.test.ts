@@ -61,7 +61,7 @@ function serverSettings(overrides: Partial<ServerSettings["providers"]> = {}): S
     addProjectBaseDirectory: "",
     textGenerationModelSelection: { provider: "codex", model: "gpt-5.4-mini" },
     providers: {
-      codex: { ...provider, binaryPath: "codex", homePath: "" },
+      codex: { ...provider, binaryPath: "codex", homePath: "", runtimeHost: "backend" },
       codexSecondary: { ...provider, binaryPath: "codex", homePath: "" },
       claudeAgent: {
         ...provider,
@@ -228,7 +228,13 @@ describe("shouldShowProviderUpdateStatus", () => {
     const codex = providerStatus("codex");
     const hiddenPi = providerStatus("pi");
     const settings = serverSettings({
-      codex: { enabled: false, binaryPath: "codex", homePath: "", customModels: [] },
+      codex: {
+        enabled: false,
+        binaryPath: "codex",
+        homePath: "",
+        runtimeHost: "backend",
+        customModels: [],
+      },
     });
 
     expect(

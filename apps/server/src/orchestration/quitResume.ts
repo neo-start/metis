@@ -57,6 +57,7 @@ import { randomUUID } from "node:crypto";
 
 import { writeFileStringAtomically } from "../atomicWrite";
 import { ServerConfig } from "../config";
+import { persistentSessionThreadIds } from "../provider/persistentSessionRecovery.ts";
 import {
   threadHasInFlightTurn,
   threadResumePreconditionViolation,
@@ -453,9 +454,10 @@ export const prepareQuitResume = (input: {
     // then provably "completed since the record" for the resume precondition.
     const now = new Date().toISOString();
     const readModel = yield* input.getReadModel();
+    const persistentThreadIds = yield* persistentSessionThreadIds;
     const record = buildQuitResumeRecord({
       request: input.request,
-      threads: readModel.threads,
+      threads: readModel.threads.filter((thread) => !persistentThreadIds.has(thread.id)),
       recordId: randomUUID(),
       now,
     });
@@ -555,7 +557,11 @@ export const resumeQuitInterruptedChats = (
     if (claimed.kind !== "record") {
       return;
     }
-    const record = claimed.record;
+    const persistentThreadIds = yield* persistentSessionThreadIds;
+    const record = {
+      ...claimed.record,
+      threads: claimed.record.threads.filter((thread) => !persistentThreadIds.has(thread.threadId)),
+    };
     const engine = yield* OrchestrationEngineService;
 
     const readModel = yield* engine.getReadModel();

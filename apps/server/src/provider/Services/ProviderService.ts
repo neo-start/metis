@@ -82,6 +82,11 @@ export interface ProviderLiveRuntimeTask {
 }
 
 export interface ProviderServiceShape {
+  readonly adoptPersistentHostSessions?: () => Effect.Effect<void, ProviderServiceError>;
+  readonly preparePersistentHostRecovery?: () => Effect.Effect<void, ProviderServiceError>;
+  readonly listPersistentSessionThreadIds?: () => Effect.Effect<ReadonlyArray<ThreadId>>;
+  /** Recovery is fenced, but host survival could not be verified. Never auto-continue these threads. */
+  readonly listPersistentRecoveryBlockedThreadIds?: () => Effect.Effect<ReadonlyArray<ThreadId>>;
   readonly startClaudeCompaction?: (input: {
     readonly threadId: ThreadId;
     readonly turnId: TurnId;

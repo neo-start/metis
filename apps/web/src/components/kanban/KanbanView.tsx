@@ -51,10 +51,31 @@ import { KanbanProjectBoardView } from "./KanbanProjectBoardView";
 import { useKanbanBoard } from "./useKanbanBoard";
 import { useKanbanCardContextMenu } from "./useKanbanCardContextMenu";
 import { overviewVisibleKanbanCards, type KanbanCard } from "./kanban.logic";
+import {
+  attentionKanbanBoard,
+  KanbanDeliveryProvider,
+  useKanbanDelivery,
+} from "./KanbanDeliveryContext";
 
 export default function KanbanView({ projectId }: { projectId: string | null }) {
   const navigate = useNavigate();
   const board = useKanbanBoard();
+  const [attentionOnly, setAttentionOnly] = useState(false);
+  const deliveryThreadIds = useMemo(
+    () =>
+      board.projects.flatMap((project) =>
+        [...project.draft, ...project.inProgress, ...project.done].flatMap((card) =>
+          card.thread?.lastKnownPr && !card.isTerminal ? [card.threadId] : [],
+        ),
+      ),
+    [board.projects],
+  );
+  const delivery = useKanbanDelivery(deliveryThreadIds);
+  const attentionBoard = useMemo(
+    () => attentionKanbanBoard(board, delivery.states),
+    [board, delivery.states],
+  );
+  const visibleBoard = attentionOnly ? attentionBoard : board;
   const threadsHydrated = useStore((state) => state.threadsHydrated);
   const desktopTopBarTrafficLightGutterClassName = useDesktopTopBarTrafficLightGutterClassName();
   const desktopTopBarWindowControlsGutterClassName =
@@ -63,7 +84,12 @@ export default function KanbanView({ projectId }: { projectId: string | null }) 
   const projectBoard =
     projectId === null
       ? null
-      : (board.projects.find((candidate) => candidate.projectId === projectId) ?? null);
+      : (visibleBoard.projects.find((candidate) => candidate.projectId === projectId) ?? null);
+  const attentionCount =
+    projectId === null
+      ? attentionBoard.totalCount
+      : (attentionBoard.projects.find((project) => project.projectId === projectId)?.totalCount ??
+        0);
   const hasActiveCardWork = board.projects.some((project) =>
     project.inProgress.some((card) => card.activeWorkStartedAt !== null),
   );
@@ -80,9 +106,11 @@ export default function KanbanView({ projectId }: { projectId: string | null }) 
   const renderedCardThreads = useMemo(() => {
     const cards = projectBoard
       ? [...projectBoard.inProgress, ...projectBoard.draft, ...projectBoard.done]
-      : board.projects.flatMap((candidate) => overviewVisibleKanbanCards(candidate).visibleCards);
+      : visibleBoard.projects.flatMap(
+          (candidate) => overviewVisibleKanbanCards(candidate).visibleCards,
+        );
     return cards.flatMap((card) => (card.thread ? [card.thread] : []));
-  }, [board.projects, projectBoard]);
+  }, [visibleBoard.projects, projectBoard]);
   const prByThreadId = useThreadPullRequests({
     threads: renderedCardThreads,
     projectCwdById,
@@ -230,28 +258,71 @@ export default function KanbanView({ projectId }: { projectId: string | null }) 
           </div>
         </header>
 
-        <div className="min-h-0 min-w-0 flex-1 pt-3">
-          {projectBoard ? (
-            <KanbanProjectBoardView
-              board={projectBoard}
-              onOpenCard={handleOpenCard}
-              onCardContextMenu={onCardContextMenu}
-              onNewTask={handleNewDraftInProjectBoard}
-              prByThreadId={prByThreadId}
-              nowMs={nowMs}
-            />
-          ) : (
-            <KanbanOverview
-              board={board}
-              onOpenProject={handleOpenProject}
-              onOpenCard={handleOpenCard}
-              onCardContextMenu={onCardContextMenu}
-              onNewTask={handleNewTask}
-              prByThreadId={prByThreadId}
-              nowMs={nowMs}
-            />
-          )}
+        <div className="flex flex-wrap items-center gap-2 px-4 pt-3">
+          <Button
+            size="sm"
+            variant={attentionOnly ? "outline" : "secondary"}
+            aria-pressed={!attentionOnly}
+            onClick={() => setAttentionOnly(false)}
+          >
+            All tasks
+          </Button>
+          <Button
+            size="sm"
+            variant={attentionOnly ? "secondary" : "outline"}
+            aria-pressed={attentionOnly}
+            onClick={() => setAttentionOnly(true)}
+          >
+            Needs attention{attentionCount > 0 ? ` · ${attentionCount}` : ""}
+          </Button>
+          <span className="min-w-0 text-ui-sm text-muted-foreground" role="status">
+            {delivery.error
+              ? "Delivery status could not refresh"
+              : delivery.loading
+                ? "Checking delivery status…"
+                : delivery.unconfirmed
+                  ? "Some delivery checks are pending or out of date"
+                  : "Run status and PR delivery are shown separately"}
+          </span>
         </div>
+
+        <KanbanDeliveryProvider value={delivery}>
+          <div className="min-h-0 min-w-0 flex-1 pt-3">
+            {attentionOnly &&
+            (projectBoard ? projectBoard.totalCount : visibleBoard.totalCount) === 0 ? (
+              <div className="flex h-full items-center justify-center px-6">
+                <p className="max-w-sm text-center text-ui text-muted-foreground">
+                  {delivery.loading
+                    ? "Checking for tasks that need attention…"
+                    : delivery.error
+                      ? "PR delivery status is unavailable. Reconnect to check for delivery issues."
+                      : delivery.unconfirmed
+                        ? "No confirmed attention items. Some PR delivery checks are still pending or out of date."
+                        : "No tasks currently need attention. Delivery checks update automatically."}
+                </p>
+              </div>
+            ) : projectBoard ? (
+              <KanbanProjectBoardView
+                board={projectBoard}
+                onOpenCard={handleOpenCard}
+                onCardContextMenu={onCardContextMenu}
+                onNewTask={handleNewDraftInProjectBoard}
+                prByThreadId={prByThreadId}
+                nowMs={nowMs}
+              />
+            ) : (
+              <KanbanOverview
+                board={visibleBoard}
+                onOpenProject={handleOpenProject}
+                onOpenCard={handleOpenCard}
+                onCardContextMenu={onCardContextMenu}
+                onNewTask={handleNewTask}
+                prByThreadId={prByThreadId}
+                nowMs={nowMs}
+              />
+            )}
+          </div>
+        </KanbanDeliveryProvider>
       </div>
 
       {newTaskDialog ? (

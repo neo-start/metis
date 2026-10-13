@@ -22,12 +22,9 @@ import type { ProviderRuntimeBinding } from "./Services/ProviderSessionDirectory
 export const DEFAULT_RUNTIME_RECONCILIATION_STALE_AFTER_MS = 15_000;
 
 /**
- * Absolute upper bound on a single turn. Past this the turn is settled even
- * when the live runtime still claims to be running, because every other signal
- * this planner trusts (a settled session, a missing session, a failed binding)
- * can be absent when a provider wedges mid-turn. `thread.updatedAt` advances on
- * every appended message, so a legitimately long-running turn keeps resetting
- * this clock and is never affected.
+ * Recovery bound for lifecycles without a live owned turn. Shell timestamps
+ * track lifecycle changes, not every message/tool event, so age alone cannot
+ * prove that a live provider turn is abandoned.
  */
 export const RUNTIME_RECONCILIATION_MAX_TURN_AGE_MS = 45 * 60_000;
 
@@ -223,8 +220,23 @@ export function planProviderRuntimeReconciliation(input: {
     // provider instead of dropping the candidate.
     const provider = binding?.provider ?? thread.modelSelection.provider;
     const detail = pumpDetail(provider, healthByProvider);
+    // A live runtime blocked on an approval or a question is waiting for the
+    // human, not wedged. Settling it by age alone interrupted the projection
+    // while the provider callback stayed alive, stranding the question card.
+    const awaitingHuman =
+      (thread.hasPendingApprovals === true || thread.hasPendingUserInput === true) &&
+      (liveSession?.status === "running" || liveSession?.status === "connecting");
+    // A live owned turn is stronger evidence than a quiet shell timestamp.
+    // Transcript/tool updates do not necessarily advance thread.updatedAt.
+    // Settling here strands the real turn and lets another send enter starting
+    // while that original turn continues producing output.
+    const ownsLiveTurn =
+      liveSession?.status === "running" && turnIdOrNull(liveSession.activeTurnId) !== null;
     const abandoned =
-      lifecycleAgeMs >= maxTurnAgeMs && threadActivityAgeMs(thread, input.nowMs) >= maxTurnAgeMs;
+      !ownsLiveTurn &&
+      !awaitingHuman &&
+      lifecycleAgeMs >= maxTurnAgeMs &&
+      threadActivityAgeMs(thread, input.nowMs) >= maxTurnAgeMs;
     const abandonedDetail = ` Nothing has progressed on this thread for over ${Math.round(maxTurnAgeMs / 60_000)} minutes.${detail}`;
 
     // Native child threads share a parent session and intentionally have no
@@ -236,7 +248,12 @@ export function planProviderRuntimeReconciliation(input: {
     const liveTurnId = turnIdOrNull(liveSession?.activeTurnId);
 
     if (liveSession?.status === "running" && liveTurnId !== null && !abandoned) {
-      if (liveTurnId === projectedTurnId) continue;
+      if (
+        liveTurnId === projectedTurnId &&
+        thread.session?.status === "running" &&
+        thread.latestTurn?.state === "running"
+      )
+        continue;
       plans.push({
         action: "align-running-turn",
         threadId: thread.id,

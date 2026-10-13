@@ -216,9 +216,19 @@ export const ModelSelection = Schema.Union([
 ]);
 export type ModelSelection = typeof ModelSelection.Type;
 
+export const CodexRuntimeHost = Schema.Literals(["backend", "persistent-native"]);
+export type CodexRuntimeHost = typeof CodexRuntimeHost.Type;
+
 export const CodexProviderStartOptions = Schema.Struct({
   binaryPath: Schema.optional(TrimmedNonEmptyString),
   homePath: Schema.optional(TrimmedNonEmptyString),
+  runtimeHost: Schema.optional(CodexRuntimeHost),
+});
+
+// Independent hosting currently supports the primary Codex account only.
+export const CodexSecondaryProviderStartOptions = Schema.Struct({
+  ...CodexProviderStartOptions.fields,
+  runtimeHost: Schema.optional(Schema.Literal("backend")),
 });
 
 export const ClaudeProviderStartOptions = Schema.Struct({
@@ -262,7 +272,7 @@ export const DevinProviderStartOptions = Schema.Struct({
 
 export const ProviderStartOptions = Schema.Struct({
   codex: Schema.optional(CodexProviderStartOptions),
-  codexSecondary: Schema.optional(CodexProviderStartOptions),
+  codexSecondary: Schema.optional(CodexSecondaryProviderStartOptions),
   claudeAgent: Schema.optional(ClaudeProviderStartOptions),
   cursor: Schema.optional(CursorProviderStartOptions),
   devin: Schema.optional(DevinProviderStartOptions),
@@ -1396,6 +1406,8 @@ export const ThreadTurnStartCommand = Schema.Struct({
   // has nothing in flight, and no turn finished on its own since the record was
   // taken (the recorded turn itself, or any later one). Clients cannot set it:
   // ClientThreadTurnStartCommand omits the field, so decoding strips a spoofed value.
+  // Server-only PR feedback: invalidate admission if user/runtime state changed after the idle gate.
+  deliveryPrecondition: Schema.optional(Schema.Struct({ expectedThreadUpdatedAt: IsoDateTime })),
   resumePrecondition: Schema.optional(
     Schema.Struct({
       /** Turn in flight when the chat was recorded; null while the provider was still connecting. */

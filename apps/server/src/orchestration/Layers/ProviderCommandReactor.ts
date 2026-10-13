@@ -79,6 +79,11 @@ import {
   PROVIDER_DELIVERY_BLOCK_SUMMARY,
 } from "@synara/shared/providerDeliveryBlock";
 import { buildStalePendingRequestFailureDetail } from "@synara/shared/threadSummary";
+import {
+  buildStaleUserInputAnswerFollowUp,
+  staleUserInputAnswerMessageId,
+  userInputQuestionPrompts,
+} from "@synara/shared/pendingInteractions";
 import { resolveThreadWorkspaceState } from "@synara/shared/threadEnvironment";
 
 import {
@@ -2277,6 +2282,7 @@ const make = Effect.gen(function* () {
 
   const dispatchTurnForThread = Effect.fnUntraced(function* (input: {
     readonly threadId: ThreadId;
+    readonly deliveryId: string;
     readonly sourceEventSequence: number;
     readonly completionEventSequence?: number;
     readonly messageId: string;
@@ -2851,6 +2857,7 @@ const make = Effect.gen(function* () {
         : requestedModelSelection;
     const providerTurnInput = {
       threadId: input.threadId,
+      deliveryId: input.deliveryId,
       ...(normalizedAttachments.length > 0 ? { attachments: normalizedAttachments } : {}),
       ...(input.skills !== undefined ? { skills: input.skills } : {}),
       ...(providerMentions !== undefined ? { mentions: providerMentions } : {}),
@@ -3682,6 +3689,7 @@ const make = Effect.gen(function* () {
 
       const startedTurn = yield* dispatchTurnForThread({
         cacheReviewSource: event,
+        deliveryId: turnStartKeyForEvent(event),
         sourceEventSequence: event.sequence,
         completionEventSequence: deliveryEventSequence ?? event.sequence,
         ...(acceptedCacheReview ? { acceptedCacheReview } : {}),
@@ -4630,6 +4638,7 @@ const make = Effect.gen(function* () {
 
         const startedTurn = yield* dispatchTurnForThread({
           threadId: thread.id,
+          deliveryId: turnStartKeyForEvent(event),
           sourceEventSequence: event.sequence,
           messageId: MessageId.makeUnsafe(`goal-continuation:${event.eventId}`),
           messageText: buildGoalContinuationInput(),
@@ -5003,6 +5012,69 @@ const make = Effect.gen(function* () {
             : { lifecycleGeneration: event.payload.lifecycleGeneration }),
         });
 
+  /**
+   * Resumes the thread with an answer whose question expired in flight.
+   *
+   * Only call this after this command held the response claim and the
+   * provider callback proved gone: the claim makes it once per request
+   * instance, and the stale failure appended just before it has already
+   * settled the row as expired so no later answer can claim it again. The
+   * answer is what the user meant to say; losing it to a dead callback made
+   * every submit look like a no-op. A cancel carries no answer and starts
+   * nothing. Child threads share their parent's runtime and cannot start a
+   * turn of their own, so their answers stay with the client's restore notice.
+   */
+  const forwardStaleUserInputAnswer = (event: InteractionResponseEvent) =>
+    Effect.gen(function* () {
+      if (event.type !== "thread.user-input-response-requested" || event.commandId === null) {
+        return;
+      }
+      const thread = yield* resolveThread(event.payload.threadId);
+      if (!thread || thread.parentThreadId) return;
+      const request = thread.activities.findLast((activity) => {
+        if (activity.kind !== "user-input.requested") return false;
+        const payload = activity.payload as Record<string, unknown> | null;
+        return (
+          payload?.requestId === event.payload.requestId &&
+          (event.payload.lifecycleGeneration === undefined ||
+            payload.lifecycleGeneration === undefined ||
+            payload.lifecycleGeneration === event.payload.lifecycleGeneration)
+        );
+      });
+      const text = buildStaleUserInputAnswerFollowUp(
+        userInputQuestionPrompts(request?.payload),
+        event.payload.answers,
+      );
+      if (text === null) return;
+      const messageId = staleUserInputAnswerMessageId(event.commandId);
+      yield* orchestrationEngine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.makeUnsafe(messageId),
+        threadId: event.payload.threadId,
+        message: {
+          messageId: MessageId.makeUnsafe(messageId),
+          role: "user",
+          text,
+          attachments: [],
+        },
+        dispatchMode: "queue",
+        runtimeMode: thread.runtimeMode,
+        interactionMode: thread.interactionMode,
+        createdAt: event.payload.createdAt,
+      });
+    }).pipe(
+      // The stale failure already settled the request and the client keeps
+      // the answer as a restorable draft, so a refused turn is not fatal.
+      Effect.catchCause((cause) =>
+        Effect.logWarning("provider.user-input.stale-answer.forward-failed", {
+          threadId: event.payload.threadId,
+          requestId: event.payload.requestId,
+          commandId: event.commandId,
+          cause: Cause.pretty(cause),
+        }),
+      ),
+    );
+
   const claimInteractionResponse = Effect.fnUntraced(function* (input: {
     readonly event: InteractionResponseEvent;
     readonly interactionKind: "approval" | "userInput";
@@ -5086,6 +5158,7 @@ const make = Effect.gen(function* () {
         ),
         settlementStatus: "uncertain",
       });
+      yield* forwardStaleUserInputAnswer(event);
       return null;
     }
     if (providerThread.session?.status !== "stopped") return providerThread.id;
@@ -5097,6 +5170,7 @@ const make = Effect.gen(function* () {
       ),
       settlementStatus: "uncertain",
     });
+    yield* forwardStaleUserInputAnswer(event);
     return null;
   });
 
@@ -5165,7 +5239,11 @@ const make = Effect.gen(function* () {
               ? buildStalePendingRequestFailureDetail("user-input", event.payload.requestId)
               : Cause.pretty(cause),
             settlementStatus: interactionFailureSettlementStatus(cause, unknownPendingRequest),
-          });
+          }).pipe(
+            Effect.andThen(
+              unknownPendingRequest ? forwardStaleUserInputAnswer(event) : Effect.void,
+            ),
+          );
         }),
       );
   });

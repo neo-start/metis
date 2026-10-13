@@ -27,6 +27,9 @@ import { Effect } from "effect";
 
 import { OrchestrationCommandInvariantError } from "./Errors.ts";
 
+export const THREAD_DELIVERY_PRECONDITION_DETAIL =
+  "PR feedback deferred because the thread changed or requires attention.";
+
 function invariantError(commandType: string, detail: string): OrchestrationCommandInvariantError {
   return new OrchestrationCommandInvariantError({
     commandType,

@@ -2409,6 +2409,50 @@ routing.layer("ProviderServiceLive routing", (it) => {
     }),
   );
 
+  for (const cachedTurnId of [null, "stale-cached-turn"]) {
+    it.effect(`interrupts the live turn when the cached turn is ${cachedTurnId}`, () =>
+      Effect.gen(function* () {
+        const provider = yield* ProviderService;
+        const directory = yield* ProviderSessionDirectory;
+        const threadId = asThreadId("thread-live-interrupt-recovery");
+        const session = yield* provider.startSession(threadId, {
+          provider: "codex",
+          threadId,
+          cwd: "/tmp/project",
+          runtimeMode: "full-access",
+        });
+        yield* provider.sendTurn({ threadId, input: "hello", attachments: [] });
+        // Reconciliation cleared (or lagged) the durable routing cache while
+        // the same runtime continued to own the real turn.
+        yield* directory.upsert({
+          threadId,
+          provider: "codex",
+          runtimePayload: { activeTurnId: cachedTurnId },
+        });
+        const originalListSessions = routing.codex.listSessions.getMockImplementation()!;
+        routing.codex.listSessions.mockReturnValue(
+          Effect.succeed([
+            { ...session, status: "running", activeTurnId: asTurnId("real-live-turn") },
+          ]),
+        );
+        routing.codex.interruptTurn.mockClear();
+        yield* provider
+          .interruptTurn({ threadId, turnId: asTurnId("stale-ui-turn") })
+          .pipe(
+            Effect.ensuring(
+              Effect.sync(() =>
+                routing.codex.listSessions.mockImplementation(originalListSessions),
+              ),
+            ),
+          );
+        assert.deepEqual(routing.codex.interruptTurn.mock.calls, [
+          [threadId, asTurnId("real-live-turn"), undefined],
+        ]);
+        assert.isTrue(routing.codex.stopSession.mock.calls.some(([id]) => id === threadId));
+      }),
+    );
+  }
+
   it.effect("rotates the shared gateway credential after a targeted child interrupt", () =>
     Effect.gen(function* () {
       const provider = yield* ProviderService;

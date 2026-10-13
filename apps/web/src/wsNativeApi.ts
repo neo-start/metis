@@ -690,6 +690,9 @@ export function createWsNativeApi(): NativeApi {
         transport.request(WS_METHODS.pullRequestsAction, input, { timeoutMs: null }),
       comment: (input) => transport.request(WS_METHODS.pullRequestsComment, input),
       setPinned: (input) => transport.request(WS_METHODS.pullRequestsSetPinned, input),
+      delivery: (input) => transport.request(WS_METHODS.pullRequestsDelivery, input),
+      setFeedbackEnabled: (input) =>
+        transport.request(WS_METHODS.pullRequestsSetFeedbackEnabled, input),
     },
     contextMenu: {
       show: async <T extends string>(

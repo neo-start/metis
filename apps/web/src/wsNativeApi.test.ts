@@ -364,7 +364,13 @@ describe("wsNativeApi", () => {
         addProjectBaseDirectory: "",
         textGenerationModelSelection: { provider: "codex", model: "gpt-5.4-mini" },
         providers: {
-          codex: { enabled: true, binaryPath: "codex", homePath: "", customModels: [] },
+          codex: {
+            enabled: true,
+            binaryPath: "codex",
+            homePath: "",
+            runtimeHost: "backend",
+            customModels: [],
+          },
           codexSecondary: { enabled: false, binaryPath: "codex", homePath: "", customModels: [] },
           claudeAgent: {
             enabled: true,

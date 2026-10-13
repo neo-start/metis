@@ -228,6 +228,48 @@ layer("ProjectionPendingInteractionRepository", (it) => {
     }),
   );
 
+  it.effect("never claims an expired interaction whose provider callback is gone", () =>
+    Effect.gen(function* () {
+      const repository = yield* ProjectionPendingInteractionRepository;
+      const threadId = ThreadId.makeUnsafe("thread-claim-expired");
+      const requestId = ApprovalRequestId.makeUnsafe("request-claim-expired");
+      // No failure activity is visible to the claim: the durable row alone
+      // must keep an expired question from being answered again.
+      yield* repository.upsert({
+        interactionKind: "userInput",
+        requestId,
+        threadId,
+        turnId: null,
+        lifecycleGeneration: "generation-expired",
+        status: "uncertain",
+        decision: null,
+        responseCommandId: "command-expired-old" as never,
+        responseRequestedAt: "2026-07-14T12:20:00.000Z",
+        createdAt: "2026-07-14T12:19:00.000Z",
+        resolvedAt: "2026-07-14T12:20:01.000Z",
+      });
+
+      assert.strictEqual(
+        yield* repository.claimResponse({
+          threadId,
+          interactionKind: "userInput",
+          requestId,
+          lifecycleGeneration: "generation-expired",
+          responseCommandId: "command-expired-retry" as never,
+          decision: null,
+          requestedAt: "2026-07-14T12:21:00.000Z",
+        }),
+        false,
+      );
+      const row = yield* repository.getByIdentity({
+        threadId,
+        interactionKind: "userInput",
+        requestId,
+      });
+      assert.strictEqual(row._tag === "Some" ? row.value.status : null, "uncertain");
+    }),
+  );
+
   it.effect("re-claims an orphaned responding interaction after the reclaim grace period", () =>
     Effect.gen(function* () {
       const repository = yield* ProjectionPendingInteractionRepository;

@@ -9812,6 +9812,9 @@ describe("ProviderCommandReactor", () => {
       cwd: "/tmp/provider-project",
     });
     expect(captureCheckpoint.mock.calls[0]?.[0].checkpointRef).toContain("/message-start/");
+    expect(harness.sendTurn.mock.calls[0]?.[0]).toMatchObject({
+      deliveryId: "command:cmd-turn-start-slow-checkpoint",
+    });
   });
 
   it("waits for the Studio output baseline before sending the provider turn", async () => {
@@ -12061,6 +12064,7 @@ describe("ProviderCommandReactor", () => {
     expect(harness.steerTurn.mock.calls[0]?.[0]).toMatchObject({
       threadId: ThreadId.makeUnsafe("thread-1"),
       interactionMode: "debug",
+      deliveryId: "command:cmd-turn-steer-codex",
     });
     const steerInput = harness.steerTurn.mock.calls[0]?.[0] as { readonly input?: string };
     expect(steerInput.input).toContain("pivot now");
@@ -12127,6 +12131,7 @@ describe("ProviderCommandReactor", () => {
     expect(harness.sendTurn.mock.calls[0]?.[0]).toMatchObject({
       threadId: ThreadId.makeUnsafe("thread-1"),
       input: "steer but nothing is running",
+      deliveryId: "command:cmd-turn-steer-codex-stale",
     });
     const message = (
       await Effect.runPromise(harness.engine.getReadModel())
@@ -15386,7 +15391,9 @@ describe("ProviderCommandReactor", () => {
       status: "uncertain",
       responseCommandId: "cmd-approval-respond-stopped",
       decision: "accept",
-      resolvedAt: null,
+      // A stale-callback failure stamps the settlement time: the row is expired,
+      // not an ambiguous delivery that could still be retried.
+      resolvedAt: expect.any(String),
     });
   });
 
@@ -15466,7 +15473,9 @@ describe("ProviderCommandReactor", () => {
       status: "uncertain",
       responseCommandId: "cmd-user-input-respond-stopped",
       decision: null,
-      resolvedAt: null,
+      // A stale-callback failure stamps the settlement time: the row is expired,
+      // not an ambiguous delivery that could still be retried.
+      resolvedAt: expect.any(String),
     });
   });
 
@@ -15631,7 +15640,8 @@ describe("ProviderCommandReactor", () => {
       status: "uncertain",
       responseCommandId: "cmd-approval-respond-stale",
       decision: "acceptForSession",
-      resolvedAt: null,
+      // Expired, not merely ambiguous: stamped with the stale failure time.
+      resolvedAt: failureActivity?.createdAt,
     });
     const responseEvents = await Effect.runPromise(
       Stream.runCollect(harness.engine.readEvents(0)).pipe(
@@ -15872,7 +15882,8 @@ describe("ProviderCommandReactor", () => {
         status: "uncertain",
         responseCommandId: "cmd-user-input-respond-stale",
         decision: null,
-        resolvedAt: null,
+        // Expired, not merely ambiguous: stamped with the stale failure time.
+        resolvedAt: failureActivity?.createdAt,
       });
 
       const resolvedActivity = thread?.activities.find(
@@ -15883,6 +15894,20 @@ describe("ProviderCommandReactor", () => {
           (activity.payload as Record<string, unknown>).requestId === "user-input-request-1",
       );
       expect(resolvedActivity).toBeUndefined();
+
+      // The answer the dead callback rejected resumes the thread as a message.
+      const forwardedMessageId = "user-input-answer:cmd-user-input-respond-stale";
+      await waitFor(
+        async () =>
+          (await readHarnessThread(harness))?.messages.some(
+            (message) => message.id === forwardedMessageId,
+          ) === true,
+      );
+      const forwardedMessage = (await readHarnessThread(harness))?.messages.find(
+        (message) => message.id === forwardedMessageId,
+      );
+      expect(forwardedMessage).toMatchObject({ role: "user" });
+      expect(forwardedMessage?.text).toContain("Which mode should be used?\nworkspace-write");
 
       // Explicit invalidation is terminal, unlike an ambiguous delivery failure.
       harness.respondToUserInput.mockImplementation(() => Effect.void);
@@ -15916,6 +15941,12 @@ describe("ProviderCommandReactor", () => {
         status: "uncertain",
         responseCommandId: "cmd-user-input-respond-stale",
       });
+      // A refused retry never held the claim, so it forwards nothing more.
+      expect(
+        (await readHarnessThread(harness))?.messages.filter((message) =>
+          message.id.startsWith("user-input-answer:"),
+        ),
+      ).toHaveLength(1);
     },
   );
 

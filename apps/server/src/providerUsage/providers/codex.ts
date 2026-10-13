@@ -27,7 +27,7 @@ import {
   writeJsonFileAtomic,
   type OAuthRefreshResult,
 } from "../credentials";
-import { fetchJson, isAuthFailureStatus } from "../http";
+import { fetchJson, isAuthFailureStatus, isRateLimitStatus, parseRetryAfterMs } from "../http";
 import {
   asFiniteNumber,
   asRecord,
@@ -41,6 +41,7 @@ import {
   titleCase,
   unsupportedSnapshot,
 } from "../parse";
+import { createRateLimitResilience } from "../rateLimitResilience";
 import type { ProviderUsageContext, ProviderUsageFetcher } from "../types";
 
 const log = createLogger("provider-usage:codex");
@@ -421,6 +422,24 @@ function fetchCodexUsage(state: CodexOAuthState) {
   });
 }
 
+// --- Rate-limit resilience ------------------------------------------------------------------------
+// Both Codex accounts poll the same ChatGPT endpoint, so one 429 would otherwise blank every Codex
+// row while Claude keeps its last values. Mirror Claude: remember the last clean fetch per account
+// and re-serve it (status "ok", stale) during a Retry-After-honoring cooldown. Keyed by
+// codexAuthCacheKey — CODEX_HOME plus a credential fingerprint — so the two accounts, or a switched
+// login, never see each other's numbers or share a cooldown.
+const codexRateLimit = createRateLimitResilience({
+  provider: "codex",
+  source: SOURCE,
+  detail: (retryMins) =>
+    `OpenAI is rate-limiting Codex usage checks — showing your last values, retrying in ~${retryMins}m. Manual refreshes only extend the limit.`,
+});
+
+/** Test-only: clear the cross-call last-good/cooldown memory so cases start from a cold state. */
+export function __resetCodexUsageRateLimitState(): void {
+  codexRateLimit.reset();
+}
+
 /** The second Codex account: same endpoint, read strictly from its own CODEX_HOME. */
 export const codexSecondaryUsageFetcher: ProviderUsageFetcher = {
   provider: "codexSecondary",
@@ -456,6 +475,13 @@ export const codexUsageFetcher: ProviderUsageFetcher = {
       );
     }
 
+    // Inside an active cooldown, skip the network (and any token refresh) for this account.
+    const rateLimitKey = codexAuthCacheKey(ctx, auth);
+    const cooldownSnapshot = codexRateLimit.serveDuringCooldown(rateLimitKey, ctx.nowMs);
+    if (cooldownSnapshot) {
+      return cooldownSnapshot;
+    }
+
     let state = auth;
     // At most one token-endpoint redemption per fetch: if a just-refreshed token still comes
     // back 401, a second redemption can only burn credentials, not fix anything.
@@ -487,6 +513,14 @@ export const codexUsageFetcher: ProviderUsageFetcher = {
         log.warn("codex usage request unauthorized after refresh", { status: result.status });
         return needsAuthSnapshot("codex", ctx.nowMs, SOURCE);
       }
+      if (isRateLimitStatus(result.status)) {
+        log.warn("codex usage request rate-limited", { status: result.status });
+        return codexRateLimit.enterCooldown(
+          rateLimitKey,
+          ctx.nowMs,
+          parseRetryAfterMs(result.headers, ctx.nowMs),
+        );
+      }
       if (!result.ok) {
         log.warn("codex usage request failed", { status: result.status });
         return errorSnapshot(
@@ -509,7 +543,9 @@ export const codexUsageFetcher: ProviderUsageFetcher = {
         env: ctx.env,
         cwd: ctx.homeDir,
       });
-      return resetCredits ? { ...snapshot, resetCredits } : snapshot;
+      const fresh = resetCredits ? { ...snapshot, resetCredits } : snapshot;
+      codexRateLimit.rememberLastGood(rateLimitKey, fresh, ctx.nowMs);
+      return fresh;
     } catch (cause) {
       log.warn("codex usage endpoint unreachable", {
         message: cause instanceof Error ? cause.message : String(cause),

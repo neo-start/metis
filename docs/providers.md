@@ -22,6 +22,16 @@ consistent workspace.
 Provider availability can differ between the current stable release and development builds. Use the
 provider settings in your installed Synara version as the authoritative list for that build.
 
+## Provider startup and recovery
+
+The composer remains focusable while a provider is starting, so you can prepare a draft.
+Sending stays gated until startup completes. Runtime reconciliation treats a live provider-owned
+turn as authoritative: an unchanged thread summary timestamp alone does not end a long-running
+turn. Missing or terminal runtimes still use the existing recovery path.
+When stopping a parent conversation, Metis resolves the current runtime-owned turn even if the
+durable routing cache has lost its turn ID. Child stops keep their explicit target and all stops
+still enforce the provider lifecycle generation boundary.
+
 ## What Synara manages
 
 Synara provides the shared operating surface around each provider:

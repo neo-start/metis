@@ -19,7 +19,10 @@ import {
   setPinnedMessageLabel,
 } from "@synara/shared/pinnedMessages";
 import { deriveThreadSummaryMetadata, resolveHumanMessageAt } from "@synara/shared/threadSummary";
-import { isPendingInteractionResponseClaimable } from "@synara/shared/pendingInteractions";
+import {
+  createStalePendingInteractionMatcher,
+  isPendingInteractionResponseClaimable,
+} from "@synara/shared/pendingInteractions";
 
 import { isSessionRunningTurn } from "./session-logic";
 import {
@@ -116,6 +119,7 @@ function markInteractionResponding(
         status: interaction.status,
         responseRequestedAt: interaction.responseRequestedAt,
         requestedAt: event.payload.createdAt,
+        resolvedAt: interaction.resolvedAt,
       })
     ) {
       return interaction;
@@ -178,6 +182,24 @@ function reconcilePendingInteractionsFromActivity(
     activity.kind === "provider.approval.respond.failed" ||
     activity.kind === "provider.user-input.respond.failed"
   ) {
+    // Mirror the server projection: a stale-callback failure is terminal for
+    // its request instance, whoever held the response claim.
+    const isStaleFailure = createStalePendingInteractionMatcher([activity]);
+    if (existing.some(isStaleFailure)) {
+      let changed = false;
+      const next = existing.map((interaction) => {
+        if (
+          interaction.status === "confirmed" ||
+          !isStaleFailure(interaction) ||
+          (interaction.status === "uncertain" && interaction.resolvedAt !== null)
+        ) {
+          return interaction;
+        }
+        changed = true;
+        return { ...interaction, status: "uncertain" as const, resolvedAt: activity.createdAt };
+      });
+      return changed ? next : pendingInteractions;
+    }
     const responseCommandId = payload?.responseCommandId;
     if (typeof responseCommandId !== "string" || responseCommandId.length === 0) {
       return pendingInteractions;

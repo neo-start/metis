@@ -2784,10 +2784,12 @@ it.layer(
 
       const settledRows = yield* sql<{
         readonly status: string;
+        readonly resolvedAt: string | null;
         readonly pendingUserInputCount: number;
       }>`
         SELECT
           interactions.status,
+          interactions.resolved_at AS "resolvedAt",
           threads.pending_user_input_count AS "pendingUserInputCount"
         FROM projection_pending_interactions AS interactions
         INNER JOIN projection_threads AS threads
@@ -2796,7 +2798,12 @@ it.layer(
           AND interactions.interaction_kind = 'userInput'
           AND interactions.request_id = ${requestId}
       `;
-      assert.deepEqual(settledRows, [{ status: "uncertain", pendingUserInputCount: 0 }]);
+      // The settlement time marks the row expired rather than an ambiguous,
+      // still-retryable delivery, so clients drop the question card from the
+      // durable row alone even when the failure activity is outside their window.
+      assert.deepEqual(settledRows, [
+        { status: "uncertain", resolvedAt: reconciledAt, pendingUserInputCount: 0 },
+      ]);
     }),
   );
 });

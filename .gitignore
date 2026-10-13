@@ -1,6 +1,7 @@
 node_modules
 /.agent-workbench/
 /.agent-workbench-remote/
+/.agent-workbench-*/
 /.upstream/
 .bun
 .turbo
@@ -27,7 +28,8 @@ apps/web/.playwright
 apps/web/playwright-report
 apps/web/test-results
 .playwright-cli/
-output/playwright/
+# Local build backups, diagnostics, and operator scripts.
+/output/
 apps/web/src/components/__screenshots__
 .vitest-*
 __screenshots__/

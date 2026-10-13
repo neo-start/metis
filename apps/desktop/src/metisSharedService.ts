@@ -61,6 +61,16 @@ function isAlive(pid: number): boolean {
   }
 }
 
+// A workspace reached through a symlink (e.g. after renaming the checkout)
+// is still the same workspace.
+function canonicalHome(home: string): string {
+  try {
+    return fs.realpathSync(home);
+  } catch {
+    return path.resolve(home);
+  }
+}
+
 export function readMetisSharedService(home: string): MetisSharedService | null {
   const file = readPrivateFile(home, "metis-service.json");
   if (!file) return null;
@@ -78,7 +88,7 @@ export function readMetisSharedService(home: string): MetisSharedService | null 
     Number(launcherPid) <= 0 ||
     Number(serverPid) <= 0 ||
     typeof state.home !== "string" ||
-    path.resolve(state.home) !== path.resolve(home) ||
+    canonicalHome(state.home) !== canonicalHome(home) ||
     typeof localOrigin !== "string"
   ) {
     throw new Error("Metis shared-service state does not match this workspace.");

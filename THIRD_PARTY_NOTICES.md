@@ -19,6 +19,10 @@ The Metis desktop shared-service attachment reuses the existing Synara Electron 
 
 The Workbench overview supplies the shared sorter with its latest execution/activity timestamp, and uses the original search highlighter for titles. Source checkouts under .upstream are references only and are not bundled.
 
+## Agent Orchestrator design reference
+
+The delivery summary, automatic PR/CI feedback and persistent provider host changes were informed by [Agent Orchestrator](https://github.com/OrchestratorInc/agent-orchestrator), commit `e06b1a824e64ab882c041da4d58ec7c0c24cc188` (Apache-2.0). References: `backend/pkg/contract/kanban.go`, `backend/internal/lifecycle/reactions.go`, and `backend/internal/adapters/chatdriver/persistenthost`. No Go source was copied. The implementation extends the existing Synara Kanban components, GitHub/PullRequest services, orchestration receipts, `CodexAppServerManager`, event journal and shared process/JSONL boundaries. T3's provider lifecycle was reviewed at the commit above; its incompatible runtime was not transplanted. File-level provenance and adaptations are recorded in `docs/workbench/upstream.json`.
+
 ## T3 Code license
 
 MIT License

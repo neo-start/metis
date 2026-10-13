@@ -500,6 +500,65 @@ describe("derivePendingUserInputs", () => {
     },
   );
 
+  it("drops an expired question even when its stale failure is outside the activity window", () => {
+    // Reproduces a thread whose runtime-sequenced request outranks every
+    // orchestration-sequenced failure, so the bounded snapshot delivers the
+    // question without the failures that invalidated it. The expired durable
+    // settlement alone must clear the card and return the composer.
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: "user-input-request-without-failures",
+        sequence: 543_835,
+        createdAt: "2026-02-23T00:00:01.000Z",
+        kind: "user-input.requested",
+        summary: "User input requested",
+        tone: "info",
+        payload: {
+          requestId: "req-settlement",
+          lifecycleGeneration: "generation-settlement",
+          questions: [
+            {
+              id: "row",
+              header: "Row",
+              question: "How should this row proceed?",
+              options: [{ label: "Wait", description: "Leave it for now" }],
+            },
+          ],
+        },
+      }),
+    ];
+    const options = {
+      authoritativeHasPending: false,
+      latestTurnId: undefined,
+      responseClaimReferenceAt: "2026-02-23T07:00:00.000Z",
+    };
+
+    expect(
+      derivePendingUserInputs(
+        activities,
+        [
+          makePendingInteraction("userInput", "uncertain", {
+            responseRequestedAt: "2026-02-23T06:59:00.000Z",
+            resolvedAt: "2026-02-23T06:59:01.000Z",
+          }),
+        ],
+        options,
+      ),
+    ).toEqual([]);
+    // An ambiguous delivery (no settlement time) remains answerable.
+    expect(
+      derivePendingUserInputs(
+        activities,
+        [
+          makePendingInteraction("userInput", "uncertain", {
+            responseRequestedAt: "2026-02-23T06:59:00.000Z",
+          }),
+        ],
+        options,
+      ),
+    ).toHaveLength(1);
+  });
+
   it("shows only actionable durable user-input settlements", () => {
     const activities: OrchestrationThreadActivity[] = [
       makeActivity({

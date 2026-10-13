@@ -180,7 +180,9 @@ const makeProjectionPendingInteractionRepository = Effect.gen(function* () {
         AND interaction_kind = ${input.interactionKind}
         AND request_id = ${input.requestId}
         AND (
-          status IN ('pending', 'retryable', 'uncertain')
+          status IN ('pending', 'retryable')
+          -- An expired settlement (uncertain with resolved_at) is terminal.
+          OR (status = 'uncertain' AND resolved_at IS NULL)
           OR (
             status = 'responding'
             AND (

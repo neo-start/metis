@@ -1,7 +1,12 @@
 import { Schema } from "effect";
 import { IsoDateTime, TrimmedString } from "./baseSchemas";
 import { DEFAULT_GIT_TEXT_GENERATION_MODEL } from "./model";
-import { ModelSelection, ProviderKind, ThreadEnvironmentMode } from "./orchestration";
+import {
+  CodexRuntimeHost,
+  ModelSelection,
+  ProviderKind,
+  ThreadEnvironmentMode,
+} from "./orchestration";
 
 const StringSetting = TrimmedString.check(Schema.isMaxLength(4096));
 const CustomModels = Schema.Array(Schema.String.check(Schema.isMaxLength(256))).pipe(
@@ -14,10 +19,15 @@ const ProviderSettingsBase = {
   customModels: CustomModels,
 };
 
-export const CodexServerProviderSettings = Schema.Struct({
+const CodexServerProviderSettingsBase = {
   ...ProviderSettingsBase,
   binaryPath: StringSetting.pipe(Schema.withDecodingDefault(() => "codex")),
   homePath: StringSetting.pipe(Schema.withDecodingDefault(() => "")),
+};
+
+export const CodexServerProviderSettings = Schema.Struct({
+  ...CodexServerProviderSettingsBase,
+  runtimeHost: CodexRuntimeHost.pipe(Schema.withDecodingDefault(() => "backend")),
 });
 export type CodexServerProviderSettings = typeof CodexServerProviderSettings.Type;
 
@@ -26,7 +36,7 @@ export type CodexServerProviderSettings = typeof CodexServerProviderSettings.Typ
 export const CODEX_SECONDARY_DEFAULT_HOME_PATH = "~/.codex-secondary";
 
 export const CodexSecondaryServerProviderSettings = Schema.Struct({
-  ...CodexServerProviderSettings.fields,
+  ...CodexServerProviderSettingsBase,
   enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(() => false)),
   homePath: StringSetting.pipe(Schema.withDecodingDefault(() => CODEX_SECONDARY_DEFAULT_HOME_PATH)),
 });
@@ -181,6 +191,7 @@ export const ServerSettingsPatch = Schema.Struct({
         Schema.Struct({
           ...ProviderSettingsBasePatch,
           homePath: Schema.optionalKey(StringSetting),
+          runtimeHost: Schema.optionalKey(CodexRuntimeHost),
         }),
       ),
       codexSecondary: Schema.optionalKey(

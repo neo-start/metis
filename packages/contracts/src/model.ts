@@ -715,6 +715,11 @@ export const MODEL_OPTIONS_BY_PROVIDER = {
         contextWindowTokens: 200_000,
       },
     },
+    {
+      slug: "moonshotai/kimi-k3",
+      name: "Kimi K3",
+      capabilities: EMPTY_MODEL_CAPABILITIES,
+    },
   ],
   // Antigravity owns its model catalog. The web app populates this provider from
   // `agy models` so CLI updates appear without a Synara release.
@@ -1246,6 +1251,9 @@ export const MODEL_SLUG_ALIASES_BY_PROVIDER: Record<ProviderKind, Record<string,
     "haiku-4.5": "claude-haiku-4-5",
     "claude-haiku-4.5": "claude-haiku-4-5",
     "claude-haiku-4-5-20251001": "claude-haiku-4-5",
+    kimi: "moonshotai/kimi-k3",
+    "kimi-k3": "moonshotai/kimi-k3",
+    "moonshotai/kimi-k3": "moonshotai/kimi-k3",
   },
   // Retired Cursor slugs are remapped, not dropped: the agent answers -32602 for
   // ids it no longer serves, so persisted selections must migrate to live ones.
