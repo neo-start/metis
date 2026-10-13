@@ -38,9 +38,11 @@
     "@opencode-ai/sdk": "1.18.31",
     "@pierre/diffs": "^1.2.12",
     "@xterm/headless": "^6.0.0",
+    "bonjour-service": "^1.4.4",
     "effect": "catalog:",
     "node-pty": "^1.1.0",
     "open": "^10.1.0",
+    "selfsigned": "^5.5.0",
     "tree-kill": "^1.2.2",
     "ws": "^8.21.0",
     "zod": "4.3.6"

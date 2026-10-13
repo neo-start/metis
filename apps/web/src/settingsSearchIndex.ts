@@ -58,6 +58,12 @@ export function settingsSearchEntryTarget(entry: SettingsSearchEntry): string | 
 // when rows are added, renamed, hidden conditionally, or represented as panel-level results.
 export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
   {
+    id: "connections:lan-peers",
+    section: "connections",
+    title: "局域网协作",
+    keywords: "我的设备 实例 ID 配对 双向 通信 指挥 任务 委派 LAN peer metis devices",
+  },
+  {
     id: "connections:devices",
     section: "connections",
     title: "手机与远程连接",

@@ -1,3 +1,4 @@
+import { PeerControlInput, PeerControlResult } from "./peers";
 import { Schema } from "effect";
 import * as Rpc from "effect/unstable/rpc/Rpc";
 import * as RpcGroup from "effect/unstable/rpc/RpcGroup";
@@ -1586,7 +1587,14 @@ export const WsMemoryUpdateSoulRpc = Rpc.make(WS_METHODS.memoryUpdateSoul, {
 
 export const WsBootstrapRpcGroup = RpcGroup.make(WsBootstrapNegotiateRpc);
 
+export const WsPeerControlRpc = Rpc.make(WS_METHODS.peerControl, {
+  payload: Schema.Struct({ input: PeerControlInput }),
+  success: PeerControlResult,
+  error: WsRpcError,
+});
+
 export const WsFeatureRpcGroup = RpcGroup.make(
+  WsPeerControlRpc,
   WsOrchestrationDispatchCommandRpc,
   WsOrchestrationImportThreadRpc,
   WsListProjectImportsRpc,

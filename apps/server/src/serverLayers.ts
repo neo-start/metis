@@ -1,3 +1,4 @@
+import { PeerServiceLive } from "./peers/PeerService.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Layer } from "effect";
 
@@ -204,7 +205,9 @@ export function makeServerRuntimeServicesLayer(
   // Installs the process-wide memory context source that provider adapters
   // read when they deliver the host policy, and backs the synara_memory_* tools.
   const metisMemoryLayer = MetisMemoryLive.pipe(Layer.provideMerge(runtimeServicesLayer));
+  const peerServiceLayer = PeerServiceLive.pipe(Layer.provideMerge(runtimeServicesLayer));
   const agentGatewayLayer = AgentGatewayLive.pipe(
+    Layer.provideMerge(peerServiceLayer),
     Layer.provideMerge(metisMemoryLayer),
     Layer.provideMerge(agentGatewayCredentialsLayer),
     Layer.provideMerge(automationServiceLayer),
@@ -238,6 +241,7 @@ export function makeServerRuntimeServicesLayer(
   return Layer.mergeAll(
     agentGatewayCredentialsLayer,
     metisMemoryLayer,
+    peerServiceLayer,
     agentGatewayLayer,
     BrowserAutomationHostLive,
     automationServiceLayer,

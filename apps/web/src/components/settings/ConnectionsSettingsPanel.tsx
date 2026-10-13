@@ -1,3 +1,4 @@
+import { PeerSettingsPanel } from "./PeerSettingsPanel";
 import type { AuthClientSession, AuthPairingCredentialResult } from "@synara/contracts";
 import { buildWorkbenchPairingUrl, normalizeSecureRelayUrl } from "@synara/shared/workbenchRemote";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -152,6 +153,7 @@ export function ConnectionsSettingsPanel() {
 
   return (
     <div className="space-y-6">
+      <PeerSettingsPanel owner={owner} />
       <SettingsSectionShell title="连接这台电脑">
         <SettingsCard>
           <SettingsListRow

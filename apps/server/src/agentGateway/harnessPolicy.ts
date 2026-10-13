@@ -6,7 +6,7 @@ import { AUTOMATION_AUTHORING_GUIDANCE } from "./automationAuthoringGuidance.ts"
 import { renderMetisMemoryContextForThread } from "../metisMemory/memoryContext.ts";
 
 /** Canonical, versioned host policy delivered to every supported provider. */
-export const SYNARA_HARNESS_POLICY_VERSION = "2026-09-28.1";
+export const SYNARA_HARNESS_POLICY_VERSION = "2026-10-13.1";
 export const SYNARA_HARNESS_POLICY_MARKER = `[Synara harness policy ${SYNARA_HARNESS_POLICY_VERSION}]`;
 
 export interface SynaraHarnessCapabilities {
@@ -23,7 +23,7 @@ export interface SynaraHarnessCapabilities {
 export function renderSynaraHarnessPolicy(capabilities: SynaraHarnessCapabilities): string {
   const controlPolicy = capabilities.gatewayControlAvailable
     ? [
-        "Use the synara_* tools for Metis threads, projects, automations, and coordination.",
+        "Use the synara_* tools for Metis; metis_devices/metis_peer for paired devices.",
         "Give a completion report: outcome, checks, limitations. Inspect browser_screenshot({kind:'proof'}); embed artifactPath as ![Result description](/absolute/path.png), also for generated images. No secrets or invented proof; skip open-only proof.",
         "When explicitly asked for E2E/end-to-end tests, call synara_e2e_review. Do not load it for unrelated work.",
         "For any-language requests involving Metis's integrated, embedded, or in-app browser, use browser_* autonomously as its canonical, complete control surface; never substitute Chrome, Computer Use, Playwright, OS-automation tools/skills, or change the user's active chat. Detailed rules live in each tool description.",

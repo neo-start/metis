@@ -1,3 +1,4 @@
+import { PeerControlInput } from "./peers";
 import { Schema, Struct } from "effect";
 import { ImportProjectInput, ListProjectImportsInput } from "./projectImport";
 import { NonNegativeInt, ProjectId, ThreadId, TrimmedNonEmptyString } from "./baseSchemas";
@@ -317,6 +318,7 @@ export const WS_METHODS = {
   subscribeAutomationEvents: "automation.subscribe",
 
   // Metis long-term memory (soul + global/project memories)
+  peerControl: "peers.control",
   memoryGetOverview: "memory.getOverview",
   memoryRead: "memory.read",
   memoryWrite: "memory.write",
@@ -540,6 +542,7 @@ const WebSocketRequestBody = Schema.Union([
   tagRequestBody(WS_METHODS.subscribeAutomationEvents, Schema.Struct({})),
 
   // Metis long-term memory
+  tagRequestBody(WS_METHODS.peerControl, Schema.Struct({ input: PeerControlInput })),
   tagRequestBody(WS_METHODS.memoryGetOverview, Schema.Struct({})),
   tagRequestBody(WS_METHODS.memoryRead, MetisMemoryReadInput),
   tagRequestBody(WS_METHODS.memoryWrite, MetisMemoryWriteInput),

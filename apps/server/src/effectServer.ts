@@ -1,3 +1,4 @@
+import { PeerService } from "./peers/PeerService.ts";
 import { ProjectionPendingInteractionRepositoryLive } from "./persistence/Layers/ProjectionPendingInteractions";
 import http from "node:http";
 
@@ -235,6 +236,11 @@ export const createEffectServer = Effect.fn(function* (
   yield* Scope.provide(automationScheduler.start(), subscriptionsScope);
   yield* Scope.provide(automationRunReactor.start(), subscriptionsScope);
   yield* Scope.provide(feishuBridge.start(), subscriptionsScope);
+  const peerService = yield* Effect.serviceOption(PeerService);
+  if (peerService._tag === "Some")
+    yield* Effect.tryPromise(() => peerService.value.start()).pipe(
+      Effect.catch((error) => Effect.logWarning("LAN peer listener failed to start", error)),
+    );
   yield* Scope.provide(threadDeletionReactor.start(), subscriptionsScope);
   yield* Scope.provide(providerSessionReaper.start(), subscriptionsScope);
   yield* Scope.provide(providerRuntimeReconciler.start(), subscriptionsScope);

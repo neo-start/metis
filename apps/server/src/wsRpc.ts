@@ -1,3 +1,4 @@
+import { PeerService } from "./peers/PeerService.ts";
 import { AgentGatewaySessionRegistry } from "./agentGateway/Services/AgentGatewaySessionRegistry";
 import { execFile } from "node:child_process";
 
@@ -428,6 +429,7 @@ const makeWsRpcHandlersLayer = () =>
       const deviceService = Option.getOrUndefined(yield* Effect.serviceOption(DeviceService));
       const computerService = Option.getOrUndefined(yield* Effect.serviceOption(ComputerService));
       // Optional so route-level tests can mount the group without memory files.
+      const peers = Option.getOrUndefined(yield* Effect.serviceOption(PeerService));
       const metisMemory = Option.getOrUndefined(yield* Effect.serviceOption(MetisMemory));
       // Memory holds personal context; only the owner session may read or edit it.
       const withMetisMemory = <A>(
@@ -2147,6 +2149,18 @@ const makeWsRpcHandlersLayer = () =>
             ),
           ),
 
+        [WS_METHODS.peerControl]: ({ input }) =>
+          requireWsOwnerSession.pipe(
+            Effect.andThen(
+              Effect.tryPromise({
+                try: () => {
+                  if (!peers) throw new Error("设备协作服务不可用。");
+                  return peers.control(input);
+                },
+                catch: (cause) => toWsRpcError(cause, "设备协作操作失败"),
+              }),
+            ),
+          ),
         [WS_METHODS.memoryGetOverview]: () =>
           withMetisMemory((memory) => memory.getOverview(), "Failed to load Metis memory"),
         [WS_METHODS.memoryRead]: (input) =>

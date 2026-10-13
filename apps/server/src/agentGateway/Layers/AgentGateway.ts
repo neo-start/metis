@@ -1,3 +1,5 @@
+import { PeerService } from "../../peers/PeerService.ts";
+import { makePeerTools } from "../peerTools.ts";
 /**
  * AgentGatewayLive - Synara app-control MCP tool surface.
  *
@@ -162,6 +164,7 @@ export const makeAgentGateway = Effect.gen(function* () {
   const computerService = Option.getOrUndefined(yield* Effect.serviceOption(ComputerService));
   // Optional so gateway tests that do not mount Metis memory keep their exact
   // tool catalog; the server runtime always provides it.
+  const peers = Option.getOrUndefined(yield* Effect.serviceOption(PeerService));
   const metisMemory = Option.getOrUndefined(yield* Effect.serviceOption(MetisMemory));
   const loadProviderAvailabilities = Effect.gen(function* () {
     const [settings, statuses] = yield* Effect.all([
@@ -1208,6 +1211,7 @@ export const makeAgentGateway = Effect.gen(function* () {
     setThreadGoal,
     ...automationTools,
     ...memoryTools,
+    ...(peers ? makePeerTools(peers) : []),
     ...browserTools,
     ...(deviceService?.supported === true
       ? makeAgentGatewayDeviceTools({ manager: deviceService.manager })
