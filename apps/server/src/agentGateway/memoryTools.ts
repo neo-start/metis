@@ -226,7 +226,7 @@ export function makeAgentGatewayMemoryTools(
         if (typeof args.body !== "string" || args.body.trim().length === 0) {
           throw new ToolInputError('Argument "body" must be a non-empty string.');
         }
-        const body = args.body;
+        const body = `${args.body.trimEnd()}\n\n来源：Metis 会话 ${context.callerThreadId}；轮次 ${context.callerTurnId ?? "unknown"}。`;
         const project = scope === "project" ? yield* callerProject(context) : null;
         const entry = yield* memory.write({
           scope,

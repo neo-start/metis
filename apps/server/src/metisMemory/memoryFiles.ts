@@ -458,6 +458,43 @@ export function containsCredentialLikeText(text: string): boolean {
   return CREDENTIAL_PATTERNS.some((pattern) => pattern.test(text));
 }
 
+/** Keep prior content outside the live index. Content hashes make retries
+ * idempotent; owner deletion removes this file's history as well. */
+function memoryRevisionDirectory(rootDir: string, filePath: string): string {
+  return path.join(
+    rootDir,
+    "history",
+    createHash("sha256").update(path.relative(rootDir, filePath)).digest("hex"),
+  );
+}
+
+const preserveMemoryRevision = (rootDir: string, filePath: string, nextContent: string) =>
+  Effect.gen(function* () {
+    const previous = yield* Effect.try({
+      try: () => {
+        try {
+          if (!fs.lstatSync(filePath).isFile()) throw invalidInput("Memory is not a regular file.");
+          return fs.readFileSync(filePath, "utf8");
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+          throw error;
+        }
+      },
+      catch: toIoError("Failed to read previous memory revision."),
+    });
+    if (previous === null || previous === nextContent) return;
+    const hash = createHash("sha256").update(previous).digest("hex");
+    const directory = memoryRevisionDirectory(rootDir, filePath);
+    yield* writeFileStringAtomically({
+      filePath: path.join(directory, `${hash}.json`),
+      contents: JSON.stringify({
+        path: path.relative(rootDir, filePath),
+        savedAt: new Date().toISOString(),
+        content: previous,
+      }),
+    }).pipe(Effect.mapError(toIoError("Failed to preserve memory revision.")));
+  });
+
 function utf8Bytes(text: string): number {
   return Buffer.byteLength(text, "utf8");
 }
@@ -538,6 +575,7 @@ export const writeMetisMemoryFile = (
       },
       catch: toIoError("Failed to prepare memory write."),
     });
+    yield* preserveMemoryRevision(input.rootDir, prepared.filePath, prepared.contents);
     yield* writeFileStringAtomically({
       filePath: prepared.filePath,
       contents: prepared.contents,
@@ -575,13 +613,20 @@ export const deleteMetisMemoryFile = (input: {
       try {
         stat = fs.lstatSync(filePath);
       } catch (cause) {
-        if ((cause as NodeJS.ErrnoException).code === "ENOENT") return { deleted: false };
+        if ((cause as NodeJS.ErrnoException).code === "ENOENT") {
+          fs.rmSync(memoryRevisionDirectory(input.rootDir, filePath), {
+            recursive: true,
+            force: true,
+          });
+          return { deleted: false };
+        }
         throw cause;
       }
       if (!stat.isFile()) {
         throw invalidInput(`Memory "${input.name}" is not a regular file.`);
       }
       fs.rmSync(filePath);
+      fs.rmSync(memoryRevisionDirectory(input.rootDir, filePath), { recursive: true, force: true });
       fileCache.delete(filePath);
       return { deleted: true };
     },
@@ -600,6 +645,7 @@ export const writeMetisMemorySoul = (input: {
         message: `soul.md exceeds ${METIS_MEMORY_SOUL_MAX_BYTES / 1_024} KiB.`,
       });
     }
+    yield* preserveMemoryRevision(input.rootDir, metisMemorySoulPath(input.rootDir), content);
     yield* writeFileStringAtomically({
       filePath: metisMemorySoulPath(input.rootDir),
       contents: content,

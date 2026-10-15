@@ -1,4 +1,5 @@
 export * from "./peers";
+export * from "./metis";
 export * from "./auth";
 export * from "./automation";
 export * from "./baseSchemas";

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   ProjectId,
   type MetisMemoryEntry,
@@ -5,7 +6,7 @@ import {
   type MetisMemoryProjectGroup,
   type OrchestrationReadModel,
 } from "@synara/contracts";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Semaphore } from "effect";
 
 import { ServerConfig } from "../../config.ts";
 import { OrchestrationEngineService } from "../../orchestration/Services/OrchestrationEngine.ts";
@@ -43,6 +44,7 @@ export function makeMetisMemoryShape(input: {
   }) => string | null;
 } {
   const { rootDir } = input;
+  const mutationLock = Effect.runSync(Semaphore.make(1));
 
   const projectTitleById = (): Map<string, string> => {
     const model = input.readModel();
@@ -186,16 +188,28 @@ export function makeMetisMemoryShape(input: {
       catch: toMemoryError("Failed to read soul.md."),
     });
 
-  const writeSoul: MetisMemoryShape["writeSoul"] = (content) =>
-    writeMetisMemorySoul({ rootDir, content });
+  const writeSoul: MetisMemoryShape["writeSoul"] = (content, expectedRevision) =>
+    mutationLock.withPermits(1)(
+      Effect.gen(function* () {
+        if (expectedRevision !== undefined) {
+          const current = yield* readSoul();
+          if (createHash("sha256").update(current.content).digest("hex") !== expectedRevision)
+            return yield* new MetisMemoryError({
+              code: "invalid-input",
+              message: "soul.md changed; read it again before revising.",
+            });
+        }
+        return yield* writeMetisMemorySoul({ rootDir, content });
+      }),
+    );
 
   return {
     rootDir,
     getOverview,
     list,
     read,
-    write,
-    remove,
+    write: (request) => mutationLock.withPermits(1)(write(request)),
+    remove: (request) => mutationLock.withPermits(1)(remove(request)),
     readSoul,
     writeSoul,
     renderContext,

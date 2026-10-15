@@ -1,3 +1,4 @@
+import { renderMetisControllerContext } from "../metis/controllerContext.ts";
 import type { ProviderKind } from "@synara/contracts";
 
 import { computerToolInstructions } from "./computerGuidance.ts";
@@ -6,7 +7,7 @@ import { AUTOMATION_AUTHORING_GUIDANCE } from "./automationAuthoringGuidance.ts"
 import { renderMetisMemoryContextForThread } from "../metisMemory/memoryContext.ts";
 
 /** Canonical, versioned host policy delivered to every supported provider. */
-export const SYNARA_HARNESS_POLICY_VERSION = "2026-10-13.1";
+export const SYNARA_HARNESS_POLICY_VERSION = "2026-10-14.1";
 export const SYNARA_HARNESS_POLICY_MARKER = `[Synara harness policy ${SYNARA_HARNESS_POLICY_VERSION}]`;
 
 export interface SynaraHarnessCapabilities {
@@ -137,6 +138,9 @@ export function takeSynaraHarnessPolicyForSession(
     renderSynaraHarnessPolicy(capabilities),
     "</synara_host_context>",
     ...(memory === null ? [] : [memory]),
+    ...[renderMetisControllerContext(capabilities.threadId ?? state.threadId)].filter(
+      (text): text is string => text !== null,
+    ),
   ].join("\n");
 }
 

@@ -1,3 +1,4 @@
+import { MetisControllerLive } from "./metis/MetisControllerService.ts";
 import { PeerServiceLive } from "./peers/PeerService.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Layer } from "effect";
@@ -206,7 +207,12 @@ export function makeServerRuntimeServicesLayer(
   // read when they deliver the host policy, and backs the synara_memory_* tools.
   const metisMemoryLayer = MetisMemoryLive.pipe(Layer.provideMerge(runtimeServicesLayer));
   const peerServiceLayer = PeerServiceLive.pipe(Layer.provideMerge(runtimeServicesLayer));
+  const metisControllerLayer = MetisControllerLive.pipe(
+    Layer.provideMerge(metisMemoryLayer),
+    Layer.provideMerge(runtimeServicesLayer),
+  );
   const agentGatewayLayer = AgentGatewayLive.pipe(
+    Layer.provideMerge(metisControllerLayer),
     Layer.provideMerge(peerServiceLayer),
     Layer.provideMerge(metisMemoryLayer),
     Layer.provideMerge(agentGatewayCredentialsLayer),
@@ -241,6 +247,7 @@ export function makeServerRuntimeServicesLayer(
   return Layer.mergeAll(
     agentGatewayCredentialsLayer,
     metisMemoryLayer,
+    metisControllerLayer,
     peerServiceLayer,
     agentGatewayLayer,
     BrowserAutomationHostLive,

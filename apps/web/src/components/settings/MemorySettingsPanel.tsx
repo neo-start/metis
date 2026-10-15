@@ -4,6 +4,7 @@
 // Layer: Settings UI components
 // Exports: MemorySettingsPanel
 
+import { MetisIdentityPanel } from "./MetisIdentityPanel";
 import {
   METIS_MEMORY_BODY_MAX_BYTES,
   METIS_MEMORY_DESCRIPTION_MAX_CHARS,
@@ -219,6 +220,7 @@ export function MemorySettingsPanel() {
 
   return (
     <div className="space-y-6">
+      <MetisIdentityPanel />
       <SettingsSection title="Location">
         <SettingsRow
           title="Memory folder"

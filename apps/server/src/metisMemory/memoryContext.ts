@@ -85,6 +85,10 @@ export function renderMetisMemoryContext(input: RenderMetisMemoryContextInput): 
       : "The index lists memory names and descriptions only. Metis memory tools are unavailable in this session, so never claim to have saved or changed memory; the user manages it in Metis Settings > Memory.",
   );
 
+  lines.push(
+    "Soul is shared instance context, not a controller role grant. Only the host metis_identity block designates the instance controller; other sessions own their individual tasks.",
+  );
+
   if (soulText.length > 0) {
     const soulMaxBytes = input.soulMaxBytes ?? METIS_MEMORY_INJECTED_SOUL_MAX_BYTES;
     const soul = truncateUtf8(neutralizeMetisMemoryFraming(soulText), soulMaxBytes);

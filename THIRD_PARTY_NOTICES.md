@@ -23,6 +23,8 @@ The Workbench overview supplies the shared sorter with its latest execution/acti
 
 The delivery summary, automatic PR/CI feedback and persistent provider host changes were informed by [Agent Orchestrator](https://github.com/OrchestratorInc/agent-orchestrator), commit `e06b1a824e64ab882c041da4d58ec7c0c24cc188` (Apache-2.0). References: `backend/pkg/contract/kanban.go`, `backend/internal/lifecycle/reactions.go`, and `backend/internal/adapters/chatdriver/persistenthost`. No Go source was copied. The implementation extends the existing Synara Kanban components, GitHub/PullRequest services, orchestration receipts, `CodexAppServerManager`, event journal and shared process/JSONL boundaries. T3's provider lifecycle was reviewed at the commit above; its incompatible runtime was not transplanted. File-level provenance and adaptations are recorded in `docs/workbench/upstream.json`.
 
+The instance controller (2026-10-14) reuses the existing Synara orchestration engine, command receipts and ChatView, plus this fork's Metis memory service. T3 `docs/internals/connection-runtime.md` and `packages/client-runtime/src/connection/registry.ts` at the T3 commit above informed the separation of instance identity and conversation lifetime; no T3 runtime code was copied. Paths and adaptations are recorded in `docs/workbench/upstream.json`.
+
 ## T3 Code license
 
 MIT License

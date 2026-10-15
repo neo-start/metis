@@ -46,6 +46,8 @@ For browser development, an inherited `SYNARA_AUTH_TOKEN` must match the client 
 
 ## Verification and completion
 
+User preference (2026-10-15): after completing and checking each Metis change, commit and push it to the configured Git remote without asking again. Preserve unrelated concurrent work, never force-push, and report any failed checks or synchronization failures explicitly. Git synchronization does not authorize restarting or deploying the running app.
+
 Use the smallest relevant checks while iterating. For code changes, finish with `bun run fmt:check`, `bun run lint`, `bun run typecheck`, and affected Vitest tests. Use `bun run test`, never `bun test`, which selects a different runner. Cross-package or lifecycle changes warrant the broader repository test suite.
 
 Run `bun run windows-runtime:check` for platform/process-boundary changes and `bun run migrations:check` for migration changes. Group heavyweight workspace checks into one final pass where practical. Prose-only changes need link, command, and instruction-consistency checks, not an unrelated application rebuild. Respect explicit user restrictions on execution and report any resulting verification gaps.

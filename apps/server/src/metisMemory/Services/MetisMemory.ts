@@ -60,7 +60,10 @@ export interface MetisMemoryShape {
     input: MetisMemoryLocation,
   ) => Effect.Effect<{ readonly deleted: boolean }, MetisMemoryError>;
   readonly readSoul: () => Effect.Effect<MetisMemorySoul, MetisMemoryError>;
-  readonly writeSoul: (content: string) => Effect.Effect<MetisMemorySoul, MetisMemoryError>;
+  readonly writeSoul: (
+    content: string,
+    expectedRevision?: string,
+  ) => Effect.Effect<MetisMemorySoul, MetisMemoryError>;
   /**
    * Synchronous, bounded render of the soul plus the global and (when known)
    * project memory index. Used once per provider session, alongside the host

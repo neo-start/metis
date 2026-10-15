@@ -1,3 +1,4 @@
+import { MetisSidebarEntry } from "./MetisSidebarEntry";
 import { useProjectImportDialogStore } from "~/projectImport/projectImportDialogStore";
 // FILE: Sidebar.tsx
 // Purpose: Renders the project/thread sidebar, including row status, sorting, and thread actions.
@@ -5985,6 +5986,7 @@ export default function Sidebar() {
       )}
 
       <SidebarContent className="gap-0 font-system-ui">
+        {!isOnSettings && <MetisSidebarEntry />}
         {showArm64IntelBuildWarning && arm64IntelBuildWarningDescription ? (
           <SidebarGroup className="px-2 pt-2 pb-0">
             <Alert variant="warning" className="rounded-2xl border-warning/40 bg-warning/8">

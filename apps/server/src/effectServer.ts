@@ -1,3 +1,4 @@
+import { MetisControllerService } from "./metis/MetisControllerService.ts";
 import { PeerService } from "./peers/PeerService.ts";
 import { ProjectionPendingInteractionRepositoryLive } from "./persistence/Layers/ProjectionPendingInteractions";
 import http from "node:http";
@@ -268,6 +269,8 @@ export const createEffectServer = Effect.fn(function* (
   // Same for the previous graceful shutdown's snapshot of in-flight chats.
   const restartResumeSnapshot = yield* claimRestartResumeSnapshotAtStartup;
   yield* runtimeStartup.markCommandReady;
+  const metisController = yield* Effect.serviceOption(MetisControllerService);
+  if (metisController._tag === "Some") metisController.value.start();
   yield* Scope.provide(pullRequestFeedback.start(), subscriptionsScope);
   // The recorded chats get their continuation turn now that the orphaned turns
   // above are settled. Forked so the (rare) dispatch work never delays readiness.

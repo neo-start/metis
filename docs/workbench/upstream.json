@@ -18,6 +18,14 @@
       "source": "apps/web/src/components/auth/PairingRouteSurface.tsx",
       "target": "apps/web/src/pairingBootstrap.ts",
       "changes": "Manual pairing-code entry, fragment auto-submit and per-cause failure messages ported to Synara's pre-app DOM page; same /api/auth/bootstrap, no hosted pairing."
+    },
+    "instanceControllerReference": {
+      "sources": [
+        "docs/internals/connection-runtime.md",
+        "packages/client-runtime/src/connection/registry.ts"
+      ],
+      "targets": ["apps/server/src/metis", "apps/web/src/components/MetisSidebarEntry.tsx"],
+      "changes": "Design reference only; no T3 code copied. Persist identity separately from conversation/transport. Reuse the existing Synara orchestration engine, command receipts, normal ChatView and Metis memory service."
     }
   },
   "agentOrchestrator": {

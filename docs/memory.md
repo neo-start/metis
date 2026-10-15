@@ -1,6 +1,6 @@
 # Soul and long-term memory
 
-Metis keeps its own identity file ("soul") and long-term memories. They belong to Metis rather
+Metis has a [persistent instance controller](workbench/metis-controller.md), its own identity file ("soul") and long-term memories. They belong to Metis rather
 than to any single provider: every provider session reads them, whether it runs Codex, Codex 2,
 Claude, Cursor, Antigravity, Grok, Droid, Devin, OpenCode, or Pi. Agents can save what they learn,
 so the assistant keeps improving across sessions and provider switches.
@@ -13,9 +13,10 @@ Everything is plain markdown under the server state directory: `<base>/userdata/
 
 ```text
 memory/
-  soul.md                       identity, tone, and working style (you write it)
+  soul.md                       identity, tone, and working style
   global/<name>.md              memories that apply to every project
   projects/<projectId>/<name>.md memories for one project
+  history/<path-hash>/*.json    previous content, excluded from the live index
 ```
 
 Directories are created `0700` and files `0600`, through the same atomic temp-file-and-rename
@@ -79,7 +80,13 @@ Agents write directly, without an approval card; you review, edit, and delete in
 policy asks agents to keep one fact per memory, update instead of duplicating, delete wrong
 memories, and never store secrets or what the repository and git history already record. Agent
 writes that contain credential-shaped text (private keys, `sk-…`, `ghp_…`, AWS keys, JWTs, and
-similar) are rejected. Agents cannot edit `soul.md`.
+similar) are rejected. Ordinary task agents cannot edit `soul.md` through these tools. The designated
+instance controller can use `metis_self` to evolve it with an evidence-based reason and an expected
+revision; stale revisions are rejected. Agent memory writes append the source thread and turn.
+Updates preserve previous memory/soul content in private history files; deleting a memory also
+removes that file's history. The controller's automatic reflection is visible and can be disabled
+in Settings > Memory; it uses the controller's selected model at most once an hour when idle and
+there are changed conversations to review.
 
 ## Limits
 

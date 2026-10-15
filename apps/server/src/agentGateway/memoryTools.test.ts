@@ -156,7 +156,14 @@ describe.skipIf(process.platform === "win32")("synara_memory_* gateway tools", (
       scope: "project",
       name: "alpha-deploy",
     });
-    expect(read.json).toMatchObject({ name: "alpha-deploy", body: "Canary first, then prod.\n" });
+    expect(read.json).toMatchObject({
+      name: "alpha-deploy",
+      body: expect.stringContaining("Canary first, then prod."),
+    });
+
+    expect(read.json).toMatchObject({
+      body: expect.stringContaining("来源：Metis 会话 thread-alpha；轮次 turn-1"),
+    });
 
     const soul = await call(byName.get("synara_memory_read"), { scope: "soul" });
     expect(soul.json).toMatchObject({ scope: "soul", content: "" });

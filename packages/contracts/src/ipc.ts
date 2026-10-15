@@ -1,3 +1,4 @@
+import type { MetisControlInput, MetisIdentity } from "./metis";
 import type { PeerControlInput, PeerControlResult } from "./peers";
 import { Schema } from "effect";
 import type {
@@ -1103,6 +1104,7 @@ export interface NativeApi {
     onEvent: (callback: (event: AutomationStreamEvent) => void) => () => void;
   };
   /** Metis long-term memory: soul.md plus global and per-project memory files. */
+  metis: { control: (input: MetisControlInput) => Promise<MetisIdentity> };
   peers: { control: (input: PeerControlInput) => Promise<PeerControlResult> };
   memory: {
     getOverview: () => Promise<MetisMemoryOverview>;

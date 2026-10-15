@@ -1,3 +1,4 @@
+import { MetisControllerService } from "./metis/MetisControllerService.ts";
 import { PeerService } from "./peers/PeerService.ts";
 import { AgentGatewaySessionRegistry } from "./agentGateway/Services/AgentGatewaySessionRegistry";
 import { execFile } from "node:child_process";
@@ -429,6 +430,9 @@ const makeWsRpcHandlersLayer = () =>
       const deviceService = Option.getOrUndefined(yield* Effect.serviceOption(DeviceService));
       const computerService = Option.getOrUndefined(yield* Effect.serviceOption(ComputerService));
       // Optional so route-level tests can mount the group without memory files.
+      const metisController = Option.getOrUndefined(
+        yield* Effect.serviceOption(MetisControllerService),
+      );
       const peers = Option.getOrUndefined(yield* Effect.serviceOption(PeerService));
       const metisMemory = Option.getOrUndefined(yield* Effect.serviceOption(MetisMemory));
       // Memory holds personal context; only the owner session may read or edit it.
@@ -2149,6 +2153,18 @@ const makeWsRpcHandlersLayer = () =>
             ),
           ),
 
+        [WS_METHODS.metisControl]: ({ input }) =>
+          requireWsOwnerSession.pipe(
+            Effect.andThen(
+              Effect.tryPromise({
+                try: () => {
+                  if (!metisController) throw new Error("Metis controller is unavailable.");
+                  return metisController.control(input);
+                },
+                catch: (cause) => toWsRpcError(cause, "Metis controller operation failed"),
+              }),
+            ),
+          ),
         [WS_METHODS.peerControl]: ({ input }) =>
           requireWsOwnerSession.pipe(
             Effect.andThen(

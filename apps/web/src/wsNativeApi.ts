@@ -893,6 +893,7 @@ export function createWsNativeApi(): NativeApi {
       resolveProposal: (input) => transport.request(WS_METHODS.automationResolveProposal, input),
       onEvent: automationEventListeners.subscribe,
     },
+    metis: { control: (input) => transport.request(WS_METHODS.metisControl, { input }) },
     peers: { control: (input) => transport.request(WS_METHODS.peerControl, { input }) },
     memory: {
       getOverview: () => transport.request(WS_METHODS.memoryGetOverview),

@@ -281,6 +281,30 @@ describe.skipIf(process.platform === "win32")("metis memory file store", () => {
     ).toBe("limit-exceeded");
   });
 
+  it("preserves previous memory and soul content, and forgets deleted memory history", async () => {
+    const rootDir = makeRoot();
+    await Effect.runPromise(writeMetisMemoryFile({ ...baseWrite(rootDir), body: "Old lesson" }));
+    await Effect.runPromise(
+      writeMetisMemoryFile({ ...baseWrite(rootDir), body: "Corrected lesson" }),
+    );
+    await Effect.runPromise(writeMetisMemorySoul({ rootDir, content: "Original soul" }));
+    await Effect.runPromise(writeMetisMemorySoul({ rootDir, content: "Evolved soul" }));
+    const history = path.join(rootDir, "history");
+    const revisions = () =>
+      fs.readdirSync(history).flatMap((directory) =>
+        fs.readdirSync(path.join(history, directory)).map((file) => {
+          const location = path.join(history, directory, file);
+          expect(fs.statSync(location).mode & 0o777).toBe(0o600);
+          return JSON.parse(fs.readFileSync(location, "utf8")) as { path: string; content: string };
+        }),
+      );
+    expect(revisions().some((entry) => entry.content.includes("Old lesson"))).toBe(true);
+    expect(revisions().some((entry) => entry.content === "Original soul")).toBe(true);
+    await Effect.runPromise(deleteMetisMemoryFile(baseWrite(rootDir)));
+    expect(revisions().some((entry) => entry.content.includes("Old lesson"))).toBe(false);
+    expect(revisions().some((entry) => entry.content === "Original soul")).toBe(true);
+  });
+
   it("stores soul.md privately and caps its size", async () => {
     const rootDir = makeRoot();
     expect(readMetisMemorySoulSync(rootDir)).toEqual({

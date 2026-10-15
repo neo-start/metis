@@ -1,3 +1,4 @@
+import { MetisControlInput, MetisIdentity } from "./metis";
 import { PeerControlInput, PeerControlResult } from "./peers";
 import { Schema } from "effect";
 import * as Rpc from "effect/unstable/rpc/Rpc";
@@ -1593,7 +1594,14 @@ export const WsPeerControlRpc = Rpc.make(WS_METHODS.peerControl, {
   error: WsRpcError,
 });
 
+export const WsMetisControlRpc = Rpc.make(WS_METHODS.metisControl, {
+  payload: Schema.Struct({ input: MetisControlInput }),
+  success: MetisIdentity,
+  error: WsRpcError,
+});
+
 export const WsFeatureRpcGroup = RpcGroup.make(
+  WsMetisControlRpc,
   WsPeerControlRpc,
   WsOrchestrationDispatchCommandRpc,
   WsOrchestrationImportThreadRpc,

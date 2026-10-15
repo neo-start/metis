@@ -1,3 +1,5 @@
+import { MetisControllerService } from "../../metis/MetisControllerService.ts";
+import { makeMetisTools } from "../metisTools.ts";
 import { PeerService } from "../../peers/PeerService.ts";
 import { makePeerTools } from "../peerTools.ts";
 /**
@@ -165,6 +167,9 @@ export const makeAgentGateway = Effect.gen(function* () {
   // Optional so gateway tests that do not mount Metis memory keep their exact
   // tool catalog; the server runtime always provides it.
   const peers = Option.getOrUndefined(yield* Effect.serviceOption(PeerService));
+  const metisController = Option.getOrUndefined(
+    yield* Effect.serviceOption(MetisControllerService),
+  );
   const metisMemory = Option.getOrUndefined(yield* Effect.serviceOption(MetisMemory));
   const loadProviderAvailabilities = Effect.gen(function* () {
     const [settings, statuses] = yield* Effect.all([
@@ -1211,6 +1216,7 @@ export const makeAgentGateway = Effect.gen(function* () {
     setThreadGoal,
     ...automationTools,
     ...memoryTools,
+    ...(metisController && metisMemory ? makeMetisTools(metisController, metisMemory) : []),
     ...(peers ? makePeerTools(peers) : []),
     ...browserTools,
     ...(deviceService?.supported === true
@@ -1243,7 +1249,33 @@ export const makeAgentGateway = Effect.gen(function* () {
     handleMcpPost: makeAgentGatewayMcpTransport({
       credentials,
       snapshotQuery,
-      tools,
+      tools: metisController
+        ? tools.map((tool) => ({
+            ...tool,
+            handler: (args, context) =>
+              Effect.gen(function* () {
+                const reflection = yield* Effect.promise(() =>
+                  metisController.isReflectionTurn(context.callerThreadId, context.callerTurnId),
+                );
+                const allowed =
+                  tool.definition.name === "metis_self" ||
+                  tool.definition.name.startsWith("synara_memory_") ||
+                  [
+                    "synara_list_projects",
+                    "synara_list_threads",
+                    "synara_read_thread",
+                    "synara_read_thread_activity",
+                    "synara_read_thread_events",
+                    "synara_read_thread_runtime_events",
+                  ].includes(tool.definition.name);
+                if (reflection && !allowed)
+                  return mcpToolResultError(
+                    "Instance reflection only permits conversation reads and memory maintenance. Continue project work in a user-directed turn.",
+                  );
+                return yield* tool.handler(args, context);
+              }).pipe(Effect.catch((error) => Effect.succeed(mcpToolResultError(String(error))))),
+          }))
+        : tools,
       onCapabilityDenied: surfaceCapabilityDenial,
       // Namespace-insensitive: a session that never saw the catalog reaches
       // for prefixed spellings (synara_computer_click,
