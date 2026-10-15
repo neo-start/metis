@@ -19,6 +19,7 @@ import { serverConfigQueryOptions } from "~/lib/serverReactQuery";
 import { cn } from "~/lib/utils";
 import { useProjectImportDialogStore } from "~/projectImport/projectImportDialogStore";
 import { useStore } from "~/store";
+import { createSidebarDisplayThreadsSelector } from "~/storeSelectors";
 import { useWorkspacePathsStore } from "~/workspacePathsStore";
 import { useProviderUsageOverview } from "~/hooks/useProviderUsageOverview";
 import { ProviderIcon } from "./ProviderIcon";
@@ -44,7 +45,7 @@ export function WorkbenchHome() {
   const trafficLightGutter = useDesktopTopBarTrafficLightGutterClassName();
   const windowControlsGutter = useDesktopTopBarWindowControlsGutterClassName();
   const projects = useStore((state) => state.projects);
-  const summaries = useStore((state) => state.sidebarThreadSummaryById);
+  const summaries = useStore(useMemo(() => createSidebarDisplayThreadsSelector(), []));
   const hydrated = useStore((state) => state.threadsHydrated);
   const homeDir = useWorkspacePathsStore((state) => state.homeDir);
   const { handleNewChat } = useHandleNewChat();
@@ -57,7 +58,7 @@ export function WorkbenchHome() {
   const projectById = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects]);
   const threads = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
-    const matching = Object.values(summaries)
+    const matching = summaries
       .filter(
         (thread) => !thread.archivedAt && !thread.parentThreadId && !thread.sidechatSourceThreadId,
       )
@@ -96,7 +97,7 @@ export function WorkbenchHome() {
       "updated_at",
     ).map(({ thread }) => thread);
   }, [summaries, search, projectById]);
-  const activeCount = Object.values(summaries).filter((thread) => {
+  const activeCount = summaries.filter((thread) => {
     if (thread.archivedAt || thread.parentThreadId || thread.sidechatSourceThreadId) return false;
     const status = resolveThreadStatusPill({
       thread,

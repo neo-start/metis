@@ -344,24 +344,40 @@ export function createThreadExistsSelector(
   return (state) => (threadId ? Boolean(state.threadShellById?.[threadId]) : false);
 }
 
-export function createSidebarThreadSummariesSelector(): (
-  state: AppState,
-) => readonly SidebarThreadSummary[] {
+export function createSidebarThreadSummariesSelector(options?: {
+  hideMetisController?: boolean;
+}): (state: AppState) => readonly SidebarThreadSummary[] {
   let previousThreadIds: readonly ThreadId[] | undefined;
   let previousSummaryById: Record<string, SidebarThreadSummary> | undefined;
+  let previousProjects: AppState["projects"] | undefined;
   let previousSummaries: readonly SidebarThreadSummary[] = [];
 
   return (state) => {
     const threadIds = state.threadIds;
-    if (threadIds === previousThreadIds && state.sidebarThreadSummaryById === previousSummaryById) {
+    if (
+      threadIds === previousThreadIds &&
+      state.sidebarThreadSummaryById === previousSummaryById &&
+      (!options?.hideMetisController || state.projects === previousProjects)
+    ) {
       return previousSummaries;
     }
 
+    previousProjects = state.projects;
+    const hiddenProjectIds = new Set(
+      options?.hideMetisController
+        ? state.projects
+            .filter(
+              (project) =>
+                project.kind === "chat" && /(?:^|[\\/])metis-console[\\/]?$/.test(project.cwd),
+            )
+            .map((project) => project.id)
+        : [],
+    );
     previousThreadIds = threadIds;
     previousSummaryById = state.sidebarThreadSummaryById;
     previousSummaries = (threadIds ?? []).flatMap((threadId) => {
       const summary = state.sidebarThreadSummaryById[threadId];
-      return summary ? [summary] : [];
+      return summary && !hiddenProjectIds.has(summary.projectId) ? [summary] : [];
     });
     return previousSummaries;
   };
@@ -370,21 +386,16 @@ export function createSidebarThreadSummariesSelector(): (
 export function createComposerThreadMentionSourcesSelector(): (
   state: AppState,
 ) => readonly ComposerThreadMentionSource[] {
-  let previousThreadIds: AppState["threadIds"] | undefined;
-  let previousSummaryById: AppState["sidebarThreadSummaryById"] | undefined;
+  const selectSummaries = createSidebarThreadSummariesSelector({ hideMetisController: true });
+  let previousSummaries: readonly SidebarThreadSummary[] | undefined;
   let previousSources: readonly ComposerThreadMentionSource[] = [];
 
   return (state) => {
-    const threadIds = state.threadIds;
-    const summaryById = state.sidebarThreadSummaryById;
-    if (threadIds === previousThreadIds && summaryById === previousSummaryById) {
-      return previousSources;
-    }
-    previousThreadIds = threadIds;
-    previousSummaryById = summaryById;
+    const summaries = selectSummaries(state);
+    if (summaries === previousSummaries) return previousSources;
+    previousSummaries = summaries;
 
-    const nextSources = (threadIds ?? []).flatMap((threadId) => {
-      const thread = summaryById[threadId];
+    const nextSources = summaries.flatMap((thread) => {
       return thread && !thread.sidechatSourceThreadId
         ? [
             {
@@ -479,7 +490,9 @@ export function createSidechatSummariesForSourceSelector(
 export function createSidebarDisplayThreadsSelector(
   options?: SidebarThreadVisibilityOptions,
 ): (state: AppState) => readonly SidebarThreadSummary[] {
-  const selectSidebarSummaries = createSidebarThreadSummariesSelector();
+  const selectSidebarSummaries = createSidebarThreadSummariesSelector({
+    hideMetisController: true,
+  });
   let previousSummaries: readonly SidebarThreadSummary[] | undefined;
   let previousDisplaySummaries: readonly SidebarThreadSummary[] = [];
 
@@ -507,7 +520,9 @@ export function createSidebarDisplayThreadsSelector(
 export function createSidebarTreeThreadsSelector(
   options?: SidebarThreadVisibilityOptions,
 ): (state: AppState) => readonly SidebarThreadSummary[] {
-  const selectSidebarSummaries = createSidebarThreadSummariesSelector();
+  const selectSidebarSummaries = createSidebarThreadSummariesSelector({
+    hideMetisController: true,
+  });
   let previousSummaries: readonly SidebarThreadSummary[] | undefined;
   let previousTreeSummaries: readonly SidebarThreadSummary[] = [];
 
