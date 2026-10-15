@@ -11,8 +11,8 @@
  *
  * Transport is the Feishu "long connection" (outbound websocket): no public
  * callback URL, works behind NAT, reconnects on its own. Only the open ids in
- * `feishu-app.json` are answered; the SDK policy drops everyone else before the
- * handler sees them.
+ * `feishu-app.json` are answered; the handler checks the allowlist before any
+ * attachment download or orchestration command.
  *
  * @module feishu/Layers/FeishuBridge
  */
@@ -28,6 +28,8 @@ import { writeFileStringAtomically } from "../../atomicWrite.ts";
 import { ServerConfig } from "../../config.ts";
 import { OrchestrationEngineService } from "../../orchestration/Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
+import { ManagedAttachmentRepository } from "../../persistence/Services/ManagedAttachments.ts";
+import { withFeishuInboundAttachments } from "../feishuInboundAttachments.ts";
 import { FeishuBridge, type FeishuBridgeShape } from "../Services/FeishuBridge.ts";
 import {
   FEISHU_APP_CONFIG_FILENAME,
@@ -86,6 +88,7 @@ const make = Effect.gen(function* () {
   const config = yield* ServerConfig;
   const orchestrationEngine = yield* OrchestrationEngineService;
   const snapshotQuery = yield* ProjectionSnapshotQuery;
+  const attachmentRepository = yield* ManagedAttachmentRepository;
 
   const configPath = path.join(config.baseDir, FEISHU_APP_CONFIG_FILENAME);
   const chatMapPath = path.join(config.baseDir, FEISHU_CHAT_MAP_FILENAME);
@@ -314,27 +317,40 @@ const make = Effect.gen(function* () {
           return;
         }
         const startedAt = new Date().toISOString();
-        const prompt =
-          message.resources.length > 0
-            ? `${text}\n\n（附件 ${message.resources.length} 个未随消息带入，暂只处理文字。）`
-            : text;
-        await run(
-          orchestrationEngine.dispatch({
-            type: "thread.turn.start",
-            commandId: CommandId.makeUnsafe(`feishu:turn:${message.messageId}`),
-            threadId,
-            message: {
-              messageId: MessageId.makeUnsafe(`feishu:${message.messageId}`),
-              role: "user",
-              text: prompt,
-              attachments: [],
-            },
-            dispatchMode: "queue",
-            runtimeMode: "full-access",
-            interactionMode: "default",
-            createdAt: startedAt,
-          }),
-        );
+        // Do not redownload already accepted messages on channel redelivery.
+        const messageId = MessageId.makeUnsafe(`feishu:${message.messageId}`);
+        if ((await readDetail(threadId))?.messages.some((entry) => entry.id === messageId)) return;
+        await withFeishuInboundAttachments({
+          appId: bridgeConfig.appId,
+          senderId: message.senderId,
+          messageId: message.messageId,
+          threadId,
+          resources: message.resources,
+          attachmentsDir: config.attachmentsDir,
+          repository: attachmentRepository,
+          getResource: (request) => channel.rawClient.im.v1.messageResource.get(request),
+          submit: (attachments, attachmentPrincipal) =>
+            run(
+              orchestrationEngine.dispatch(
+                {
+                  type: "thread.turn.start",
+                  commandId: CommandId.makeUnsafe(`feishu:turn:${message.messageId}`),
+                  threadId,
+                  message: {
+                    messageId,
+                    role: "user",
+                    text: text || "请查看附件。",
+                    attachments,
+                  },
+                  dispatchMode: "queue",
+                  runtimeMode: "full-access",
+                  interactionMode: "default",
+                  createdAt: startedAt,
+                },
+                { attachmentPrincipal },
+              ),
+            ),
+        });
 
         let outcome: TurnOutcome | null = null;
         await channel.stream(
