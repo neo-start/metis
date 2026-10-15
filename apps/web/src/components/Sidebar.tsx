@@ -1322,7 +1322,7 @@ export function SidebarSurfacePicker({
           />
         }
       >
-        <span className="font-display min-w-0 truncate text-[17px] text-foreground">
+        <span className="min-w-0 truncate text-ui font-normal text-foreground">
           {activeCopy.title}
         </span>
         <DisclosureChevron open className="text-muted-foreground/70" />
@@ -1700,7 +1700,10 @@ export default function Sidebar() {
   const routeActiveSidebarThreadId = routeThreadId;
   const activeSidebarThreadId = optimisticActiveThreadId ?? routeActiveSidebarThreadId;
   const visualActiveSidebarThreadId = optimisticActiveThreadId ?? routeThreadId;
-  const selectSidebarThreads = useMemo(() => createSidebarThreadSummariesSelector(), []);
+  const selectSidebarThreads = useMemo(
+    () => createSidebarThreadSummariesSelector({ hideMetisController: true }),
+    [],
+  );
   const hideAutomationRunThreads = !appSettings.showAutomationRunThreads;
   const selectSidebarTreeThreads = useMemo(
     () => createSidebarTreeThreadsSelector({ hideAutomationRunThreads }),
