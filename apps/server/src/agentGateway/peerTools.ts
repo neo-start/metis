@@ -5,7 +5,21 @@ import type { PeerManager } from "../peers/PeerManager.ts";
 import { mcpToolResultError, mcpToolResultJson } from "./protocol.ts";
 import type { ToolEntry } from "./toolRuntime.ts";
 
-export function makePeerTools(manager: PeerManager): ReadonlyArray<ToolEntry> {
+const peerToolActions = [
+  "status",
+  "message",
+  "task",
+  "cancel",
+  "chat.list",
+  "chat.open",
+  "chat.read",
+  "chat.send",
+  "chat.stop",
+];
+
+export function makePeerTools(
+  manager: Pick<PeerManager, "overview" | "remote">,
+): ReadonlyArray<ToolEntry> {
   return [
     {
       definition: {
@@ -38,17 +52,7 @@ export function makePeerTools(manager: PeerManager): ReadonlyArray<ToolEntry> {
             peerId: { type: "string" },
             action: {
               type: "string",
-              enum: [
-                "status",
-                "message",
-                "task",
-                "cancel",
-                "chat.list",
-                "chat.open",
-                "chat.read",
-                "chat.send",
-                "chat.stop",
-              ],
+              enum: peerToolActions,
             },
             chatId: { type: "string" },
             title: { type: "string" },
@@ -69,7 +73,7 @@ export function makePeerTools(manager: PeerManager): ReadonlyArray<ToolEntry> {
         Effect.gen(function* () {
           yield* context.assertCallerTurnActive();
           return yield* Effect.tryPromise(async () => {
-            if (!["status", "message", "task", "cancel"].includes(String(args.action)))
+            if (!peerToolActions.includes(String(args.action)))
               throw new Error("Agent 工具不允许审批或回答权限请求，请由所有者在设备任务中处理。");
             const peerId = Schema.decodeUnknownSync(PeerId)(args.peerId);
             const id =
