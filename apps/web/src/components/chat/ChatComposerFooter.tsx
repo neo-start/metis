@@ -47,6 +47,9 @@ interface ChatComposerFooterProps {
     showPlanFollowUp: boolean;
     hasPrompt: boolean;
     onInterrupt: () => void;
+    interruptDisabled?: boolean;
+    interruptTitle?: string;
+    sendAriaLabel?: string;
     onImplementInNewThread: () => void;
   };
 }
@@ -172,8 +175,12 @@ export function ChatComposerFooter({
             size="icon-xs"
             className="sm:size-[26px]"
             onClick={submission.onInterrupt}
+            disabled={submission.interruptDisabled}
             aria-label="Stop generation"
-            title="Stop the current response. On Mac, press Ctrl+C to interrupt."
+            title={
+              submission.interruptTitle ??
+              "Stop the current response. On Mac, press Ctrl+C to interrupt."
+            }
           >
             <span aria-hidden="true" className="block size-2 rounded-[1px] bg-current" />
           </Button>
@@ -279,7 +286,7 @@ export function ChatComposerFooter({
                           ? "Preparing worktree"
                           : submission.busy
                             ? "Sending"
-                            : "Send message"
+                            : (submission.sendAriaLabel ?? "Send message")
                 }
                 title={
                   submission.hasPendingCacheReview

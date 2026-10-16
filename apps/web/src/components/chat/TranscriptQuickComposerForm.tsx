@@ -85,6 +85,11 @@ interface TranscriptQuickComposerFormProps {
   readonly header: ReactNode;
   /** Leading footer content (e.g. an environment picker); the send button always trails. */
   readonly footerLeading?: ReactNode;
+  /** Full chat surfaces can reuse the standard composer footer and editor spacing. */
+  readonly footer?: ReactNode;
+  readonly layout?: "compact" | "chat";
+  /** Lock an unconfirmed draft while keeping its retry action available. */
+  readonly editorDisabled?: boolean;
   readonly placeholder: string;
   readonly editorAriaLabel: string;
   readonly sendAriaLabel: string;
@@ -106,6 +111,9 @@ export function TranscriptQuickComposerForm({
   error,
   header,
   footerLeading,
+  footer,
+  layout = "compact",
+  editorDisabled = false,
   placeholder,
   editorAriaLabel,
   sendAriaLabel,
@@ -124,16 +132,23 @@ export function TranscriptQuickComposerForm({
               onSend();
             }}
           >
-            <div className={cn(COMPOSER_EDITOR_PADDING_CLASS_NAME, "px-2.5 pt-2 pb-1")}>
-              <div className="mb-1 flex items-center justify-between gap-2">{header}</div>
+            <div
+              className={cn(
+                COMPOSER_EDITOR_PADDING_CLASS_NAME,
+                layout === "compact" && "px-2.5 pt-2 pb-1",
+              )}
+            >
+              {(header || layout === "compact") && (
+                <div className="mb-1 flex items-center justify-between gap-2">{header}</div>
+              )}
               <ComposerPromptEditor
                 ref={inputRef}
                 value={value}
                 cursor={cursor}
                 terminalContexts={[]}
-                disabled={busy}
+                disabled={busy || editorDisabled}
                 ariaLabel={editorAriaLabel}
-                className="min-h-[1lh]"
+                className={layout === "compact" ? "min-h-[1lh]" : ""}
                 placeholder={placeholder}
                 onRemoveTerminalContext={() => {}}
                 onPaste={() => {}}
@@ -150,32 +165,34 @@ export function TranscriptQuickComposerForm({
                 {error}
               </p>
             ) : null}
-            <div
-              className={cn(
-                COMPOSER_FOOTER_ROW_CLASS_NAME,
-                "gap-2",
-                !footerLeading && "justify-end",
-              )}
-            >
-              {footerLeading}
-              <Button
-                type="submit"
-                variant="prominent"
-                size="icon-xs"
-                className="size-7 rounded-full sm:size-7"
-                aria-label={sendAriaLabel}
-                disabled={busy || !value.trim()}
-              >
-                {busy ? (
-                  <LoaderCircleIcon className="size-3 animate-spin" />
-                ) : (
-                  <ComposerSendArrowIcon
-                    aria-hidden="true"
-                    className="size-5 shrink-0 translate-y-px"
-                  />
+            {footer ?? (
+              <div
+                className={cn(
+                  COMPOSER_FOOTER_ROW_CLASS_NAME,
+                  "gap-2",
+                  !footerLeading && "justify-end",
                 )}
-              </Button>
-            </div>
+              >
+                {footerLeading}
+                <Button
+                  type="submit"
+                  variant="prominent"
+                  size="icon-xs"
+                  className="size-7 rounded-full sm:size-7"
+                  aria-label={sendAriaLabel}
+                  disabled={busy || !value.trim()}
+                >
+                  {busy ? (
+                    <LoaderCircleIcon className="size-3 animate-spin" />
+                  ) : (
+                    <ComposerSendArrowIcon
+                      aria-hidden="true"
+                      className="size-5 shrink-0 translate-y-px"
+                    />
+                  )}
+                </Button>
+              </div>
+            )}
           </form>
         </DisclosureRegion>
       </div>

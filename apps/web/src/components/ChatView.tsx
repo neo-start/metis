@@ -260,7 +260,7 @@ import PlanSidebar from "./PlanSidebar";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import { RenameThreadDialog } from "./RenameThreadDialog";
 import { SidebarHeaderNavigationControls } from "./SidebarHeaderNavigationControls";
-import { SynaraLogo } from "./SynaraLogo";
+import { ChatEmptyStateHero } from "./chat/ChatEmptyStateHero";
 import { ProjectImportLandingBanner } from "~/projectImport/ProjectImportLandingBanner";
 import TerminalWorkspaceTabs from "./TerminalWorkspaceTabs";
 import { ThreadWorktreeHandoffDialog } from "./ThreadWorktreeHandoffDialog";
@@ -338,7 +338,6 @@ import type { LateComposerSendHandlers } from "./chat/chatSendTypes";
 import { composerTranscriptBottomInsetPx, useComposerOverlayHeight } from "./chat/composerOverlay";
 import {
   CHAT_BACKGROUND_CLASS_NAME,
-  CHAT_COLUMN_FRAME_CLASS_NAME,
   CHAT_COLUMN_GUTTER_CLASS_NAME,
   COMPOSER_COLUMN_FRAME_CLASS_NAME,
   COMPOSER_COMMAND_MENU_FLOATING_WRAPPER_CLASS_NAME,
@@ -6140,18 +6139,10 @@ export default function ChatView({
                   <div className="absolute inset-x-0 top-4 flex justify-center px-6 [@media(max-height:620px)]:hidden">
                     <ProjectImportLandingBanner className="w-full max-w-[520px]" />
                   </div>
-                  <div
-                    className={cn(
-                      "flex flex-col items-center gap-4 px-6 text-center select-none",
-                      CHAT_COLUMN_FRAME_CLASS_NAME,
-                    )}
-                  >
-                    <SynaraLogo aria-label="Metis logo" className="size-10" />
-                    <h2
-                      data-testid="empty-landing-heading"
-                      className="text-[26px] font-normal leading-[1.15] tracking-[-0.015em] text-foreground/95 sm:text-[30px]"
-                    >
-                      {isEmptyChatLanding ? (
+                  <ChatEmptyStateHero
+                    variant="landing"
+                    heading={
+                      isEmptyChatLanding ? (
                         "What should we work on?"
                       ) : (
                         <>
@@ -6184,9 +6175,9 @@ export default function ChatView({
                           )}
                           ?
                         </>
-                      )}
-                    </h2>
-                  </div>
+                      )
+                    }
+                  />
                 </div>
                 <div className="w-full shrink-0 pb-3 sm:pb-4">
                   {composerSection}

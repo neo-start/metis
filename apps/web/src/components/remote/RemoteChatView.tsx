@@ -15,6 +15,7 @@ import { remoteChat, remoteChatsKey, remoteThreadKey, useRemoteDevices } from "~
 import { RemoteChatContentContext } from "~/lib/remoteChatContent";
 import { WorkspaceFileOpenerContext } from "~/lib/workspaceFileOpener";
 import { cn, randomUUID } from "~/lib/utils";
+import { EllipsisIcon } from "~/lib/icons";
 import {
   derivePendingApprovals,
   derivePendingUserInputs,
@@ -40,7 +41,9 @@ import { ComposerColumnFrame } from "../chat/ComposerColumnFrame";
 import { ComposerPendingApprovalPanel } from "../chat/ComposerPendingApprovalPanel";
 import { UserInputQuestionForm } from "../chat/UserInputQuestionForm";
 import { ComposerPickerMenuPopup } from "../chat/ComposerPickerMenuPopup";
-import { TranscriptQuickComposerForm } from "../chat/TranscriptQuickComposerForm";
+import { ChatEmptyStateHero } from "../chat/ChatEmptyStateHero";
+import { ChatSurfaceHeader } from "../chat/ChatSurfaceHeader";
+import { RemoteChatComposer } from "./RemoteChatComposer";
 import {
   CHAT_SURFACE_HEADER_HEIGHT_CLASS,
   CHAT_SURFACE_HEADER_PADDING_X_CLASS,
@@ -248,6 +251,7 @@ function Conversation({
       submittingRef.current ||
       mutate.isPending ||
       !enabled ||
+      !thread ||
       (!pendingRef.current && !draft.trim())
     )
       return;
@@ -277,7 +281,7 @@ function Conversation({
     }
   };
   const stop = () => {
-    if (thread?.latestTurn)
+    if (enabled && !mutate.isPending && thread?.latestTurn?.state === "running")
       mutate.mutate({
         action: "chat.stop",
         chatId,
@@ -344,7 +348,7 @@ function Conversation({
   return (
     <RouteInsetSurface>
       <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col", CHAT_BACKGROUND_CLASS_NAME)}>
-        <header
+        <ChatSurfaceHeader
           className={cn(
             "flex shrink-0 items-center gap-3",
             CHAT_SURFACE_HEADER_HEIGHT_CLASS,
@@ -370,7 +374,7 @@ function Conversation({
           </div>
           <Menu>
             <MenuTrigger render={<Button variant="ghost" size="sm" aria-label="对话操作" />}>
-              ···
+              <EllipsisIcon aria-hidden="true" className="size-4" />
             </MenuTrigger>
             <ComposerPickerMenuPopup align="end">
               <MenuItem disabled={!thread || mutate.isPending} onClick={() => setRenameOpen(true)}>
@@ -389,7 +393,7 @@ function Conversation({
               </MenuItem>
             </ComposerPickerMenuPopup>
           </Menu>
-        </header>
+        </ChatSurfaceHeader>
         {query.error && (
           <div
             role="status"
@@ -457,17 +461,23 @@ function Conversation({
                 timestampFormat={settings.timestampFormat}
                 chatFontSizePx={settings.chatFontSizePx}
                 emptyStateContent={
-                  <div className="text-center text-ui text-muted-foreground">
-                    {query.isPending
-                      ? "连接远端主控…"
-                      : "与同一个 Metis 开始新的对话，共享记忆，独立上下文。"}
-                  </div>
+                  thread ? (
+                    <ChatEmptyStateHero variant="landing" />
+                  ) : (
+                    <div role="status" className="px-6 text-center text-ui text-muted-foreground">
+                      {!enabled
+                        ? "协作已关闭"
+                        : query.error
+                          ? "连接中断，请重连后继续。"
+                          : "连接远端主控…"}
+                    </div>
+                  )
                 }
               />
             </WorkspaceFileOpenerContext.Provider>
           </RemoteChatContentContext.Provider>
         </div>
-        <div className={cn("shrink-0 pb-4 pt-3 sm:pb-5", CHAT_COLUMN_GUTTER_CLASS_NAME)}>
+        <div className={cn("shrink-0 pb-3 pt-3 sm:pb-4", CHAT_COLUMN_GUTTER_CLASS_NAME)}>
           <ComposerColumnFrame>
             {scroll.showScrollToBottom && (
               <Button variant="ghost" size="sm" onClick={scroll.onScrollToBottom}>
@@ -515,40 +525,15 @@ function Conversation({
                 }}
               />
             )}
-            <TranscriptQuickComposerForm
+            <RemoteChatComposer
               inputRef={editor}
+              thread={thread}
+              deviceName={name}
               value={pending?.text ?? draft}
               cursor={cursor}
-              busy={!enabled || mutate.isPending}
+              busy={!enabled || !thread || mutate.isPending}
+              pending={pending !== null}
               error={mutate.error?.message ?? null}
-              header={
-                pending ? (
-                  <span className="text-ui-xs text-muted-foreground">
-                    消息正在确认；再次发送会确认同一条消息。
-                  </span>
-                ) : null
-              }
-              footerLeading={
-                <div className="flex min-w-0 flex-1 items-center gap-2 text-ui-xs text-muted-foreground">
-                  <span className="truncate">
-                    {thread?.modelSelection.model} · {name}
-                  </span>
-                  {running && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      disabled={mutate.isPending}
-                      onClick={stop}
-                    >
-                      停止
-                    </Button>
-                  )}
-                </div>
-              }
-              placeholder="发消息给远端 Metis…"
-              editorAriaLabel="给远端主控的消息"
-              sendAriaLabel={pending ? "确认发送" : "发送消息"}
               onChange={(value, position) => {
                 if (pending) return;
                 setDraft(value);
@@ -556,6 +541,7 @@ function Conversation({
                 localStorage.setItem(storageKey, JSON.stringify(value));
               }}
               onSend={() => void send()}
+              onStop={stop}
             />
             {thread?.claudeCacheReview && (
               <p className="pt-2 text-ui-xs text-muted-foreground">

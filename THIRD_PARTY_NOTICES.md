@@ -29,6 +29,8 @@ The controller `/clear` fix reuses Synara's `apps/web/src/components/ChatView.ts
 
 The project-update conversation feature reuses this fork’s Synara paired transport, durable chat outbox, engine receipts, process runner and shared chat gutters at `b22e6cd7f`. The original Synara process runner was also reviewed at `eaa61eded31b6755d4f30ba8eabc5d905cf817cb`. T3 `apps/web/src/components/Sidebar.tsx` at `f5ef0ddb90a8c36584e181b1913e7b8a5df30ffc` was reviewed for layout references; no T3 code was copied. Provenance is recorded in `docs/workbench/upstream.json`.
 
+Remote chat presentation (2026-10-17) reuses this fork’s Synara `ChatView.tsx`, `ChatEmptyStateHero.tsx`, `TranscriptQuickComposerForm.tsx`, `ChatComposerFooter.tsx`, and model/runtime presentation helpers at `d592f1b44174997a65179dad6d9047c3da8754b8`. T3 `NoProjectsHero.tsx` and `chat/ChatComposer.tsx` at `f5ef0ddb90a8c36584e181b1913e7b8a5df30ffc` were reviewed; no T3 source was copied. Shared landing and composer presentation retain the existing device-scoped transport and read-only remote settings.
+
 ## T3 Code license
 
 The Agent task management additions reuse Synara's existing Activity rows,

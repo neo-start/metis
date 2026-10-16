@@ -63,6 +63,24 @@
         "apps/web/src/components/settings/PeerSettingsPanel.tsx"
       ],
       "changes": "Reuse paired mTLS transport, durable chat outbox, command receipts, platform process runner and shared chat gutters. Add owner-configured published-commit monitoring with stable remote controller conversations; no new remote execution endpoint."
+    },
+    "remoteChatPresentationAdaptation": {
+      "localBaseCommit": "d592f1b44174997a65179dad6d9047c3da8754b8",
+      "sources": [
+        "apps/web/src/components/ChatView.tsx",
+        "apps/web/src/components/chat/ChatEmptyStateHero.tsx",
+        "apps/web/src/components/chat/TranscriptQuickComposerForm.tsx",
+        "apps/web/src/components/chat/ChatComposerFooter.tsx",
+        "apps/web/src/lib/threadModelSummary.ts",
+        "apps/web/src/lib/runtimeMode.ts"
+      ],
+      "targets": [
+        "apps/web/src/components/remote/RemoteChatView.tsx",
+        "apps/web/src/components/remote/RemoteChatComposer.tsx",
+        "apps/web/src/components/chat/ChatEmptyStateHero.tsx",
+        "apps/web/src/components/chat/TranscriptQuickComposerForm.tsx"
+      ],
+      "changes": "Share the local landing hero, full-size editor and composer footer with Remote. Preserve device-scoped drafts, stable send IDs, queued follow-ups and approvals; display remote model and permission settings without invoking local configuration or file APIs."
     }
   },
   "t3code": {
@@ -112,6 +130,15 @@
         "apps/web/src/components/remote/RemoteChatView.tsx"
       ],
       "changes": "Reviewed sidebar and content inset references. No upstream code copied; retain Synara chat column, settings rows and source launcher."
+    },
+    "remoteChatPresentationReference": {
+      "commit": "f5ef0ddb90a8c36584e181b1913e7b8a5df30ffc",
+      "sources": [
+        "apps/web/src/components/NoProjectsHero.tsx",
+        "apps/web/src/components/chat/ChatComposer.tsx"
+      ],
+      "target": "apps/web/src/components/remote/RemoteChatComposer.tsx",
+      "changes": "Reviewed empty-landing and composer entrypoints. No T3 code copied; reuse the existing Synara presentation components and retain its peer transport."
     }
   },
   "agentOrchestrator": {
