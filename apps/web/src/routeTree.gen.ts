@@ -23,6 +23,7 @@ import { Route as ChatKanbanIndexRouteImport } from './routes/_chat.kanban.index
 import { Route as ChatAutomationsIndexRouteImport } from './routes/_chat.automations.index'
 import { Route as ChatKanbanProjectIdRouteImport } from './routes/_chat.kanban.$projectId'
 import { Route as ChatAutomationsAutomationIdRouteImport } from './routes/_chat.automations.$automationId'
+import { Route as ChatRemotePeerIdChatIdRouteImport } from './routes/_chat.remote.$peerId.$chatId'
 
 const ChatRoute = ChatRouteImport.update({
   id: '/_chat',
@@ -94,6 +95,11 @@ const ChatAutomationsAutomationIdRoute =
     path: '/$automationId',
     getParentRoute: () => ChatAutomationsRoute,
   } as any)
+const ChatRemotePeerIdChatIdRoute = ChatRemotePeerIdChatIdRouteImport.update({
+  id: '/remote/$peerId/$chatId',
+  path: '/remote/$peerId/$chatId',
+  getParentRoute: () => ChatRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof ChatIndexRoute
@@ -109,6 +115,7 @@ export interface FileRoutesByFullPath {
   '/kanban/': typeof ChatKanbanIndexRoute
   '/pull-requests/': typeof ChatPullRequestsIndexRoute
   '/studio/': typeof ChatStudioIndexRoute
+  '/remote/$peerId/$chatId': typeof ChatRemotePeerIdChatIdRoute
 }
 export interface FileRoutesByTo {
   '/$threadId': typeof ChatThreadIdRoute
@@ -122,6 +129,7 @@ export interface FileRoutesByTo {
   '/kanban': typeof ChatKanbanIndexRoute
   '/pull-requests': typeof ChatPullRequestsIndexRoute
   '/studio': typeof ChatStudioIndexRoute
+  '/remote/$peerId/$chatId': typeof ChatRemotePeerIdChatIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -139,6 +147,7 @@ export interface FileRoutesById {
   '/_chat/kanban/': typeof ChatKanbanIndexRoute
   '/_chat/pull-requests/': typeof ChatPullRequestsIndexRoute
   '/_chat/studio/': typeof ChatStudioIndexRoute
+  '/_chat/remote/$peerId/$chatId': typeof ChatRemotePeerIdChatIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -156,6 +165,7 @@ export interface FileRouteTypes {
     | '/kanban/'
     | '/pull-requests/'
     | '/studio/'
+    | '/remote/$peerId/$chatId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/$threadId'
@@ -169,6 +179,7 @@ export interface FileRouteTypes {
     | '/kanban'
     | '/pull-requests'
     | '/studio'
+    | '/remote/$peerId/$chatId'
   id:
     | '__root__'
     | '/_chat'
@@ -185,6 +196,7 @@ export interface FileRouteTypes {
     | '/_chat/kanban/'
     | '/_chat/pull-requests/'
     | '/_chat/studio/'
+    | '/_chat/remote/$peerId/$chatId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -291,6 +303,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatAutomationsAutomationIdRouteImport
       parentRoute: typeof ChatAutomationsRoute
     }
+    '/_chat/remote/$peerId/$chatId': {
+      id: '/_chat/remote/$peerId/$chatId'
+      path: '/remote/$peerId/$chatId'
+      fullPath: '/remote/$peerId/$chatId'
+      preLoaderRoute: typeof ChatRemotePeerIdChatIdRouteImport
+      parentRoute: typeof ChatRoute
+    }
   }
 }
 
@@ -330,6 +349,7 @@ interface ChatRouteChildren {
   ChatKanbanProjectIdRoute: typeof ChatKanbanProjectIdRoute
   ChatKanbanIndexRoute: typeof ChatKanbanIndexRoute
   ChatStudioIndexRoute: typeof ChatStudioIndexRoute
+  ChatRemotePeerIdChatIdRoute: typeof ChatRemotePeerIdChatIdRoute
 }
 
 const ChatRouteChildren: ChatRouteChildren = {
@@ -343,6 +363,7 @@ const ChatRouteChildren: ChatRouteChildren = {
   ChatKanbanProjectIdRoute: ChatKanbanProjectIdRoute,
   ChatKanbanIndexRoute: ChatKanbanIndexRoute,
   ChatStudioIndexRoute: ChatStudioIndexRoute,
+  ChatRemotePeerIdChatIdRoute: ChatRemotePeerIdChatIdRoute,
 }
 
 const ChatRouteWithChildren = ChatRoute._addFileChildren(ChatRouteChildren)

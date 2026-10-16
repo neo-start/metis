@@ -206,9 +206,12 @@ export function makeServerRuntimeServicesLayer(
   // Installs the process-wide memory context source that provider adapters
   // read when they deliver the host policy, and backs the synara_memory_* tools.
   const metisMemoryLayer = MetisMemoryLive.pipe(Layer.provideMerge(runtimeServicesLayer));
-  const peerServiceLayer = PeerServiceLive.pipe(Layer.provideMerge(runtimeServicesLayer));
   const metisControllerLayer = MetisControllerLive.pipe(
     Layer.provideMerge(metisMemoryLayer),
+    Layer.provideMerge(runtimeServicesLayer),
+  );
+  const peerServiceLayer = PeerServiceLive.pipe(
+    Layer.provideMerge(metisControllerLayer),
     Layer.provideMerge(runtimeServicesLayer),
   );
   const agentGatewayLayer = AgentGatewayLive.pipe(

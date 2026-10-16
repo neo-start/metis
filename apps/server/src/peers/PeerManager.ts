@@ -9,6 +9,7 @@ import { Bonjour } from "bonjour-service";
 import { generate } from "selfsigned";
 import { Effect, Schema } from "effect";
 import {
+  isPeerChatRequest,
   PeerId,
   PeerMessage,
   PeerTask,
@@ -18,6 +19,7 @@ import {
   type PeerControlResult,
   type PeerOverview,
 } from "@synara/contracts";
+import type { PeerChatExecution } from "./PeerChatExecution.ts";
 import { writeFileStringAtomically } from "../atomicWrite.ts";
 import {
   discoverCertificate,
@@ -39,6 +41,9 @@ const TrustedPeer = Schema.Struct({
 type TrustedPeer = typeof TrustedPeer.Type;
 const Outbox = Schema.Struct({ peerId: PeerId, request: PeerRemoteRequest });
 const State = Schema.Struct({
+  chatRequests: Schema.optional(Schema.Record(Schema.String, Schema.String)).pipe(
+    Schema.withDecodingDefault(() => ({})),
+  ),
   version: Schema.Literal(1),
   enabled: Schema.Boolean,
   name: Schema.String,
@@ -80,6 +85,7 @@ export interface PeerExecution {
  * cross the LAN. Only this narrow mTLS listener is exposed when enabled. */
 export class PeerManager {
   private state: State = {
+    chatRequests: {},
     version: 1,
     enabled: false,
     name: hostname(),
@@ -98,6 +104,7 @@ export class PeerManager {
   private port: number | null = null;
   private error: string | null = null;
   private readonly nearby = new Map<string, { id: string; name: string; address: string }>();
+  private readonly chatSupport = new Map<string, boolean>();
   private readonly health = new Map<string, { online: boolean; error: string | null }>();
   private readonly pending = new Map<string, Pending>();
   private writes: Promise<void> = Promise.resolve();
@@ -111,7 +118,12 @@ export class PeerManager {
   constructor(
     private readonly root: string,
     private readonly execution: PeerExecution,
-    private readonly options: { discovery?: boolean; host?: string; autoTick?: boolean } = {},
+    private readonly options: {
+      discovery?: boolean;
+      host?: string;
+      autoTick?: boolean;
+      chats?: PeerChatExecution;
+    } = {},
   ) {}
 
   async initialize(): Promise<void> {
@@ -475,6 +487,7 @@ export class PeerManager {
       }
     } else if (input.action === "revoke") {
       const revoke = this.incoming.then(async () => {
+        await this.options.chats?.revoke(input.peerId);
         this.state = {
           ...this.state,
           peers: this.state.peers.filter((peer) => peer.id !== input.peerId),
@@ -488,6 +501,7 @@ export class PeerManager {
         for (const [key, value] of this.pending)
           if (value.id === input.peerId) this.pending.delete(key);
         this.health.delete(input.peerId);
+        this.chatSupport.delete(input.peerId);
         await this.save();
       });
       this.incoming = revoke.catch(() => {});
@@ -503,6 +517,8 @@ export class PeerManager {
   ): Promise<PeerRemoteReply> {
     this.requireEnabled();
     this.trusted(peerId);
+    if (isPeerChatRequest(request) && this.chatSupport.get(peerId) === false)
+      throw new Error("另一台电脑需要更新 Metis 才能使用主控对话。");
     // An inbound worker can communicate, but cannot recursively delegate work.
     if (
       request.action === "task" &&
@@ -576,6 +592,24 @@ export class PeerManager {
         await this.save();
       }
     }
+    if (request.action === "chat.open" || request.action === "chat.send") {
+      const key = `out:${peerId}:${request.id}`;
+      const digest = createHash("sha256").update(JSON.stringify(request)).digest("hex");
+      const prior = this.state.chatRequests?.[key];
+      if (prior && prior !== digest) throw new Error("请求 ID 已用于其他内容。");
+      this.state = { ...this.state, chatRequests: { ...this.state.chatRequests, [key]: digest } };
+      const pending = this.state.outbox.find(
+        (entry) =>
+          entry.peerId === peerId && "id" in entry.request && entry.request.id === request.id,
+      );
+      if (pending && JSON.stringify(pending.request) !== JSON.stringify(request))
+        throw new Error("请求 ID 已用于其他内容。");
+      if (!pending) {
+        if (this.state.outbox.length >= 500) throw new Error("待发送请求过多，请等待设备上线。");
+        this.state = { ...this.state, outbox: [...this.state.outbox, { peerId, request }] };
+        await this.save();
+      }
+    }
     const peer = this.trusted(peerId);
     try {
       const reply = Schema.decodeUnknownSync(PeerRemoteReply)(
@@ -583,8 +617,14 @@ export class PeerManager {
       );
       // Revocation during a network request must not resurrect its authority.
       this.trusted(peerId);
+      this.chatSupport.set(peerId, reply.chatProtocol === 1 || reply.chat !== undefined);
       await this.mergeReply(peerId, reply);
-      if (request.action === "task" || request.action === "message") {
+      if (
+        request.action === "task" ||
+        request.action === "message" ||
+        request.action === "chat.open" ||
+        request.action === "chat.send"
+      ) {
         this.state = {
           ...this.state,
           outbox: this.state.outbox.filter(
@@ -596,7 +636,10 @@ export class PeerManager {
               ),
           ),
           messages: this.state.messages.map((entry) =>
-            entry.direction === "outgoing" && entry.id === request.id
+            request.action === "message" &&
+            entry.peerId === peerId &&
+            entry.direction === "outgoing" &&
+            entry.id === request.id
               ? { ...entry, delivered: true }
               : entry,
           ),
@@ -629,6 +672,32 @@ export class PeerManager {
   private async receive(peerId: string, request: PeerRemoteRequest): Promise<PeerRemoteReply> {
     this.requireEnabled();
     this.trusted(peerId);
+    if (isPeerChatRequest(request)) {
+      if (!this.options.chats) throw new Error("此设备尚不支持远端主控对话，请更新 Metis。");
+      if ("id" in request) {
+        const key = `in:${peerId}:${request.id}`;
+        const digest = createHash("sha256").update(JSON.stringify(request)).digest("hex");
+        const previous = this.state.chatRequests?.[key];
+        if (previous && previous !== digest) throw new Error("请求 ID 已用于其他内容。");
+        if (!previous) {
+          this.state = {
+            ...this.state,
+            chatRequests: { ...this.state.chatRequests, [key]: digest },
+          };
+          await this.save();
+        }
+      }
+      const chat = await this.options.chats.handle(peerId, request);
+      this.trusted(peerId);
+      return {
+        name: this.state.name,
+        project: null,
+        tasks: [],
+        messages: [],
+        chat,
+        chatProtocol: 1,
+      };
+    }
     if (
       request.action === "task" &&
       this.state.messages.some(
@@ -732,6 +801,7 @@ export class PeerManager {
     }
     return {
       name: this.state.name,
+      ...(this.options.chats ? { chatProtocol: 1 as const } : {}),
       project: await this.execution.project(this.state.templateThreadId),
       tasks: this.state.tasks
         .filter(

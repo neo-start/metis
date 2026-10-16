@@ -1,4 +1,9 @@
 import { Schema } from "effect";
+import {
+  OrchestrationThread,
+  ProviderApprovalDecision,
+  ProviderUserInputAnswers,
+} from "./orchestration";
 
 const RequestId = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9:_-]{1,128}$/));
 const Text = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(32000));
@@ -33,7 +38,79 @@ export const PeerMessage = Schema.Struct({
   createdAt: Schema.String,
 });
 export type PeerMessage = typeof PeerMessage.Type;
+export const PeerChatRequest = Schema.Union([
+  Schema.Struct({ action: Schema.Literal("chat.list") }),
+  Schema.Struct({ action: Schema.Literal("chat.open"), id: RequestId, title: Text }),
+  Schema.Struct({
+    action: Schema.Literal("chat.read"),
+    chatId: RequestId,
+    before: Schema.optional(Schema.String),
+    revision: Schema.optional(Schema.String),
+  }),
+  Schema.Struct({
+    action: Schema.Literal("chat.send"),
+    chatId: RequestId,
+    id: RequestId,
+    text: Text,
+  }),
+  Schema.Struct({
+    action: Schema.Literal("chat.stop"),
+    chatId: RequestId,
+    id: RequestId,
+    turnId: RequestId,
+  }),
+  Schema.Struct({
+    action: Schema.Literal("chat.rename"),
+    chatId: RequestId,
+    id: RequestId,
+    title: Text,
+  }),
+  Schema.Struct({ action: Schema.Literal("chat.archive"), chatId: RequestId, id: RequestId }),
+  Schema.Struct({
+    action: Schema.Literal("chat.async-answer"),
+    chatId: RequestId,
+    id: RequestId,
+    messageId: Schema.String,
+    answers: Schema.Array(Schema.String),
+  }),
+  Schema.Struct({
+    action: Schema.Literal("chat.approval"),
+    chatId: RequestId,
+    id: RequestId,
+    requestId: Schema.String,
+    lifecycleGeneration: Schema.optional(Schema.String),
+    decision: ProviderApprovalDecision,
+  }),
+  Schema.Struct({
+    action: Schema.Literal("chat.answer"),
+    chatId: RequestId,
+    id: RequestId,
+    requestId: Schema.String,
+    lifecycleGeneration: Schema.optional(Schema.String),
+    answers: ProviderUserInputAnswers,
+  }),
+]);
+export type PeerChatRequest = typeof PeerChatRequest.Type;
+export const PeerChat = Schema.Struct({
+  id: RequestId,
+  title: Schema.String,
+  createdAt: Schema.String,
+});
+export type PeerChat = typeof PeerChat.Type;
+export const PeerChatReply = Schema.Struct({
+  controllerId: Schema.String,
+  chats: Schema.Array(PeerChat),
+  chatId: Schema.optional(RequestId),
+  thread: Schema.optional(OrchestrationThread),
+  revision: Schema.optional(Schema.String),
+  before: Schema.optional(Schema.NullOr(Schema.String)),
+});
+export type PeerChatReply = typeof PeerChatReply.Type;
+export function isPeerChatRequest(request: PeerRemoteRequest): request is PeerChatRequest {
+  return request.action.startsWith("chat.");
+}
 export const PeerRemoteRequest = Schema.Union([
+  PeerChatRequest,
   Schema.Struct({ action: Schema.Literal("status"), taskId: Schema.optional(RequestId) }),
   Schema.Struct({
     action: Schema.Literal("message"),
@@ -46,6 +123,8 @@ export const PeerRemoteRequest = Schema.Union([
 ]);
 export type PeerRemoteRequest = typeof PeerRemoteRequest.Type;
 export const PeerRemoteReply = Schema.Struct({
+  chatProtocol: Schema.optional(Schema.Literal(1)),
+  chat: Schema.optional(PeerChatReply),
   name: Schema.String,
   project: Schema.NullOr(Schema.String),
   tasks: Schema.Array(PeerTask),

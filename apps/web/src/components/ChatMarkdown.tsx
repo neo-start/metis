@@ -14,6 +14,7 @@ import {
   type LucideIcon,
 } from "~/lib/icons";
 import type { ProviderMentionReference } from "@synara/contracts";
+import { RemoteChatContentContext } from "../lib/remoteChatContent";
 import { isLocalAbsolutePath } from "@synara/shared/path";
 import "katex/dist/katex.min.css";
 import { matchWikiLinkAt, remarkWikiLinks } from "../lib/remarkWikiLinks";
@@ -793,6 +794,7 @@ function ComposerChipElement(props: {
   theme: "light" | "dark";
   mentionReferences: ReadonlyArray<ProviderMentionReference>;
 }) {
+  const remote = useContext(RemoteChatContentContext);
   const segment = parseComposerChipSegment(props.serializedSegment);
   if (!segment) {
     return null;
@@ -800,6 +802,8 @@ function ComposerChipElement(props: {
   if (segment.type === "skill") {
     return <InlineSkillChip skillName={segment.name} />;
   }
+  if (segment.type === "mention" && remote)
+    return <span title="文件位于远端电脑">{segment.path}</span>;
   if (segment.type === "mention") {
     return (
       <InlineMentionChip
@@ -1086,6 +1090,7 @@ const MARKDOWN_COMPONENTS: Components = {
     );
   },
   a: function MarkdownLink({ node: _node, href, children, ...props }) {
+    const remote = useContext(RemoteChatContentContext);
     const { isUserVariant, cwd, knownAbsoluteFilePaths, resolvedTheme } =
       useContext(MarkdownRenderContext)!;
     const restoredHref = href ? restoreLiteralDollarPlaceholders(href) : href;
@@ -1104,6 +1109,7 @@ const MARKDOWN_COMPONENTS: Components = {
         return <InlineLinkChip url={restoredHref} interactive />;
       }
     }
+    if (remote && !isExternalHttp) return <span title="文件位于远端电脑">{children}</span>;
     const targetPath = isExternalHttp
       ? null
       : resolveChatFileChipTarget(restoredHref, cwd, knownAbsoluteFilePaths);
@@ -1170,13 +1176,14 @@ const MARKDOWN_COMPONENTS: Components = {
     );
   },
   code: function MarkdownInlineCode({ node, className, children, ...props }) {
+    const remote = useContext(RemoteChatContentContext);
     const { sourceText, knownAbsoluteFilePaths, cwd, resolvedTheme } =
       useContext(MarkdownRenderContext)!;
     // Fenced blocks carry a `language-*` class and are rendered by `pre`;
     // only inline code (no class) that names a file becomes an openable
     // mention chip. Absolute local paths chip immediately. Relative names
     // chip only when that file actually exists in the chat workspace.
-    if (!className) {
+    if (!className && !remote) {
       const filePath = inlineCodeFilePath(nodeToPlainText(children));
       if (filePath) {
         const nodeStart = node?.position?.start?.offset ?? 0;
@@ -1210,9 +1217,14 @@ const MARKDOWN_COMPONENTS: Components = {
     );
   },
   img: function MarkdownImage({ node: _node, src, alt: altProp, ...props }) {
+    const remote = useContext(RemoteChatContentContext);
     const { cwd, onImageExpand } = useContext(MarkdownRenderContext)!;
     const alt = altProp ?? "";
     const restoredSrc = src ? restoreLiteralDollarPlaceholders(src) : "";
+    if (remote && !/^https?:\/\//i.test(restoredSrc))
+      return (
+        <span className="text-ui text-muted-foreground">{alt || "远端图片"} · 位于远端电脑</span>
+      );
     if (isLocalImageMarkdownSrc(restoredSrc)) {
       return (
         <GeneratedMarkdownImage

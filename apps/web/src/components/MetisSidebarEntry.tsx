@@ -1,10 +1,19 @@
-import { useRouterState } from "@tanstack/react-router";
+import { useNavigate, useRouterState } from "@tanstack/react-router";
+import { useMemo } from "react";
+import { useStore } from "~/store";
+import { createSidebarThreadSummariesSelector } from "~/storeSelectors";
+import { MessageCircleIcon } from "~/lib/icons";
 import { useMetisController } from "~/hooks/useMetisController";
 import { SidebarGroup, SidebarMenuButton } from "./ui/sidebar";
 import { SynaraLogo } from "./SynaraLogo";
 import { SidebarLeadingIcon } from "./SidebarLeadingIcon";
 
 export function MetisSidebarEntry() {
+  const navigate = useNavigate();
+  const summaries = useStore(useMemo(() => createSidebarThreadSummariesSelector(), []));
+  const incoming = summaries.filter(
+    (thread) => thread.id.startsWith("metis-remote-") && !thread.archivedAt,
+  );
   const { owner, open, query } = useMetisController();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   if (!owner) return null;
@@ -31,6 +40,18 @@ export function MetisSidebarEntry() {
                 : ""}
         </span>
       </SidebarMenuButton>
+      {incoming.map((thread) => (
+        <SidebarMenuButton
+          key={thread.id}
+          size="sm"
+          isActive={pathname === `/${thread.id}`}
+          onClick={() => void navigate({ to: "/$threadId", params: { threadId: thread.id } })}
+          className="mt-1 pl-3 text-ui-sm"
+        >
+          <MessageCircleIcon className="size-3.5" />
+          <span className="truncate">{thread.title}</span>
+        </SidebarMenuButton>
+      ))}
     </SidebarGroup>
   );
 }

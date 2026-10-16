@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { Effect, Schema } from "effect";
@@ -11,7 +11,18 @@ import {
 } from "@synara/contracts";
 import { writeFileStringAtomically } from "../atomicWrite.ts";
 
+const RemoteChat = Schema.Struct({
+  id: Schema.String,
+  peerId: Schema.String,
+  threadId: Schema.String,
+  title: Schema.String,
+  createdAt: Schema.String,
+  revoked: Schema.Boolean,
+});
+type RemoteChat = typeof RemoteChat.Type;
+
 const State = Schema.Struct({
+  chats: Schema.optional(Schema.Array(RemoteChat)).pipe(Schema.withDecodingDefault(() => [])),
   identity: MetisIdentity,
   seen: Schema.Record(Schema.String, Schema.String),
   lineage: Schema.Array(Schema.String),
@@ -24,6 +35,7 @@ export interface MetisControllerHost {
   initializeSoul(): Promise<void>;
   resolveThread(current: string | null): Promise<string | null>;
   createThread(id: string, model: ModelSelection, mode: RuntimeMode): Promise<string>;
+  createPeerThread?(id: string, source: string, title: string): Promise<string>;
   sources(): Promise<ReadonlyArray<MetisReflectionSource>>;
   isIdle(threadId: string): Promise<boolean>;
   dispatchReflection(
@@ -83,6 +95,7 @@ export class MetisController {
           reflection: null,
           error: null,
         },
+        chats: [],
         seen: {},
         lineage: [],
         batchThreadId: null,
@@ -114,7 +127,99 @@ export class MetisController {
     return threadId;
   }
   async isController(threadId: string) {
-    return this.exclusive(async () => (await this.resolve()) === threadId);
+    return this.exclusive(async () => {
+      if ((await this.resolve()) === threadId) return true;
+      for (const chat of this.state.chats ?? []) {
+        if (!chat.revoked && (await this.host.resolveThread(chat.threadId)) === threadId)
+          return true;
+      }
+      return false;
+    });
+  }
+  get remoteChats(): ReadonlyArray<RemoteChat> {
+    return this.state.chats ?? [];
+  }
+  async peerChats(peerId: string) {
+    return this.exclusive(async () => {
+      const chats: RemoteChat[] = [];
+      for (const chat of this.state.chats ?? []) {
+        if (
+          chat.peerId === peerId &&
+          !chat.revoked &&
+          (await this.host.resolveThread(chat.threadId))
+        )
+          chats.push(chat);
+      }
+      return chats;
+    });
+  }
+  async openPeerChat(peerId: string, id: string, title: string) {
+    return this.exclusive(async () => {
+      const existing = (this.state.chats ?? []).find(
+        (chat) => chat.peerId === peerId && chat.id === id,
+      );
+      if (existing) {
+        if (existing.revoked) throw new Error("远端对话授权已撤销，请新建对话。");
+        return existing;
+      }
+      const source = await this.resolve();
+      if (!source || !this.host.createPeerThread)
+        throw new Error("请先在接收电脑打开 Metis 总控。");
+      const threadId = `metis-remote-${createHash("sha256").update(`${peerId}:${id}`).digest("hex").slice(0, 40)}`;
+      await this.host.createPeerThread(threadId, source, title.slice(0, 120));
+      const chat: RemoteChat = {
+        id,
+        peerId,
+        threadId,
+        title: title.slice(0, 120),
+        createdAt: new Date(this.now()).toISOString(),
+        revoked: false,
+      };
+      const next = { ...this.state, chats: [...(this.state.chats ?? []), chat] };
+      await this.save(next);
+      this.state = next;
+      return chat;
+    });
+  }
+  async peerChatThread(peerId: string, id: string) {
+    return this.exclusive(async () => {
+      const chat = (this.state.chats ?? []).find(
+        (entry) => entry.peerId === peerId && entry.id === id && !entry.revoked,
+      );
+      if (!chat) throw new Error("对话不存在或不属于此设备。");
+      const resolved = await this.host.resolveThread(chat.threadId);
+      if (!resolved) throw new Error("远端对话已归档或删除。");
+      return resolved;
+    });
+  }
+  async updatePeerChat(peerId: string, id: string, title?: string) {
+    return this.exclusive(async () => {
+      const next = {
+        ...this.state,
+        chats: (this.state.chats ?? []).map((chat) =>
+          chat.peerId === peerId && chat.id === id
+            ? {
+                ...chat,
+                ...(title === undefined ? { revoked: true } : { title: title.slice(0, 120) }),
+              }
+            : chat,
+        ),
+      };
+      await this.save(next);
+      this.state = next;
+    });
+  }
+  async revokePeer(peerId: string) {
+    return this.exclusive(async () => {
+      const next = {
+        ...this.state,
+        chats: (this.state.chats ?? []).map((chat) =>
+          chat.peerId === peerId ? { ...chat, revoked: true } : chat,
+        ),
+      };
+      await this.save(next);
+      this.state = next;
+    });
   }
   async overview(): Promise<MetisIdentity> {
     return this.exclusive(async () => {

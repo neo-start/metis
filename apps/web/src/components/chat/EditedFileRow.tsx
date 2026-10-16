@@ -4,7 +4,8 @@
 // Layer: Chat changed-files UI
 
 import type { EditorId, ResolvedKeybindingsConfig } from "@synara/contracts";
-import type { CSSProperties } from "react";
+import { useContext, type CSSProperties } from "react";
+import { RemoteChatContentContext } from "~/lib/remoteChatContent";
 
 import { useCopyPathToClipboard } from "~/hooks/useCopyToClipboard";
 import { CopyIcon } from "~/lib/icons";
@@ -41,13 +42,14 @@ const EDITED_FILE_EDITOR_ORDER: ReadonlyArray<EditorId> = [
 ];
 
 export function EditedFileRow(props: EditedFileRowProps) {
+  const remote = useContext(RemoteChatContentContext);
   const copyPathToClipboard = useCopyPathToClipboard();
   const { absolutePath, relativePath } = resolveEditedFilePathTargets(
     props.filePath,
     props.workspaceRoot,
   );
   const isDeleted = props.fileKind === "deleted";
-  const launcherTarget = isDeleted ? null : absolutePath;
+  const launcherTarget = isDeleted || remote ? null : absolutePath;
   const hasDiffStat = props.additions + props.deletions > 0;
 
   return (

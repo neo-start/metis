@@ -1,3 +1,4 @@
+import { RemoteSidebarSection } from "./RemoteSidebarSection";
 import { MetisSidebarEntry } from "./MetisSidebarEntry";
 import { useProjectImportDialogStore } from "~/projectImport/projectImportDialogStore";
 // FILE: Sidebar.tsx
@@ -6477,6 +6478,7 @@ export default function Sidebar() {
             </div>
           </SidebarGroup>
         ) : null}
+        {!isOnSettings && <RemoteSidebarSection />}
       </SidebarContent>
 
       <SidebarFooter className="gap-2 border-sidebar-border border-t p-2 font-system-ui">

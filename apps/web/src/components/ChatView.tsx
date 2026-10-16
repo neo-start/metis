@@ -4626,6 +4626,14 @@ export default function ChatView({
         });
         return;
       }
+      if (isServerThread && threadId.startsWith("metis-remote-")) {
+        toastManager.add({
+          type: "info",
+          title: "此对话来自远端设备",
+          description: "请在发起设备的 Remote 列表中新建对话。",
+        });
+        return;
+      }
       if (isServerThread && isMetisControllerProject(activeProject)) {
         await clearMetisConversation.mutateAsync({
           sourceThreadId: threadId,

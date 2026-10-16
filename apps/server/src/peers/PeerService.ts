@@ -1,4 +1,5 @@
 import path from "node:path";
+import { makePeerChatExecution } from "./PeerChatExecution.ts";
 import { CommandId, MessageId, ThreadId, type PeerTask } from "@synara/contracts";
 import { Effect, Layer, Option, ServiceMap } from "effect";
 import { ServerConfig } from "../config.ts";
@@ -162,7 +163,8 @@ export const PeerServiceLive = Layer.effect(
   Effect.gen(function* () {
     const config = yield* ServerConfig;
     const execution = yield* makePeerExecution;
-    const manager = new PeerManager(path.join(config.stateDir, "peers"), execution);
+    const chats = yield* makePeerChatExecution;
+    const manager = new PeerManager(path.join(config.stateDir, "peers"), execution, { chats });
     yield* Effect.tryPromise(() => manager.initialize());
     yield* Effect.addFinalizer(() => Effect.promise(() => manager.stop()));
     return manager;
