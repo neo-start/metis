@@ -15,12 +15,18 @@ import {
   PeerTask,
   PeerRemoteRequest,
   PeerRemoteReply,
+  PeerProjectUpdate,
   type PeerControlInput,
   type PeerControlResult,
   type PeerOverview,
   type PeerTaskResponse,
 } from "@synara/contracts";
 import type { PeerChatExecution } from "./PeerChatExecution.ts";
+import {
+  PublishedProjectUpdate,
+  projectUpdateMessage,
+  readPublishedProjectUpdate,
+} from "./projectUpdates.ts";
 import { writeFileStringAtomically } from "../atomicWrite.ts";
 import {
   discoverCertificate,
@@ -41,7 +47,16 @@ const TrustedPeer = Schema.Struct({
 });
 type TrustedPeer = typeof TrustedPeer.Type;
 const Outbox = Schema.Struct({ peerId: PeerId, request: PeerRemoteRequest });
+const ProjectUpdateRule = Schema.Struct({
+  ...PeerProjectUpdate.fields,
+  generation: Schema.String,
+  pending: Schema.NullOr(PublishedProjectUpdate),
+});
+type ProjectUpdateRule = typeof ProjectUpdateRule.Type;
 const State = Schema.Struct({
+  projectUpdates: Schema.optional(Schema.Array(ProjectUpdateRule)).pipe(
+    Schema.withDecodingDefault(() => []),
+  ),
   chatRequests: Schema.optional(Schema.Record(Schema.String, Schema.String)).pipe(
     Schema.withDecodingDefault(() => ({})),
   ),
@@ -92,6 +107,7 @@ export interface PeerExecution {
  * cross the LAN. Only this narrow mTLS listener is exposed when enabled. */
 export class PeerManager {
   private state: State = {
+    projectUpdates: [],
     chatRequests: {},
     version: 1,
     enabled: false,
@@ -138,6 +154,7 @@ export class PeerManager {
   private tickFinished: Promise<void> = Promise.resolve();
   private closing = false;
   private lifecycle: Promise<unknown> = Promise.resolve();
+  private projectUpdateCheckedAt = 0;
 
   constructor(
     private readonly root: string,
@@ -147,6 +164,8 @@ export class PeerManager {
       host?: string;
       autoTick?: boolean;
       chats?: PeerChatExecution;
+      publishedProjectUpdate?: typeof readPublishedProjectUpdate;
+      projectRepositoryPath?: string;
     } = {},
   ) {}
 
@@ -437,6 +456,12 @@ export class PeerManager {
         })),
       tasks: this.state.tasks.slice(-100).map((task) => this.taskSnapshot(task)),
       messages: this.state.messages.slice(-100),
+      projectUpdates: (this.state.projectUpdates ?? []).map(
+        ({ pending: _pending, generation: _generation, ...view }) => view,
+      ),
+      ...(this.options.projectRepositoryPath
+        ? { projectUpdateRepositoryPath: this.options.projectRepositoryPath }
+        : {}),
     };
   }
 
@@ -497,6 +522,48 @@ export class PeerManager {
       });
       this.lifecycle = configure.catch(() => {});
       await configure;
+    } else if (input.action === "project-updates.configure") {
+      this.trusted(input.peerId);
+      const repositoryPath = path.resolve(input.repositoryPath.trim());
+      if (input.enabled) {
+        this.requireEnabled();
+        await (this.options.publishedProjectUpdate ?? readPublishedProjectUpdate)(
+          repositoryPath,
+          input.peerId,
+        );
+      }
+      const previous = this.state.projectUpdates?.find((rule) => rule.peerId === input.peerId);
+      const pendingId = previous?.pending?.eventId;
+      const preserve = previous?.repositoryPath === repositoryPath;
+      this.state = {
+        ...this.state,
+        projectUpdates: [
+          ...(this.state.projectUpdates ?? []).filter((rule) => rule.peerId !== input.peerId),
+          {
+            peerId: input.peerId,
+            repositoryPath,
+            enabled: input.enabled,
+            status: "watching",
+            lastCommit: preserve ? previous.lastCommit : null,
+            chatId: preserve ? previous.chatId : null,
+            result: preserve ? previous.result : "",
+            error: null,
+            updatedAt: new Date().toISOString(),
+            generation: randomUUID(),
+            pending: null,
+          },
+        ],
+        outbox: this.state.outbox.filter(
+          (entry) =>
+            !(
+              entry.peerId === input.peerId &&
+              "id" in entry.request &&
+              (entry.request.id === pendingId || entry.request.id === `${pendingId}:send`)
+            ),
+        ),
+      };
+      this.projectUpdateCheckedAt = 0;
+      await this.save();
     } else if (input.action === "pair") {
       this.requireEnabled();
       if (input.peerId === this.id) throw new Error("不能与自己配对。");
@@ -549,6 +616,9 @@ export class PeerManager {
         this.state = {
           ...this.state,
           peers: this.state.peers.filter((peer) => peer.id !== input.peerId),
+          projectUpdates: (this.state.projectUpdates ?? []).filter(
+            (rule) => rule.peerId !== input.peerId,
+          ),
           outbox: this.state.outbox.filter((item) => item.peerId !== input.peerId),
           tasks: this.state.tasks.map((task) =>
             task.peerId === input.peerId && task.state === "queued"
@@ -985,6 +1055,99 @@ export class PeerManager {
     return task ? (task.direction === "incoming" ? task.threadId : task.sourceThreadId) : null;
   }
 
+  private async checkProjectUpdates(): Promise<void> {
+    if (Date.now() - this.projectUpdateCheckedAt < 15000) return;
+    this.projectUpdateCheckedAt = Date.now();
+    const current = (rule: ProjectUpdateRule) =>
+      !this.closing &&
+      this.state.enabled &&
+      this.state.projectUpdates?.some(
+        (entry) =>
+          entry.peerId === rule.peerId && entry.generation === rule.generation && entry.enabled,
+      ) &&
+      this.state.peers.some((peer) => peer.id === rule.peerId);
+    const update = async (rule: ProjectUpdateRule, changes: Partial<ProjectUpdateRule>) => {
+      if (!current(rule)) return;
+      this.state = {
+        ...this.state,
+        projectUpdates: (this.state.projectUpdates ?? []).map((entry) =>
+          entry.peerId === rule.peerId
+            ? { ...entry, ...changes, updatedAt: new Date().toISOString() }
+            : entry,
+        ),
+      };
+      await this.save();
+    };
+    for (const rule of this.state.projectUpdates ?? []) {
+      if (!current(rule)) continue;
+      try {
+        // Wait for this machine's previous update turn before sending another.
+        // Read-only observation never injects remote output into a local agent turn.
+        if (!rule.pending && rule.chatId && ["sent", "running", "waiting"].includes(rule.status)) {
+          const reply = await this.remote(rule.peerId, {
+            action: "chat.read",
+            chatId: rule.chatId,
+          });
+          const thread = reply.chat?.thread;
+          if (!thread) throw new Error("无法读取更新会话，请在远端会话查看执行结果。");
+          const waiting =
+            thread.hasPendingApprovals || thread.hasPendingUserInput || thread.claudeCacheReview;
+          const turn = thread.latestTurn;
+          const result =
+            thread.messages.findLast((message) => message.role === "assistant")?.text ?? "";
+          const status = waiting
+            ? "waiting"
+            : !turn
+              ? "sent"
+              : turn.state === "running"
+                ? "running"
+                : turn.state === "completed"
+                  ? "completed"
+                  : "error";
+          await update(rule, { status, result: result.slice(-4000), error: null });
+          if (["sent", "running", "waiting"].includes(status)) continue;
+        }
+        const published =
+          rule.pending ??
+          (await (this.options.publishedProjectUpdate ?? readPublishedProjectUpdate)(
+            rule.repositoryPath,
+            rule.peerId,
+          ));
+        if (!current(rule)) continue;
+        if (!published || published.commit === rule.lastCommit) {
+          if (rule.error) await update(rule, { error: null });
+          continue;
+        }
+        // Save the exact event before either network call. The ordinary chat outbox
+        // and engine receipts make retries after offline periods or restart idempotent.
+        await update(rule, { pending: published, status: "pending", error: null });
+        if (!current(rule)) continue;
+        await this.remote(rule.peerId, {
+          action: "chat.open",
+          id: published.eventId,
+          title: `Metis 更新 · ${published.commit.slice(0, 8)}`,
+        });
+        if (!current(rule)) continue;
+        await this.remote(rule.peerId, {
+          action: "chat.send",
+          chatId: published.eventId,
+          id: `${published.eventId}:send`,
+          text: projectUpdateMessage(published),
+        });
+        await update(rule, {
+          pending: null,
+          lastCommit: published.commit,
+          chatId: published.eventId,
+          status: "sent",
+          result: "",
+          error: null,
+        });
+      } catch (error) {
+        await update(rule, { error: errorText(error) });
+      }
+    }
+  }
+
   async tick(): Promise<void> {
     if (this.ticking || this.closing || !this.state.enabled) return;
     this.ticking = true;
@@ -994,6 +1157,7 @@ export class PeerManager {
     });
     try {
       this.expirePending();
+      await this.checkProjectUpdates();
       for (const pending of [...this.pending.values()].filter((entry) => !entry.incoming)) {
         try {
           const result = Schema.decodeUnknownSync(PairReply)(

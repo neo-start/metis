@@ -47,6 +47,22 @@
         "apps/server/src/persistence/DatabaseLifecycleLock.ts": "9ff580c9c3338c6d555f1666e42a61d7f3820852",
         "packages/shared/src/processRuntime.ts": "9cf2e3a9d7fdd7d202f26b0cf1bccd19577a8741"
       }
+    },
+    "projectUpdateConversationAdaptation": {
+      "localBaseCommit": "b22e6cd7f",
+      "sources": [
+        "apps/server/src/peers/PeerManager.ts",
+        "apps/server/src/peers/PeerChatExecution.ts",
+        "apps/server/src/processRunner.ts",
+        "apps/web/src/components/chat/composerPickerStyles.ts"
+      ],
+      "targets": [
+        "apps/server/src/peers/projectUpdates.ts",
+        "apps/server/src/peers/PeerManager.ts",
+        "apps/web/src/components/remote/RemoteChatView.tsx",
+        "apps/web/src/components/settings/PeerSettingsPanel.tsx"
+      ],
+      "changes": "Reuse paired mTLS transport, durable chat outbox, command receipts, platform process runner and shared chat gutters. Add owner-configured published-commit monitoring with stable remote controller conversations; no new remote execution endpoint."
     }
   },
   "t3code": {
@@ -87,6 +103,15 @@
       "source": "apps/web/src/components/Sidebar.tsx",
       "target": "apps/web/src/components/RemoteTaskOverview.tsx",
       "changes": "Additional machine-label design reference inspected by the peer implementer; no code copied."
+    },
+    "projectUpdateConversationReference": {
+      "commit": "f5ef0ddb90a8c36584e181b1913e7b8a5df30ffc",
+      "source": "apps/web/src/components/Sidebar.tsx",
+      "targets": [
+        "apps/web/src/components/settings/PeerSettingsPanel.tsx",
+        "apps/web/src/components/remote/RemoteChatView.tsx"
+      ],
+      "changes": "Reviewed sidebar and content inset references. No upstream code copied; retain Synara chat column, settings rows and source launcher."
     }
   },
   "agentOrchestrator": {

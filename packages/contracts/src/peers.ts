@@ -178,8 +178,34 @@ export const PeerRemoteReply = Schema.Struct({
   messages: Schema.Array(PeerMessage),
 });
 export type PeerRemoteReply = typeof PeerRemoteReply.Type;
+export const PeerProjectUpdate = Schema.Struct({
+  peerId: PeerId,
+  repositoryPath: Schema.String,
+  enabled: Schema.Boolean,
+  status: Schema.Literals([
+    "watching",
+    "pending",
+    "sent",
+    "running",
+    "waiting",
+    "completed",
+    "error",
+  ]),
+  lastCommit: Schema.NullOr(Schema.String),
+  chatId: Schema.NullOr(Schema.String),
+  result: Schema.String,
+  error: Schema.NullOr(Schema.String),
+  updatedAt: Schema.String,
+});
+export type PeerProjectUpdate = typeof PeerProjectUpdate.Type;
 export const PeerControlInput = Schema.Union([
   Schema.Struct({ action: Schema.Literal("overview") }),
+  Schema.Struct({
+    action: Schema.Literal("project-updates.configure"),
+    peerId: PeerId,
+    enabled: Schema.Boolean,
+    repositoryPath: Text,
+  }),
   Schema.Struct({
     action: Schema.Literal("configure"),
     enabled: Schema.Boolean,
@@ -229,6 +255,8 @@ export const PeerOverview = Schema.Struct({
   ),
   tasks: Schema.Array(PeerTask),
   messages: Schema.Array(PeerMessage),
+  projectUpdates: Schema.optional(Schema.Array(PeerProjectUpdate)),
+  projectUpdateRepositoryPath: Schema.optional(Schema.String),
 });
 export type PeerOverview = typeof PeerOverview.Type;
 export const PeerControlResult = Schema.Struct({

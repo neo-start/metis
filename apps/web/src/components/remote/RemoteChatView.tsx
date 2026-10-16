@@ -46,7 +46,10 @@ import {
   CHAT_SURFACE_HEADER_PADDING_X_CLASS,
   CHAT_SURFACE_HEADER_DIVIDER_CLASS_NAME,
 } from "../chat/chatHeaderControls";
-import { CHAT_BACKGROUND_CLASS_NAME } from "../chat/composerPickerStyles";
+import {
+  CHAT_BACKGROUND_CLASS_NAME,
+  CHAT_COLUMN_GUTTER_CLASS_NAME,
+} from "../chat/composerPickerStyles";
 
 type Snapshot = {
   thread: OrchestrationThread;
@@ -340,7 +343,7 @@ function Conversation({
   const title = thread?.title.replace(/^Remote · /, "") ?? "Metis 总控";
   return (
     <RouteInsetSurface>
-      <div className={cn("flex h-full min-h-0 flex-col", CHAT_BACKGROUND_CLASS_NAME)}>
+      <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col", CHAT_BACKGROUND_CLASS_NAME)}>
         <header
           className={cn(
             "flex shrink-0 items-center gap-3",
@@ -464,7 +467,7 @@ function Conversation({
             </WorkspaceFileOpenerContext.Provider>
           </RemoteChatContentContext.Provider>
         </div>
-        <div className="shrink-0 px-3 pb-3 pt-2">
+        <div className={cn("shrink-0 pb-4 pt-3 sm:pb-5", CHAT_COLUMN_GUTTER_CLASS_NAME)}>
           <ComposerColumnFrame>
             {scroll.showScrollToBottom && (
               <Button variant="ghost" size="sm" onClick={scroll.onScrollToBottom}>

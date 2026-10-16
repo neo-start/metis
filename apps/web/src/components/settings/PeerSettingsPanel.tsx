@@ -1,6 +1,7 @@
 import { RemoteTaskOverview } from "~/components/RemoteTaskOverview";
 import { REMOTE_TASKS_KEY, useRemoteTasks } from "~/hooks/useRemoteTasks";
-import { useState } from "react";
+import { Fragment, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { PeerControlInput, PeerRemoteRequest } from "@synara/contracts";
 import { Button } from "~/components/ui/button";
@@ -33,6 +34,7 @@ export function PeerSettingsPanel({ owner }: { owner: boolean }) {
   const [text, setText] = useState("");
   const [requestId, setRequestId] = useState(() => crypto.randomUUID());
   const [lastError, setLastError] = useState("");
+  const [repositoryPaths, setRepositoryPaths] = useState<Record<string, string>>({});
   const mutation = useMutation({
     mutationFn: (input: PeerControlInput) => ensureNativeApi().peers.control(input),
     onSuccess: (result, input) => {
@@ -282,46 +284,126 @@ export function PeerSettingsPanel({ owner }: { owner: boolean }) {
           )}
           {view.peers.length > 0 && (
             <SettingsCard>
-              {view.peers.map((peer) => (
-                <SettingsListRow
-                  key={peer.id}
-                  title={`${peer.name} · ${peer.online ? "在线" : "未连接"}`}
-                  description={
-                    <>
-                      <div className="break-all font-mono">{peer.id}</div>
-                      {peer.error && <div>{peer.error}</div>}
-                    </>
-                  }
-                  actions={
-                    <>
-                      <Button
-                        size="xs"
-                        variant="outline"
-                        disabled={!view.enabled}
-                        onClick={() => setTarget(peer.id)}
-                      >
-                        通信 / 派任务
-                      </Button>
-                      <Button
-                        size="xs"
-                        variant="destructive-outline"
-                        disabled={mutation.isPending}
-                        onClick={() => {
-                          void ensureNativeApi()
-                            .dialogs.confirm(
-                              `解除与 ${peer.name} 的配对？后续请求将被拒绝；已经开始的本机任务可在对应会话中停止。`,
-                            )
-                            .then((confirmed) => {
-                              if (confirmed) mutation.mutate({ action: "revoke", peerId: peer.id });
-                            });
-                        }}
-                      >
-                        解除配对
-                      </Button>
-                    </>
-                  }
-                />
-              ))}
+              {view.peers.map((peer) => {
+                const update = view.projectUpdates?.find((rule) => rule.peerId === peer.id);
+                const repositoryPath =
+                  repositoryPaths[peer.id] ??
+                  update?.repositoryPath ??
+                  view.projectUpdateRepositoryPath ??
+                  "";
+                const statuses = {
+                  watching: "等待已推送的提交",
+                  pending: "等待通知送达",
+                  sent: "已发送更新请求",
+                  running: "远端正在处理",
+                  waiting: "等待远端审批或回答",
+                  completed: "远端会话已结束，请查看执行结果",
+                  error: "远端执行已中断或失败",
+                };
+                return (
+                  <Fragment key={peer.id}>
+                    <SettingsListRow
+                      title={`${peer.name} · ${peer.online ? "在线" : "未连接"}`}
+                      description={
+                        <>
+                          <div className="break-all font-mono">{peer.id}</div>
+                          {peer.error && <div>{peer.error}</div>}
+                        </>
+                      }
+                      actions={
+                        <>
+                          <Button
+                            size="xs"
+                            variant="outline"
+                            disabled={!view.enabled}
+                            onClick={() => setTarget(peer.id)}
+                          >
+                            通信 / 派任务
+                          </Button>
+                          <Button
+                            size="xs"
+                            variant="destructive-outline"
+                            disabled={mutation.isPending}
+                            onClick={() => {
+                              void ensureNativeApi()
+                                .dialogs.confirm(
+                                  `解除与 ${peer.name} 的配对？后续请求将被拒绝；已经开始的本机任务可在对应会话中停止。`,
+                                )
+                                .then((confirmed) => {
+                                  if (confirmed)
+                                    mutation.mutate({ action: "revoke", peerId: peer.id });
+                                });
+                            }}
+                          >
+                            解除配对
+                          </Button>
+                        </>
+                      }
+                    />
+                    <SettingsRow
+                      title="自动更新这台设备"
+                      description="本机 Metis 的提交推送后，通过独立远程会话请求这台设备拉取、构建和重启。离线时保留通知，重连后重试；远端沿用本机权限，遇到未提交改动会停止。"
+                      status={
+                        update?.enabled
+                          ? update.error
+                            ? `等待重试：${update.error}`
+                            : statuses[update.status]
+                          : "未开启"
+                      }
+                      control={
+                        <Button
+                          size="xs"
+                          variant={update?.enabled ? "outline" : "default"}
+                          disabled={
+                            mutation.isPending ||
+                            (!update?.enabled && (!view.enabled || !repositoryPath.trim()))
+                          }
+                          onClick={() =>
+                            mutation.mutate({
+                              action: "project-updates.configure",
+                              peerId: peer.id,
+                              enabled: !update?.enabled,
+                              repositoryPath,
+                            })
+                          }
+                        >
+                          {update?.enabled ? "暂停自动更新" : "开启自动更新"}
+                        </Button>
+                      }
+                    >
+                      <div className="mt-3 grid gap-2">
+                        <Input
+                          aria-label={`通知 ${peer.name} 更新的本机 Metis 仓库`}
+                          placeholder="本机 Metis 仓库根目录"
+                          value={repositoryPath}
+                          disabled={update?.enabled || mutation.isPending}
+                          onChange={(event) =>
+                            setRepositoryPaths((paths) => ({
+                              ...paths,
+                              [peer.id]: event.target.value,
+                            }))
+                          }
+                        />
+                        {update?.chatId && (
+                          <Link
+                            to="/remote/$peerId/$chatId"
+                            params={{ peerId: peer.id, chatId: update.chatId }}
+                            className="w-fit text-ui-sm text-primary hover:underline"
+                          >
+                            查看更新会话
+                            {update.lastCommit ? ` · ${update.lastCommit.slice(0, 8)}` : ""}
+                          </Link>
+                        )}
+                        {update?.result && (
+                          <p className="line-clamp-3 whitespace-pre-wrap text-ui-sm text-muted-foreground">
+                            {update.result}
+                          </p>
+                        )}
+                      </div>
+                    </SettingsRow>
+                  </Fragment>
+                );
+              })}
             </SettingsCard>
           )}
           {view.enabled && target && view.peers.some((peer) => peer.id === target) && (

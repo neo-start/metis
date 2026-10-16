@@ -38,6 +38,7 @@ export function makePeerTools(
             peers: view.peers,
             tasks: view.tasks,
             messages: view.messages,
+            projectUpdates: view.projectUpdates ?? [],
           });
         }).pipe(Effect.catch((error) => Effect.succeed(mcpToolResultError(String(error))))),
     },

@@ -27,6 +27,8 @@ The instance controller (2026-10-14) reuses the existing Synara orchestration en
 
 The controller `/clear` fix reuses Synara's `apps/web/src/components/ChatView.tsx` clear-command entrypoint (reviewed at `ec3b1f6ef`) and this fork's persisted controller and navigation hook. T3's `ChatView.tsx` fresh-thread handler at the T3 commit above was also reviewed; no T3 code was copied. Only controller conversations rotate the persistent identity binding; ordinary clear behavior is retained.
 
+The project-update conversation feature reuses this fork’s Synara paired transport, durable chat outbox, engine receipts, process runner and shared chat gutters at `b22e6cd7f`. The original Synara process runner was also reviewed at `eaa61eded31b6755d4f30ba8eabc5d905cf817cb`. T3 `apps/web/src/components/Sidebar.tsx` at `f5ef0ddb90a8c36584e181b1913e7b8a5df30ffc` was reviewed for layout references; no T3 code was copied. Provenance is recorded in `docs/workbench/upstream.json`.
+
 ## T3 Code license
 
 The Agent task management additions reuse Synara's existing Activity rows,

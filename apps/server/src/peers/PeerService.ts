@@ -238,7 +238,10 @@ export const PeerServiceLive = Layer.effect(
     const config = yield* ServerConfig;
     const execution = yield* makePeerExecution;
     const chats = yield* makePeerChatExecution;
-    const manager = new PeerManager(path.join(config.stateDir, "peers"), execution, { chats });
+    const manager = new PeerManager(path.join(config.stateDir, "peers"), execution, {
+      chats,
+      projectRepositoryPath: config.cwd,
+    });
     yield* Effect.tryPromise(() => manager.initialize());
     yield* Effect.addFinalizer(() => Effect.promise(() => manager.stop()));
     return manager;
