@@ -58,11 +58,11 @@ export class MetisController {
     this.serial = result.catch(() => {});
     return result;
   }
-  private async save() {
+  private async save(state = this.state) {
     await Effect.runPromise(
       writeFileStringAtomically({
         filePath: path.join(this.root, "identity.json"),
-        contents: JSON.stringify(this.state),
+        contents: JSON.stringify(state),
       }),
     );
   }
@@ -129,6 +129,36 @@ export class MetisController {
       return this.overview();
     }
     return this.exclusive(async () => {
+      if (input.action === "clear") {
+        const current = await this.resolve();
+        if (current !== input.sourceThreadId) {
+          // A second window or a retried response must not clear the new conversation again.
+          if (!this.state.lineage.includes(input.sourceThreadId))
+            throw new Error("Only a Metis controller conversation can be cleared here.");
+          return this.state.identity;
+        }
+        const id = `metis-${this.state.identity.id}-${this.state.lineage.length}`;
+        const threadId = await this.host.createThread(id, input.modelSelection, input.runtimeMode);
+        const reflection = this.state.identity.reflection;
+        const interruptedReflection =
+          reflection?.state === "running" || reflection?.state === "pending";
+        const next: State = {
+          ...this.state,
+          identity: {
+            ...this.state.identity,
+            threadId,
+            reflection: interruptedReflection ? { ...reflection, state: "paused" } : reflection,
+            error: interruptedReflection
+              ? "对话已清空，上次经验整理未确认完成，可手动重试。"
+              : null,
+          },
+          lineage: [...new Set([...this.state.lineage, current, threadId])],
+        };
+        // Publish the binding only after it is durable. A failed save can retry the same candidate.
+        await this.save(next);
+        this.state = next;
+        return next.identity;
+      }
       if (input.action === "growth") {
         this.state = {
           ...this.state,

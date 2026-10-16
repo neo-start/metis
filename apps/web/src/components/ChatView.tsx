@@ -55,6 +55,8 @@ import { useIsMobile } from "~/hooks/useMediaQuery";
 import { useRefreshProviderStatusesNow } from "~/hooks/useProviderStatusRefresh";
 import { useRepoDiffTotals } from "~/hooks/useRepoDiffTotals";
 import { useThreadRecap } from "~/hooks/useThreadRecap";
+import { useMetisController } from "~/hooks/useMetisController";
+import { isMetisControllerProject } from "~/lib/metisController";
 import { SINGLE_CHAT_PANE_SCOPE_ID } from "~/lib/chatPaneScope";
 import { formatComposerMentionToken } from "~/lib/composerMentions";
 import {
@@ -583,6 +585,7 @@ export default function ChatView({
   const composerTranscriptInsetPx = composerTranscriptBottomInsetPx(composerOverlayHeightPx);
   const navigate = useNavigate();
   const { handleNewThread } = useHandleNewThread();
+  const { clear: clearMetisConversation } = useMetisController();
   const { handleNewChat } = useHandleNewChat();
   const { createThreadHandoff } = useThreadHandoff();
   const rawSearch = useDiffRouteSearch();
@@ -4620,6 +4623,14 @@ export default function ChatView({
           type: "warning",
           title: "Clear is unavailable",
           description: "Open a project before starting a fresh thread.",
+        });
+        return;
+      }
+      if (isServerThread && isMetisControllerProject(activeProject)) {
+        await clearMetisConversation.mutateAsync({
+          sourceThreadId: threadId,
+          modelSelection: selectedModelSelection,
+          runtimeMode,
         });
         return;
       }

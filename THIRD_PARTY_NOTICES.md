@@ -25,6 +25,8 @@ The delivery summary, automatic PR/CI feedback and persistent provider host chan
 
 The instance controller (2026-10-14) reuses the existing Synara orchestration engine, command receipts and ChatView, plus this fork's Metis memory service. T3 `docs/internals/connection-runtime.md` and `packages/client-runtime/src/connection/registry.ts` at the T3 commit above informed the separation of instance identity and conversation lifetime; no T3 runtime code was copied. Paths and adaptations are recorded in `docs/workbench/upstream.json`.
 
+The controller `/clear` fix reuses Synara's `apps/web/src/components/ChatView.tsx` clear-command entrypoint (reviewed at `ec3b1f6ef`) and this fork's persisted controller and navigation hook. T3's `ChatView.tsx` fresh-thread handler at the T3 commit above was also reviewed; no T3 code was copied. Only controller conversations rotate the persistent identity binding; ordinary clear behavior is retained.
+
 ## T3 Code license
 
 MIT License

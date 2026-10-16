@@ -17,38 +17,43 @@ import { makeMetisControllerHost } from "./MetisControllerService.ts";
 import { MetisMemoryLive } from "../metisMemory/Layers/MetisMemory.ts";
 import { MetisMemory } from "../metisMemory/Services/MetisMemory.ts";
 import { createHash } from "node:crypto";
+import { MetisController } from "./MetisController.ts";
+
+function createTestRuntime() {
+  const runtimeLayer = OrchestrationEngineLive.pipe(
+    Layer.provideMerge(OrchestrationProjectionPipelineLive),
+    Layer.provideMerge(OrchestrationProjectionSnapshotQueryLive),
+    Layer.provideMerge(OrchestrationEventStoreLive),
+    Layer.provideMerge(OrchestrationCommandReceiptRepositoryLive),
+    Layer.provideMerge(ProjectionTurnRepositoryLive),
+    Layer.provideMerge(QueuedTurnPromotionRepositoryLive),
+    Layer.provide(SqlitePersistenceMemory),
+    Layer.provideMerge(
+      Layer.effect(
+        ServerConfig,
+        Effect.gen(function* () {
+          const config = yield* ServerConfig;
+          return {
+            ...config,
+            homeDir: config.baseDir,
+            chatWorkspaceRoot: path.join(config.baseDir, "chats"),
+          };
+        }),
+      ).pipe(
+        Layer.provide(
+          ServerConfig.layerTest(process.cwd(), { prefix: "metis-controller-execution-test-" }),
+        ),
+      ),
+    ),
+    Layer.provideMerge(NodeServices.layer),
+  );
+
+  return ManagedRuntime.make(MetisMemoryLive.pipe(Layer.provideMerge(runtimeLayer)));
+}
 
 describe("Metis controller with the real orchestration engine", () => {
   it("creates one ordinary chat, preserves its model/permissions, deduplicates reflection and protects soul edits", async () => {
-    const runtimeLayer = OrchestrationEngineLive.pipe(
-      Layer.provideMerge(OrchestrationProjectionPipelineLive),
-      Layer.provideMerge(OrchestrationProjectionSnapshotQueryLive),
-      Layer.provideMerge(OrchestrationEventStoreLive),
-      Layer.provideMerge(OrchestrationCommandReceiptRepositoryLive),
-      Layer.provideMerge(ProjectionTurnRepositoryLive),
-      Layer.provideMerge(QueuedTurnPromotionRepositoryLive),
-      Layer.provide(SqlitePersistenceMemory),
-      Layer.provideMerge(
-        Layer.effect(
-          ServerConfig,
-          Effect.gen(function* () {
-            const config = yield* ServerConfig;
-            return {
-              ...config,
-              homeDir: config.baseDir,
-              chatWorkspaceRoot: path.join(config.baseDir, "chats"),
-            };
-          }),
-        ).pipe(
-          Layer.provide(
-            ServerConfig.layerTest(process.cwd(), { prefix: "metis-controller-execution-test-" }),
-          ),
-        ),
-      ),
-      Layer.provideMerge(NodeServices.layer),
-    );
-
-    const runtime = ManagedRuntime.make(MetisMemoryLive.pipe(Layer.provideMerge(runtimeLayer)));
+    const runtime = createTestRuntime();
     try {
       const engine = await runtime.runPromise(Effect.service(OrchestrationEngineService));
       const host = await runtime.runPromise(makeMetisControllerHost);
@@ -101,6 +106,59 @@ describe("Metis controller with the real orchestration engine", () => {
         })
         .pipe(runtime.runPromise);
       expect(await host.resolveThread("metis-controller-test")).toBeNull();
+    } finally {
+      await runtime.dispose();
+    }
+  });
+  it("opens an empty controller after clear and keeps that binding across retries and restart", async () => {
+    const runtime = createTestRuntime();
+    try {
+      const config = await runtime.runPromise(Effect.service(ServerConfig));
+      const engine = await runtime.runPromise(Effect.service(OrchestrationEngineService));
+      const host = await runtime.runPromise(makeMetisControllerHost);
+      const memory = await runtime.runPromise(Effect.service(MetisMemory));
+      const controller = new MetisController(path.join(config.stateDir, "metis"), host);
+      await controller.initialize();
+      const open = {
+        action: "open",
+        modelSelection: { provider: "codex", model: "test-model" },
+        runtimeMode: "approval-required",
+      } as const;
+      const old = await controller.control(open);
+      await runtime.runPromise(memory.writeSoul("Keep the owner's soul"));
+      await host.dispatchReflection(old.threadId!, "old-batch", [
+        { threadId: "work", turnId: "turn-1", title: "Old report" },
+      ]);
+      const clear = {
+        ...open,
+        action: "clear",
+        sourceThreadId: ThreadId.makeUnsafe(old.threadId!),
+      } as const;
+      const [fresh, duplicate] = await Promise.all([
+        controller.control(clear),
+        controller.control(clear),
+      ]);
+      expect(fresh.id).toBe(old.id);
+      expect(fresh.threadId).not.toBe(old.threadId);
+      expect(duplicate.threadId).toBe(fresh.threadId);
+      expect((await controller.control(open)).threadId).toBe(fresh.threadId);
+      const snapshot = await runtime.runPromise(engine.getReadModel());
+      expect(snapshot.threads).toHaveLength(2);
+      const newThread = snapshot.threads.find((thread) => thread.id === fresh.threadId)!;
+      const oldThread = snapshot.threads.find((thread) => thread.id === old.threadId)!;
+      expect(oldThread.messages).toHaveLength(1);
+      expect(oldThread.deletedAt).toBeNull();
+      expect(newThread.messages).toEqual([]);
+      expect(newThread.modelSelection).toEqual(open.modelSelection);
+      expect(newThread.runtimeMode).toBe(open.runtimeMode);
+      expect((await runtime.runPromise(memory.readSoul())).content).toBe("Keep the owner's soul");
+      expect(await controller.isController(old.threadId!)).toBe(false);
+      expect(await controller.isController(fresh.threadId!)).toBe(true);
+      const restarted = new MetisController(path.join(config.stateDir, "metis"), host);
+      await restarted.initialize();
+      expect((await restarted.control(open)).threadId).toBe(fresh.threadId);
+      expect((await restarted.control(clear)).threadId).toBe(fresh.threadId);
+      expect((await runtime.runPromise(engine.getReadModel())).threads).toHaveLength(2);
     } finally {
       await runtime.dispose();
     }

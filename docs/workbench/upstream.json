@@ -7,6 +7,17 @@
       "source": "apps/server/src/externalMcp/bridge.ts",
       "target": "apps/desktop/src/metisSharedService.ts",
       "changes": "Reuse private file ownership/no-follow checks for Metis launcher state and the existing one-time pairing protocol; keep Windows attachment disabled until ACL checks are ported."
+    },
+    "controllerClearAdaptation": {
+      "reviewedCommit": "ec3b1f6ef",
+      "source": "apps/web/src/components/ChatView.tsx:handleClearConversation",
+      "targets": [
+        "apps/web/src/components/ChatView.tsx",
+        "apps/web/src/hooks/useMetisController.ts",
+        "apps/server/src/metis/MetisController.ts",
+        "packages/contracts/src/metis.ts"
+      ],
+      "changes": "Reuse the existing clear command, ordinary thread creation and navigation. Rotate only the persistent controller binding with a source-thread guard and durable save; keep identity, memory and ordinary chat clear behavior."
     }
   },
   "t3code": {

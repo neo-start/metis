@@ -8,6 +8,7 @@ import { isAutomationRunThread } from "@synara/shared/automationMode";
 import type { AppState } from "./storeState";
 import { ACCOUNT_RATE_LIMIT_ACTIVITY_KINDS } from "./lib/rateLimits";
 import { resolveThreadDisplayProvider } from "./lib/threadDisplayProvider";
+import { isMetisControllerProject } from "./lib/metisController";
 import { collectByIds, getThreadFromState, getThreadsFromState } from "./threadDerivation";
 import type {
   ComposerThreadMentionSource,
@@ -365,12 +366,7 @@ export function createSidebarThreadSummariesSelector(options?: {
     previousProjects = state.projects;
     const hiddenProjectIds = new Set(
       options?.hideMetisController
-        ? state.projects
-            .filter(
-              (project) =>
-                project.kind === "chat" && /(?:^|[\\/])metis-console[\\/]?$/.test(project.cwd),
-            )
-            .map((project) => project.id)
+        ? state.projects.filter(isMetisControllerProject).map((project) => project.id)
         : [],
     );
     previousThreadIds = threadIds;

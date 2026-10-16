@@ -1,4 +1,9 @@
-import { DEFAULT_RUNTIME_MODE, ThreadId } from "@synara/contracts";
+import {
+  DEFAULT_RUNTIME_MODE,
+  ThreadId,
+  type MetisControlInput,
+  type MetisIdentity,
+} from "@synara/contracts";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useAppSettings } from "~/appSettings";
@@ -41,21 +46,27 @@ export function useMetisController() {
     refetchInterval: 30_000,
     retry: false,
   });
+  const showController = async (identity: MetisIdentity) => {
+    await cache.cancelQueries({ queryKey: METIS_IDENTITY_QUERY_KEY });
+    cache.setQueryData(METIS_IDENTITY_QUERY_KEY, identity);
+    if (!identity.threadId) throw new Error("Metis 总控暂时不可用，请重试。");
+    const snapshot = await ensureNativeApi().orchestration.getShellSnapshot();
+    useStore.getState().syncServerShellSnapshot(snapshot);
+    await navigate({
+      to: "/$threadId",
+      params: { threadId: ThreadId.makeUnsafe(identity.threadId) },
+    });
+  };
   const open = useMutation({
-    mutationFn: async () => {
-      const api = ensureNativeApi();
-      const identity = await prepare();
-      cache.setQueryData(METIS_IDENTITY_QUERY_KEY, identity);
-      if (!identity.threadId) throw new Error("Metis 总控暂时不可用，请重试。");
-      const snapshot = await api.orchestration.getShellSnapshot();
-      useStore.getState().syncServerShellSnapshot(snapshot);
-      await navigate({
-        to: "/$threadId",
-        params: { threadId: ThreadId.makeUnsafe(identity.threadId) },
-      });
-    },
+    mutationFn: async () => showController(await prepare()),
     onError: (error) =>
       toastManager.add({ type: "error", title: "无法打开 Metis", description: error.message }),
   });
-  return { query, open, owner };
+  const clear = useMutation({
+    mutationFn: async (input: Omit<Extract<MetisControlInput, { action: "clear" }>, "action">) =>
+      showController(await ensureNativeApi().metis.control({ action: "clear", ...input })),
+    onError: (error) =>
+      toastManager.add({ type: "error", title: "无法清空 Metis 对话", description: error.message }),
+  });
+  return { query, open, clear, owner };
 }

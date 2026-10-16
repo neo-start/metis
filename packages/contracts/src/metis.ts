@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 import { ModelSelection, RuntimeMode } from "./orchestration";
+import { ThreadId } from "./baseSchemas";
 
 const IdentityId = Schema.String.check(
   Schema.isPattern(/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/),
@@ -32,6 +33,12 @@ export const MetisControlInput = Schema.Union([
   Schema.Struct({ action: Schema.Literal("overview") }),
   Schema.Struct({
     action: Schema.Literal("open"),
+    modelSelection: ModelSelection,
+    runtimeMode: RuntimeMode,
+  }),
+  Schema.Struct({
+    action: Schema.Literal("clear"),
+    sourceThreadId: ThreadId,
     modelSelection: ModelSelection,
     runtimeMode: RuntimeMode,
   }),

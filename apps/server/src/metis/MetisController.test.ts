@@ -1,7 +1,8 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ThreadId } from "@synara/contracts";
 import { MetisController, type MetisControllerHost } from "./MetisController.ts";
 
 const roots: string[] = [];
@@ -62,6 +63,71 @@ async function setup() {
 }
 
 describe("persistent Metis identity and reflection lifecycle", () => {
+  it("clears once for concurrent windows and stale retries without changing the instance settings", async () => {
+    const f = await setup();
+    const original = await f.controller.control(f.open);
+    await f.controller.control({ action: "growth", enabled: false });
+    const clear = {
+      ...f.open,
+      action: "clear",
+      sourceThreadId: ThreadId.makeUnsafe(original.threadId!),
+    } as const;
+    const [a, b] = await Promise.all([f.controller.control(clear), f.controller.control(clear)]);
+    expect(a.threadId).not.toBe(original.threadId);
+    expect(a.threadId).toBe(b.threadId);
+    expect(a.id).toBe(original.id);
+    expect(a.growthEnabled).toBe(false);
+    expect(f.host.createThread).toHaveBeenCalledTimes(2);
+    const restarted = await f.create();
+    expect((await restarted.control(f.open)).threadId).toBe(a.threadId);
+    expect((await restarted.control(clear)).threadId).toBe(a.threadId);
+    expect(f.host.createThread).toHaveBeenCalledTimes(2);
+    await expect(
+      restarted.control({ ...clear, sourceThreadId: ThreadId.makeUnsafe("unrelated") }),
+    ).rejects.toThrow("Only a Metis");
+    expect(f.host.createThread).toHaveBeenCalledTimes(2);
+  });
+  it("keeps the old binding when persistence fails and retries the same replacement", async () => {
+    const f = await setup();
+    const original = await f.controller.control(f.open);
+    vi.mocked(f.host.resolveThread).mockImplementation(async (id) => id);
+    const clear = {
+      ...f.open,
+      action: "clear",
+      sourceThreadId: ThreadId.makeUnsafe(original.threadId!),
+    } as const;
+    const file = path.join(f.root, "identity.json");
+    await rename(file, `${file}.saved`);
+    await mkdir(file);
+    await expect(f.controller.control(clear)).rejects.toThrow();
+    expect(f.controller.identity.threadId).toBe(original.threadId);
+    const candidate = vi.mocked(f.host.createThread).mock.calls.at(-1)![0];
+    await rm(file, { recursive: true });
+    await rename(`${file}.saved`, file);
+    const restarted = await f.create();
+    expect((await restarted.control(clear)).threadId).toBe(candidate);
+    expect(vi.mocked(f.host.createThread).mock.calls.at(-1)![0]).toBe(candidate);
+  });
+  it("pauses an old reflection on clear without acknowledging it or carrying it into the new chat", async () => {
+    const f = await setup();
+    const original = await f.controller.control(f.open);
+    await f.controller.tick();
+    const batch = f.controller.identity.reflection!;
+    const fresh = await f.controller.control({
+      ...f.open,
+      action: "clear",
+      sourceThreadId: ThreadId.makeUnsafe(original.threadId!),
+    });
+    expect(fresh.reflection?.id).toBe(batch.id);
+    expect(fresh.reflection?.state).toBe("paused");
+    await expect(
+      f.controller.completeReflection(original.threadId!, "reflection-turn", batch.id, "late"),
+    ).rejects.toThrow();
+    f.advance();
+    await f.controller.tick();
+    expect(f.host.dispatchReflection).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(await readFile(path.join(f.root, "identity.json"), "utf8")).seen).toEqual({});
+  });
   it("creates one conversation for concurrent windows, persists identity and follows handoff", async () => {
     const f = await setup();
     const [a, b] = await Promise.all([f.controller.control(f.open), f.controller.control(f.open)]);
