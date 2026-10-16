@@ -1,5 +1,6 @@
 import { RemoteSidebarSection } from "./RemoteSidebarSection";
 import { MetisSidebarEntry } from "./MetisSidebarEntry";
+import { RemoteTaskOverview } from "./RemoteTaskOverview";
 import { useProjectImportDialogStore } from "~/projectImport/projectImportDialogStore";
 // FILE: Sidebar.tsx
 // Purpose: Renders the project/thread sidebar, including row status, sorting, and thread actions.
@@ -6482,6 +6483,7 @@ export default function Sidebar() {
       </SidebarContent>
 
       <SidebarFooter className="gap-2 border-sidebar-border border-t p-2 font-system-ui">
+        {!isOnSettings && <RemoteTaskOverview compact />}
         <SidebarMenu>
           <SidebarMenuItem>
             <div className="flex flex-col gap-1">

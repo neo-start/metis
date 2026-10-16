@@ -10,6 +10,7 @@ export function createLinuxCuaDriverHost(options: {
   readonly appRoot: string;
   readonly bundleId: string;
   readonly capability: string;
+  readonly hostEndpoint?: string;
   readonly ownPids: () => ReadonlySet<number>;
   readonly inputMonitor?: Pick<LinuxEscapeKillSwitchMonitor, "state" | "activate" | "setArmed">;
 }): CuaDriverHost {
@@ -19,6 +20,7 @@ export function createLinuxCuaDriverHost(options: {
       : join(options.appRoot, "apps/desktop/resources/cua-driver/cua-driver"),
     bundleId: options.bundleId,
     capability: options.capability,
+    ...(options.hostEndpoint ? { hostEndpoint: options.hostEndpoint } : {}),
     ownPids: options.ownPids,
     nativeRevision: null,
     inputMonitorState: () =>

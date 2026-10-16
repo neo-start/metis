@@ -84,6 +84,7 @@ import {
   readMetisSharedService,
   type MetisSharedService,
 } from "./metisSharedService";
+import { requestMetisBackground } from "./metisBackgroundControl";
 import { applyShellEnvironmentHydrationMarker } from "@synara/shared/shell";
 import { RotatingFileSink } from "@synara/shared/logging";
 import {
@@ -1788,6 +1789,43 @@ async function checkForUpdatesFromMenu(): Promise<void> {
   }
 }
 
+async function stopMetisBackgroundFromMenu(): Promise<void> {
+  if (!metisSharedService) {
+    await dialog.showMessageBox({
+      type: "info",
+      message: "No shared background service is attached.",
+      buttons: ["OK"],
+    });
+    return;
+  }
+  const result = await dialog.showMessageBox({
+    type: "warning",
+    message: "Stop the Metis background service?",
+    detail:
+      "This stops running jobs and disconnects every desktop and browser attached to this workspace. Ordinary Quit leaves jobs running.",
+    buttons: ["Cancel", "Stop Service and Quit"],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+  });
+  if (result.response !== 1) return;
+  try {
+    const stopped = await requestMetisBackground(BASE_DIR, "stop");
+    if (!stopped?.stopped)
+      throw new Error(
+        "No authenticated background controller is available. Stop an older foreground service from its terminal with Ctrl+C.",
+      );
+    requestGracefulAppQuit("background service stopped");
+  } catch (error) {
+    await dialog.showMessageBox({
+      type: "error",
+      message: "The background service could not be stopped.",
+      detail: formatErrorMessage(error),
+      buttons: ["OK"],
+    });
+  }
+}
+
 function configureApplicationMenu(): void {
   const template: MenuItemConstructorOptions[] = [];
   const keyboardShortcutsAccelerator = resolveKeyboardShortcutsMenuAccelerator(process.platform);
@@ -1857,6 +1895,16 @@ function configureApplicationMenu(): void {
               },
               { type: "separator" as const },
             ]),
+        ...(process.platform === "darwin" || process.platform === "linux"
+          ? [
+              {
+                label: "Stop Background Service and Quit…",
+                click: () => {
+                  void stopMetisBackgroundFromMenu();
+                },
+              },
+            ]
+          : []),
         { role: process.platform === "darwin" ? "close" : "quit" },
       ],
     },
@@ -3760,6 +3808,7 @@ async function attachCuaHost(host: CuaDriverHost): Promise<void> {
 async function startCuaHost(): Promise<void> {
   if ((process.platform !== "darwin" && process.platform !== "linux") || cuaDriverHost) return;
   sweepOrphanedCuaDrivers();
+  if (fixedCuaHostEndpoint) await clearStaleCuaHostSocket(fixedCuaHostEndpoint);
   if (process.platform === "linux") {
     linuxEscapeKillSwitchMonitor ??= new LinuxEscapeKillSwitchMonitor({
       shortcutRegistry: globalShortcut,
@@ -3779,6 +3828,7 @@ async function startCuaHost(): Promise<void> {
         appRoot: resolveAppRoot(),
         bundleId: desktopIdentity.bundleId,
         capability: browserHostCapability,
+        ...(fixedCuaHostEndpoint ? { hostEndpoint: fixedCuaHostEndpoint } : {}),
         inputMonitor: linuxEscapeKillSwitchMonitor,
         ownPids: () => new Set([process.pid, ...app.getAppMetrics().map((metric) => metric.pid)]),
       }),
@@ -3878,8 +3928,6 @@ async function startCuaHost(): Promise<void> {
       return result;
     },
   });
-  // A fixed endpoint may hold a socket left by a desktop that exited uncleanly.
-  if (fixedCuaHostEndpoint) await clearStaleCuaHostSocket(fixedCuaHostEndpoint);
   await attachCuaHost(host);
   // The physical Escape kill switch lives in a dedicated helper process: its
   // listen-only event tap can report a hardware Escape even while Electron's
@@ -5733,8 +5781,7 @@ async function startMetisSharedDesktopHosts(service: MetisSharedService): Promis
   } catch (error) {
     console.warn("[Metis browser] Failed to start browser host pipe", error);
   }
-  // Only the macOS host accepts a caller-chosen endpoint today.
-  if (process.platform !== "darwin") return;
+  if (process.platform !== "darwin" && process.platform !== "linux") return;
   fixedCuaHostEndpoint = bridge.cuaHostSocket;
   try {
     await startCuaHost();
@@ -5744,48 +5791,7 @@ async function startMetisSharedDesktopHosts(service: MetisSharedService): Promis
   writeDesktopLogHeader("shared service desktop hosts started");
 }
 
-async function bootstrap(): Promise<void> {
-  writeDesktopLogHeader("bootstrap start");
-  metisSharedService = readMetisSharedService(BASE_DIR);
-  if (metisSharedService) {
-    // Attach before migration/recovery: the service owns the database and its
-    // lifecycle. Native dialogs, menus, window controls and icons stay in Electron.
-    backendHttpUrl = metisSharedService.localOrigin;
-    delete process.env.SYNARA_DESKTOP_WS_URL;
-    configureAutoUpdater();
-    registerIpcHandlers();
-    await waitForHttpReady(backendHttpUrl, {
-      path: "/health",
-      timeoutMs: 15_000,
-      isReady: async (response) => {
-        if (!response.ok) return false;
-        const health = (await response.json()) as { startupReady?: boolean };
-        return health.startupReady === true;
-      },
-    });
-    mainWindow = createWindow();
-    writeDesktopLogHeader("Metis attached to existing shared service; no backend spawned");
-    await startMetisSharedDesktopHosts(metisSharedService);
-    return;
-  }
-  if (!(await requireCurrentDesktopMigrationBundle())) {
-    return;
-  }
-  // Ahead of the recovery gate on purpose. A startup that blocks below returns
-  // early, and every path that could ship the fix for whatever blocked it lives
-  // after that return: an install wedged on a bad migration would be unable to
-  // update out of it, which is exactly how 0.6.0 stranded its users. The
-  // updater touches no database state, so configuring it first is safe.
-  configureAutoUpdater();
-
-  const migrationRecoveryOutcome = await handleDesktopMigrationRecovery();
-  if (migrationRecoveryOutcome !== "continue") {
-    return;
-  }
-
-  backendAuthToken = Crypto.randomBytes(24).toString("hex");
-  await reserveBackendEndpoint("bootstrap");
-
+async function restoreMetisBrowserSession(): Promise<void> {
   browserSessionRestore = new BrowserSessionRestore(
     Path.join(BASE_DIR, "browser-session-restore"),
     createCookieSessionBackend(BROWSER_SESSION_PARTITION),
@@ -5811,7 +5817,57 @@ async function bootstrap(): Promise<void> {
       "[Metis browser] Secure session restoration is unavailable; no saved session cookies were restored.",
     );
   }
+}
 
+async function bootstrap(): Promise<void> {
+  writeDesktopLogHeader("bootstrap start");
+  metisSharedService = readMetisSharedService(BASE_DIR);
+  if (metisSharedService) {
+    // Attach before migration/recovery: the service owns the database and its
+    // lifecycle. Native dialogs, menus, window controls and icons stay in Electron.
+    backendHttpUrl = metisSharedService.localOrigin;
+    delete process.env.SYNARA_DESKTOP_WS_URL;
+    configureAutoUpdater();
+    registerIpcHandlers();
+    await waitForHttpReady(backendHttpUrl, {
+      path: "/health",
+      timeoutMs: 15_000,
+      isReady: async (response) => {
+        if (!response.ok) return false;
+        const health = (await response.json()) as { startupReady?: boolean };
+        return health.startupReady === true;
+      },
+    });
+    mainWindow = createWindow();
+    writeDesktopLogHeader("Metis attached to existing shared service; no backend spawned");
+    await restoreMetisBrowserSession();
+    await startMetisSharedDesktopHosts(metisSharedService);
+    return;
+  }
+  if (process.env.METIS_REQUIRE_SHARED_SERVICE === "1") {
+    throw new Error(
+      "The Metis background service is unavailable. Reopen with npm run metis; no desktop-owned backend was started.",
+    );
+  }
+  if (!(await requireCurrentDesktopMigrationBundle())) {
+    return;
+  }
+  // Ahead of the recovery gate on purpose. A startup that blocks below returns
+  // early, and every path that could ship the fix for whatever blocked it lives
+  // after that return: an install wedged on a bad migration would be unable to
+  // update out of it, which is exactly how 0.6.0 stranded its users. The
+  // updater touches no database state, so configuring it first is safe.
+  configureAutoUpdater();
+
+  const migrationRecoveryOutcome = await handleDesktopMigrationRecovery();
+  if (migrationRecoveryOutcome !== "continue") {
+    return;
+  }
+
+  backendAuthToken = Crypto.randomBytes(24).toString("hex");
+  await reserveBackendEndpoint("bootstrap");
+
+  await restoreMetisBrowserSession();
   registerIpcHandlers();
   writeDesktopLogHeader("bootstrap ipc handlers registered");
   try {
@@ -6004,7 +6060,7 @@ app.on("child-process-gone", (_event, details) => {
 });
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
+  if (metisSharedService || process.platform !== "darwin") {
     app.quit();
   }
 });

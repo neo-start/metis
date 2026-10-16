@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Fiber } from "effect";
 import { describe, expect, it } from "vitest";
 
 import { GatewayToolError } from "../agentGateway/toolRuntime.ts";
@@ -170,5 +170,54 @@ describe("waitForExternalMcpTaskState", () => {
     );
     expect(exit._tag).toBe("Failure");
     expect(String(exit)).toContain("Integration revoked");
+  });
+  it("returns a bounded timeout without changing the task", async () => {
+    let reads = 0;
+    const result = await Effect.runPromise(
+      waitForExternalMcpTaskState({
+        threadId: "task",
+        runId: "run",
+        initialState: "running",
+        timeoutMs: 0,
+        assertActive: () => Effect.void,
+        projectionTurns: {
+          getManyWaitSnapshot: () => {
+            reads += 1;
+            return Effect.die("must not poll");
+          },
+        },
+      }),
+    );
+    expect(result).toMatchObject({
+      terminal: false,
+      timedOut: true,
+      runId: "run",
+      state: "running",
+    });
+    expect(reads).toBe(0);
+  });
+
+  it("cancels a waiting caller promptly without polling or mutating work", async () => {
+    let reads = 0;
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const fiber = yield* waitForExternalMcpTaskState({
+          threadId: "task",
+          runId: "run",
+          initialState: "running",
+          timeoutMs: 60_000,
+          assertActive: () => Effect.void,
+          projectionTurns: {
+            getManyWaitSnapshot: () => {
+              reads += 1;
+              return Effect.die("cancelled wait must not poll");
+            },
+          },
+        }).pipe(Effect.forkChild);
+        yield* Effect.sleep(5);
+        yield* Fiber.interrupt(fiber);
+      }),
+    );
+    expect(reads).toBe(0);
   });
 });

@@ -1,6 +1,7 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "globalEnv": [
+    "METIS_REQUIRE_SHARED_SERVICE",
     "AZURE_TRUSTED_SIGNING_SUBJECT_DN",
     "PORT",
     "VITE_WS_URL",

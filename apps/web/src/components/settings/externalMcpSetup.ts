@@ -184,6 +184,14 @@ export function describeExternalMcpPermissions(
   if (capabilities.includes("tasks:read-project")) {
     descriptions.push("Read other tasks in selected projects");
   }
+  if (capabilities.includes("tasks:follow-up"))
+    descriptions.push("Send follow-ups to its own tasks");
+  if (capabilities.includes("tasks:answer")) descriptions.push("Answer questions in its own tasks");
+  if (capabilities.includes("tasks:cancel")) descriptions.push("Interrupt its own tasks");
+  if (capabilities.includes("tasks:approve"))
+    descriptions.push("Respond to approvals in its own tasks");
+  if (capabilities.includes("tasks:approve-session"))
+    descriptions.push("Grant session-wide task approvals");
   if (capabilities.includes("runtime:local")) {
     descriptions.push("Use the shared local checkout");
   }

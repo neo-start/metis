@@ -176,7 +176,7 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
       }),
     );
 
-    it.effect("defaults watched desktop development to ~/.synara-dev", () =>
+    it.effect("defaults watched desktop development to ~/.agent-workbench-dev", () =>
       Effect.gen(function* () {
         const env = yield* createDevRunnerEnv({
           mode: "dev:desktop",
@@ -193,7 +193,7 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
           devUrl: undefined,
         });
 
-        assert.equal(env.SYNARA_HOME, resolve(homedir(), ".synara-dev"));
+        assert.equal(env.SYNARA_HOME, resolve(homedir(), ".agent-workbench-dev"));
       }),
     );
 

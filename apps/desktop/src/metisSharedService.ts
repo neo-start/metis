@@ -21,7 +21,10 @@ function assertPrivate(stat: fs.Stats, directory: boolean): void {
   }
 }
 
-function readPrivateFile(home: string, name: string): { text: string; modifiedAt: number } | null {
+export function readPrivateFile(
+  home: string,
+  name: string,
+): { text: string; modifiedAt: number } | null {
   const file = path.join(home, name);
   if (!fs.existsSync(file)) return null;
   // POSIX ownership is verified here. Windows attachment needs an ACL-aware

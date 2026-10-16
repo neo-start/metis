@@ -30,6 +30,7 @@ describe("source desktop launch", () => {
   it("launches normal macOS starts through LaunchServices without secrets in argv", () => {
     const { spawnProcess } = captureSourceDesktopSpawn(
       {
+        METIS_REQUIRE_SHARED_SERVICE: "1",
         SYNARA_HOME: "/tmp/isolated",
         SYNARA_AUTH_TOKEN: "synthetic-secret",
         ELECTRON_RUN_AS_NODE: "1",
@@ -48,6 +49,7 @@ describe("source desktop launch", () => {
       ],
       expect.objectContaining({
         env: expect.objectContaining({
+          METIS_REQUIRE_SHARED_SERVICE: "1",
           SYNARA_HOME: "/tmp/isolated",
           SYNARA_AUTH_TOKEN: "synthetic-secret",
         }),

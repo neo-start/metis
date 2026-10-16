@@ -35,6 +35,39 @@ const CORE_CAPABILITIES: ReadonlyArray<ExternalMcpCapability> = [
   "tasks:read",
 ];
 
+const TASK_CONTROL_PERMISSIONS: ReadonlyArray<{
+  capability: ExternalMcpCapability;
+  title: string;
+  description: string;
+}> = [
+  {
+    capability: "tasks:follow-up",
+    title: "Send task follow-ups",
+    description: "Let this agent send another prompt to a task it created.",
+  },
+  {
+    capability: "tasks:answer",
+    title: "Answer task questions",
+    description: "Let this agent answer pending questions in its own tasks.",
+  },
+  {
+    capability: "tasks:cancel",
+    title: "Interrupt task execution",
+    description: "Let this agent interrupt an active run in its own tasks.",
+  },
+  {
+    capability: "tasks:approve",
+    title: "Respond to task approvals",
+    description:
+      "Let this agent approve or reject requested operations in its own tasks on your behalf.",
+  },
+  {
+    capability: "tasks:approve-session",
+    title: "Grant approvals for a session",
+    description: "Also let this agent grant approvals that remain valid for the task session.",
+  },
+];
+
 function dateMillis(value: string): number {
   return Date.parse(value);
 }
@@ -68,6 +101,9 @@ export function ExternalMcpSettingsPanel(props: { active: boolean }) {
   const [allowLocal, setAllowLocal] = useState(false);
   const [allowFullAccess, setAllowFullAccess] = useState(false);
   const [allowComputerControl, setAllowComputerControl] = useState(false);
+  const [taskControlPermissions, setTaskControlPermissions] = useState<
+    ReadonlySet<ExternalMcpCapability>
+  >(new Set());
   const [setup, setSetup] = useState<ExternalMcpCreateIntegrationResult | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
 
@@ -97,8 +133,9 @@ export function ExternalMcpSettingsPanel(props: { active: boolean }) {
     if (allowLocal) next.push("runtime:local");
     if (allowFullAccess) next.push("runtime:full-access");
     if (allowComputerControl) next.push("computer:control");
+    next.push(...taskControlPermissions);
     return next;
-  }, [allowComputerControl, allowFullAccess, allowLocal, allowProjectRead]);
+  }, [allowComputerControl, allowFullAccess, allowLocal, allowProjectRead, taskControlPermissions]);
 
   const createMutation = useMutation({
     mutationFn: () =>
@@ -307,7 +344,7 @@ export function ExternalMcpSettingsPanel(props: { active: boolean }) {
           </SettingsRow>
           <SettingsRow
             title="Advanced permissions"
-            description="Optional access for existing tasks, shared checkouts, or execution without approvals. The safe defaults are recommended."
+            description="Choose additional task controls, access to existing tasks, or execution permissions for this connection."
             control={
               <Button
                 size="xs"
@@ -324,6 +361,35 @@ export function ExternalMcpSettingsPanel(props: { active: boolean }) {
               open={advancedOpen}
               contentClassName="mt-3 space-y-4 border-t border-border/70 pt-3"
             >
+              {TASK_CONTROL_PERMISSIONS.map((permission) => (
+                <div key={permission.capability} className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="text-ui leading-snug font-medium">{permission.title}</div>
+                    <div className="mt-0.5 text-ui-sm leading-relaxed text-muted-foreground">
+                      {permission.description}
+                    </div>
+                  </div>
+                  <Switch
+                    aria-label={permission.title}
+                    checked={taskControlPermissions.has(permission.capability)}
+                    onCheckedChange={(checked) => {
+                      setTaskControlPermissions((current) => {
+                        const next = new Set(current);
+                        if (checked) {
+                          next.add(permission.capability);
+                          if (permission.capability === "tasks:approve-session")
+                            next.add("tasks:approve");
+                        } else {
+                          next.delete(permission.capability);
+                          if (permission.capability === "tasks:approve")
+                            next.delete("tasks:approve-session");
+                        }
+                        return next;
+                      });
+                    }}
+                  />
+                </div>
+              ))}
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <div className="text-ui leading-snug font-medium">Read other project tasks</div>

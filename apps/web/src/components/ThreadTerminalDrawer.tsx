@@ -49,6 +49,8 @@ import TerminalViewportPane from "./terminal/TerminalViewportPane";
 import { useTerminalDrawerHeight } from "./terminal/useTerminalDrawerHeight";
 import { TerminalSearch } from "./TerminalSearch";
 import { TerminalScrollToBottom } from "./TerminalScrollToBottom";
+import { NativeAgentTerminal } from "./nativeAgentTerminal/NativeAgentTerminal";
+import { isNativeAgentTerminal } from "./nativeAgentTerminal/nativeAgentTerminalSupport";
 
 function serializeRuntimeEnv(runtimeEnv: Record<string, string> | undefined): string {
   if (!runtimeEnv) return "";
@@ -181,8 +183,16 @@ function TerminalViewport({
       ...(runtimeEnvPayload ? { runtimeEnv: runtimeEnvPayload } : {}),
       callbacks: {
         onSessionExited,
-        onTerminalMetadataChange,
-        onTerminalActivityChange,
+        onTerminalMetadataChange: (id, metadata) =>
+          onTerminalMetadataChange(
+            id,
+            isNativeAgentTerminal(id) ? { cliKind: null, label: "Agent terminal" } : metadata,
+          ),
+        onTerminalActivityChange: (id, activity) =>
+          onTerminalActivityChange(
+            id,
+            isNativeAgentTerminal(id) ? { ...activity, agentState: null } : activity,
+          ),
         onTerminalRuntimeStatusChange: (changedTerminalId, status) => {
           if (changedTerminalId === terminalId && runtimeStatusMountedRef.current) {
             setRuntimeStatus(status);
@@ -680,6 +690,17 @@ export default function ThreadTerminalDrawer({
           onPointerCancel={handleResizePointerEnd}
         />
       ) : null}
+
+      <NativeAgentTerminal
+        key={threadId}
+        threadId={threadId}
+        cwd={cwd}
+        runtimeEnv={runtimeEnv}
+        terminalIds={normalizedTerminalIds}
+        terminalTitles={{ ...terminalLabelsById, ...terminalTitleOverridesById }}
+        activeTerminalId={resolvedActiveTerminalId}
+        onActiveTerminalChange={onActiveTerminalChange}
+      />
 
       {showTerminalGroupTabs ? (
         <TerminalWorkspaceTabBar

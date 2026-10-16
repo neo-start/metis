@@ -1,6 +1,13 @@
 import path from "node:path";
 import { makePeerChatExecution } from "./PeerChatExecution.ts";
-import { CommandId, MessageId, ThreadId, type PeerTask } from "@synara/contracts";
+import { createHash } from "node:crypto";
+import {
+  ApprovalRequestId,
+  CommandId,
+  MessageId,
+  ThreadId,
+  type PeerTask,
+} from "@synara/contracts";
 import { Effect, Layer, Option, ServiceMap } from "effect";
 import { ServerConfig } from "../config.ts";
 import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
@@ -8,6 +15,7 @@ import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSna
 import { OrchestrationCommandReceiptRepository } from "../persistence/Services/OrchestrationCommandReceipts.ts";
 import { OrchestrationCommandReceiptRepositoryLive } from "../persistence/Layers/OrchestrationCommandReceipts.ts";
 import { PeerManager, type PeerExecution } from "./PeerManager.ts";
+import { taskAttention, taskLocalRecovery } from "./taskAttention.ts";
 
 export class PeerService extends ServiceMap.Service<PeerService, PeerManager>()(
   "metis/PeerService",
@@ -102,8 +110,11 @@ export const makePeerExecution = Effect.gen(function* () {
       return threadId;
     },
     status: async (threadId) => {
+      // Conservative observation start: a slow projection read must not renew a
+      // snapshot merely because it eventually returned to the peer manager.
+      const observedAt = new Date().toISOString();
       const thread = await shell(threadId);
-      if (!thread) return { state: "error", result: "本地任务会话已删除。" };
+      if (!thread) return { state: "error", result: "本地任务会话已删除。", observedAt };
       const turn = thread.latestTurn;
       const detail = Option.getOrUndefined(await run(query.getThreadDetailById(thread.id)));
       const result =
@@ -112,8 +123,9 @@ export const makePeerExecution = Effect.gen(function* () {
         )?.text ??
         thread.session?.lastError ??
         "";
+      const localRecovery = detail ? taskLocalRecovery(detail) : [];
       const state: PeerTask["state"] =
-        thread.hasPendingApprovals || thread.hasPendingUserInput
+        thread.hasPendingApprovals || thread.hasPendingUserInput || localRecovery.length > 0
           ? "waiting"
           : !turn
             ? "running"
@@ -124,7 +136,69 @@ export const makePeerExecution = Effect.gen(function* () {
                 : turn.state === "interrupted"
                   ? "interrupted"
                   : "error";
-      return { state, result: result.slice(-32000) };
+      return {
+        state,
+        observedAt,
+        result: result.slice(-32000),
+        updatedAt: thread.updatedAt,
+        attention: detail ? taskAttention(detail) : [],
+        localRecovery,
+      };
+    },
+    respond: async (threadId, request) => {
+      const target = await shell(threadId);
+      if (!target || target.archivedAt) throw new Error("任务会话已删除或归档。");
+      const detail = Option.getOrUndefined(await run(query.getThreadDetailById(target.id)));
+      const pending =
+        detail &&
+        taskAttention(detail).find(
+          (entry) =>
+            entry.kind === request.response.kind &&
+            entry.requestId === request.requestId &&
+            entry.lifecycleGeneration === request.lifecycleGeneration &&
+            entry.createdAt === request.createdAt &&
+            entry.responseAttemptId === request.responseAttemptId,
+        );
+      if (!pending) throw new Error("审批或问题已失效或正在处理，请刷新后重试。");
+      if (request.response.kind === "userInput") {
+        const answers = request.response.answers;
+        if (
+          Object.keys(answers).some((id) => !pending.questions.some((q) => q.id === id)) ||
+          pending.questions.some((q) => {
+            const answer = answers[q.id];
+            return (
+              answer == null ||
+              (typeof answer === "string"
+                ? !answer.trim()
+                : !answer.length ||
+                  answer.some((value) => !value.trim()) ||
+                  (!q.multiSelect && answer.length > 1))
+            );
+          })
+        )
+          throw new Error("请回答此请求中的所有问题。");
+      }
+      const commandId = CommandId.makeUnsafe(
+        `peer:response:${createHash("sha256")
+          .update(JSON.stringify([threadId, request]))
+          .digest("hex")}`,
+      );
+      const common = {
+        commandId,
+        threadId: target.id,
+        requestId: ApprovalRequestId.makeUnsafe(request.requestId),
+        ...(request.lifecycleGeneration
+          ? { lifecycleGeneration: request.lifecycleGeneration }
+          : {}),
+        createdAt: new Date().toISOString(),
+      };
+      await run(
+        engine.dispatch(
+          request.response.kind === "approval"
+            ? { ...common, type: "thread.approval.respond", decision: request.response.decision }
+            : { ...common, type: "thread.user-input.respond", answers: request.response.answers },
+        ),
+      );
     },
     cancel: async (threadId, requestId) => {
       const commandId = `peer:cancel:${threadId}:${requestId}`;

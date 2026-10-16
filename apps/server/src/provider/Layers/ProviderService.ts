@@ -2869,6 +2869,15 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
               input.providerThreadId !== undefined
                 ? input.turnId
                 : (liveTurnId ?? boundActiveTurnId);
+            if (
+              input.strictTurnId &&
+              (input.turnId === undefined || input.turnId !== providerTurnId)
+            ) {
+              return yield* toValidationError(
+                "ProviderService.interruptTurn",
+                "The scoped cancellation target is no longer the active provider turn.",
+              );
+            }
             if (providerTurnId === undefined) {
               return yield* toValidationError(
                 "ProviderService.interruptTurn",

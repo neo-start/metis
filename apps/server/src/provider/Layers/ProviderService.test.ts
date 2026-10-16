@@ -2409,6 +2409,56 @@ routing.layer("ProviderServiceLive routing", (it) => {
     }),
   );
 
+  it.effect("rejects a scoped interrupt when the runtime advanced beyond its cached target", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService;
+      const directory = yield* ProviderSessionDirectory;
+      const threadId = asThreadId("thread-scoped-interrupt");
+      const session = yield* provider.startSession(threadId, {
+        provider: "codex",
+        threadId,
+        cwd: "/tmp/project",
+        runtimeMode: "full-access",
+      });
+      yield* provider.sendTurn({ threadId, input: "original run", attachments: [] });
+      const originalBinding = Option.getOrThrow(yield* directory.getBinding(threadId));
+      const originalListSessions = routing.codex.listSessions.getMockImplementation()!;
+      const stops = routing.codex.stopSession.mock.calls.length;
+      routing.codex.interruptTurn.mockClear();
+      routing.codex.listSessions.mockReturnValue(
+        Effect.succeed([
+          { ...session, status: "running", activeTurnId: asTurnId("replacement-run") },
+        ]),
+      );
+      const result = yield* provider
+        .interruptTurn({
+          threadId,
+          turnId: asTurnId("turn-thread-scoped-interrupt"),
+          strictTurnId: true,
+        })
+        .pipe(
+          Effect.result,
+          Effect.ensuring(
+            Effect.sync(() => routing.codex.listSessions.mockImplementation(originalListSessions)),
+          ),
+        );
+      assert.equal(result._tag, "Failure");
+      assert.equal(routing.codex.interruptTurn.mock.calls.length, 0);
+      assert.equal(routing.codex.stopSession.mock.calls.length, stops);
+      assert.deepEqual(Option.getOrThrow(yield* directory.getBinding(threadId)), originalBinding);
+
+      // A rejected scoped request releases its fence; an exact request still works.
+      yield* provider.interruptTurn({
+        threadId,
+        turnId: asTurnId("turn-thread-scoped-interrupt"),
+        strictTurnId: true,
+      });
+      assert.deepEqual(routing.codex.interruptTurn.mock.calls, [
+        [threadId, asTurnId("turn-thread-scoped-interrupt"), undefined],
+      ]);
+    }),
+  );
+
   for (const cachedTurnId of [null, "stale-cached-turn"]) {
     it.effect(`interrupts the live turn when the cached turn is ${cachedTurnId}`, () =>
       Effect.gen(function* () {

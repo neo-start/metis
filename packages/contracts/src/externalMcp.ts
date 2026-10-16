@@ -1,7 +1,22 @@
 import { Schema } from "effect";
 
-import { IsoDateTime, MessageId, ProjectId, ThreadId, TrimmedNonEmptyString } from "./baseSchemas";
-import { ProviderKind, RuntimeMode } from "./orchestration";
+import {
+  ApprovalRequestId,
+  IsoDateTime,
+  MessageId,
+  ProjectId,
+  ThreadId,
+  TrimmedNonEmptyString,
+  TurnId,
+} from "./baseSchemas";
+import { AsyncUserInputResponse } from "./asyncUserInput";
+import {
+  ProviderInteractionMode,
+  ProviderKind,
+  RuntimeMode,
+  ProviderApprovalDecision,
+  ProviderUserInputAnswers,
+} from "./orchestration";
 
 export const EXTERNAL_MCP_AUDIENCE = "synara.external-mcp" as const;
 export const EXTERNAL_MCP_MAX_PROMPT_CHARS = 100_000;
@@ -17,6 +32,11 @@ export const ExternalMcpCapability = Schema.Literals([
   "tasks:wait",
   "tasks:read",
   "tasks:read-project",
+  "tasks:follow-up",
+  "tasks:answer",
+  "tasks:approve",
+  "tasks:approve-session",
+  "tasks:cancel",
   "runtime:local",
   "runtime:full-access",
   "computer:control",
@@ -167,3 +187,47 @@ export const ExternalMcpWaitTaskInput = Schema.Struct({
   ),
 }).annotate({ parseOptions: { onExcessProperty: "error" } });
 export type ExternalMcpWaitTaskInput = typeof ExternalMcpWaitTaskInput.Type;
+
+// Keep requestId and requestedAt unchanged when retrying: the engine persists
+// fingerprints and receipts; no second task-control event store is introduced.
+const TaskMutationFields = {
+  requestId: TrimmedNonEmptyString.check(Schema.isMaxLength(EXTERNAL_MCP_MAX_REQUEST_ID_LENGTH)),
+  threadId: ThreadId,
+  requestedAt: IsoDateTime.check(
+    Schema.isPattern(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/),
+  ),
+};
+
+export const ExternalMcpFollowUpTaskInput = Schema.Struct({
+  ...TaskMutationFields,
+  expectedUpdatedAt: IsoDateTime,
+  expectedRuntimeMode: RuntimeMode,
+  expectedInteractionMode: ProviderInteractionMode,
+  prompt: TrimmedNonEmptyString.check(Schema.isMaxLength(EXTERNAL_MCP_MAX_PROMPT_CHARS)),
+  asyncUserInputResponse: Schema.optional(AsyncUserInputResponse),
+}).annotate({ parseOptions: { onExcessProperty: "error" } });
+export type ExternalMcpFollowUpTaskInput = typeof ExternalMcpFollowUpTaskInput.Type;
+
+const TaskInteractionFields = {
+  ...TaskMutationFields,
+  interactionId: ApprovalRequestId,
+  lifecycleGeneration: Schema.NullOr(TrimmedNonEmptyString),
+};
+
+export const ExternalMcpAnswerTaskInput = Schema.Struct({
+  ...TaskInteractionFields,
+  answers: ProviderUserInputAnswers,
+}).annotate({ parseOptions: { onExcessProperty: "error" } });
+export type ExternalMcpAnswerTaskInput = typeof ExternalMcpAnswerTaskInput.Type;
+
+export const ExternalMcpApproveTaskInput = Schema.Struct({
+  ...TaskInteractionFields,
+  decision: ProviderApprovalDecision,
+}).annotate({ parseOptions: { onExcessProperty: "error" } });
+export type ExternalMcpApproveTaskInput = typeof ExternalMcpApproveTaskInput.Type;
+
+export const ExternalMcpCancelTaskInput = Schema.Struct({
+  ...TaskMutationFields,
+  runId: TurnId,
+}).annotate({ parseOptions: { onExcessProperty: "error" } });
+export type ExternalMcpCancelTaskInput = typeof ExternalMcpCancelTaskInput.Type;

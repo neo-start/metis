@@ -18,6 +18,35 @@
         "packages/contracts/src/metis.ts"
       ],
       "changes": "Reuse the existing clear command, ordinary thread creation and navigation. Rotate only the persistent controller binding with a source-thread guard and durable save; keep identity, memory and ordinary chat clear behavior."
+    },
+    "agentTaskManagementAdaptation": {
+      "localBaseCommit": "362f8b80063dc737ce9b163af287d4a977689e7d",
+      "sources": [
+        "apps/server/src/persistence/DatabaseLifecycleLock.ts",
+        "apps/server/src/externalMcp/Layers/ExternalMcpGateway.ts",
+        "apps/server/src/orchestration/Services/OrchestrationEngine.ts",
+        "packages/shared/src/pendingInteractions.ts",
+        "apps/server/src/peers/PeerManager.ts",
+        "apps/server/src/terminal/Layers/Manager.ts",
+        "apps/web/src/components/SidebarActivityView.tsx",
+        "apps/web/src/components/ThreadTerminalDrawer.tsx",
+        "apps/server/src/provider/Layers/ProviderService.ts",
+        "apps/server/src/orchestration/Layers/ProviderCommandReactor.ts"
+      ],
+      "targets": [
+        "scripts/metis-background-runtime.mjs",
+        "apps/desktop/src/metisBackgroundControl.ts",
+        "apps/server/src/taskControl/service.ts",
+        "apps/server/src/peers/taskAttention.ts",
+        "apps/web/src/components/AttentionInboxActions.tsx",
+        "apps/web/src/components/RemoteTaskOverview.tsx",
+        "apps/web/src/components/nativeAgentTerminal/NativeAgentTerminal.tsx"
+      ],
+      "changes": "Reuse private shared-service attachment, lifecycle locks and process boundaries; default source-launcher background ownership; existing engine receipts for scoped task mutations; paired owner-only remote responses; task terminal reuse without managed-agent heuristics; compose existing Activity rows and decision destinations. Scoped cancellations preserve exact run identity through serialized admission and provider interruption fences; stale external/peer answers cannot become new turns.",
+      "sourceRevisions": {
+        "apps/server/src/persistence/DatabaseLifecycleLock.ts": "9ff580c9c3338c6d555f1666e42a61d7f3820852",
+        "packages/shared/src/processRuntime.ts": "9cf2e3a9d7fdd7d202f26b0cf1bccd19577a8741"
+      }
     }
   },
   "t3code": {
@@ -37,6 +66,27 @@
       ],
       "targets": ["apps/server/src/metis", "apps/web/src/components/MetisSidebarEntry.tsx"],
       "changes": "Design reference only; no T3 code copied. Persist identity separately from conversation/transport. Reuse the existing Synara orchestration engine, command receipts, normal ChatView and Metis memory service."
+    },
+    "agentTaskManagementReference": {
+      "sources": [
+        "apps/web/src/components/Sidebar.tsx",
+        "apps/web/src/components/Sidebar.logic.ts",
+        "apps/web/src/components/ThreadTerminalDrawer.tsx",
+        "apps/server/src/terminal/Manager.ts",
+        "apps/server/src/cloud/ManagedEndpointRuntime.ts"
+      ],
+      "targets": [
+        "apps/web/src/components/SidebarActivityView.logic.ts",
+        "apps/web/src/components/nativeAgentTerminal",
+        "scripts/workbench-remote.ts"
+      ],
+      "changes": "Inspected pinned upstream source and reused actionable/failed-state priority design. Keep Synara PTY, orchestration and authentication boundaries; no T3 runtime or event store transplanted. Native terminal and task-control implementations extend existing local modules."
+    },
+    "peerTaskPresentationReference": {
+      "commit": "6002c5c68c637de2cd2557bd6c40e46c153e39b1",
+      "source": "apps/web/src/components/Sidebar.tsx",
+      "target": "apps/web/src/components/RemoteTaskOverview.tsx",
+      "changes": "Additional machine-label design reference inspected by the peer implementer; no code copied."
     }
   },
   "agentOrchestrator": {

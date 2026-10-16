@@ -33,6 +33,27 @@ async function fixture(
 }
 
 describe("Linux desktop host startup", () => {
+  it("serves the shared backend's fixed authenticated computer endpoint", async () => {
+    const endpoint = join(tmpdir(), `metis-cua-${randomUUID()}.sock`);
+    const host = createLinuxCuaDriverHost({
+      isPackaged: false,
+      resourcesPath: tmpdir(),
+      appRoot: tmpdir(),
+      bundleId: "test.metis.linux",
+      capability,
+      hostEndpoint: endpoint,
+      ownPids: () => new Set([process.pid]),
+    });
+    hosts.push(host);
+    expect(await host.listen()).toBe(endpoint);
+    await expect(
+      cuaRequest<CuaReply>(endpoint, { method: "probe", capability: "wrong" }),
+    ).resolves.toMatchObject({ ok: false });
+    await expect(
+      cuaRequest<CuaReply>(endpoint, { method: "probe", capability }),
+    ).resolves.toMatchObject({ ok: false, error: expect.stringContaining("provisioning") });
+  });
+
   it("connects task-scoped Escape activation and releases it after the final attributed task", async () => {
     let armed = false;
     const activate = vi.fn(async () => {

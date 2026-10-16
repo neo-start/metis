@@ -3822,6 +3822,47 @@ describe("ProviderCommandReactor", () => {
     },
   );
 
+  it("does not redirect a delayed targeted interrupt to a newer live run", async () => {
+    const harness = await createHarness();
+    const threadId = ThreadId.makeUnsafe("thread-1");
+    const now = new Date().toISOString();
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.makeUnsafe("cmd-targeted-interrupt-session"),
+        threadId,
+        session: {
+          threadId,
+          status: "running",
+          providerName: "codex",
+          runtimeMode: "approval-required",
+          activeTurnId: asTurnId("old-run"),
+          lastError: null,
+          updatedAt: now,
+        },
+        createdAt: now,
+      }),
+    );
+    harness.setRuntimeSessionTurnState({
+      threadId,
+      status: "running",
+      activeTurnId: asTurnId("new-run"),
+    });
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.interrupt",
+        commandId: CommandId.makeUnsafe("external_task_control_delayed-targeted-interrupt"),
+        threadId,
+        turnId: asTurnId("old-run"),
+        createdAt: now,
+      }),
+    );
+    await harness.drain();
+    expect(harness.interruptTurn).not.toHaveBeenCalled();
+    expect(harness.stopRuntimeSession).not.toHaveBeenCalled();
+    expect(harness.stopSession).not.toHaveBeenCalled();
+  });
+
   it("REL-01B gate: advances the durable cursor through irrelevant events", async () => {
     const harness = await createHarness({ startReactor: false });
     const before = await Effect.runPromise(
@@ -15766,9 +15807,14 @@ describe("ProviderCommandReactor", () => {
     });
   });
 
-  it.each(["callback-missing", "runtime-unavailable", "stale-interaction"] as const)(
-    "expires %s user-input failures without faking resolution or retrying a dead callback",
-    async (reason) => {
+  it.each(
+    (["callback-missing", "runtime-unavailable", "stale-interaction"] as const).flatMap((reason) =>
+      ["", "external_task_control_", "peer:response:"].map((prefix) => ({ reason, prefix })),
+    ),
+  )(
+    "expires $reason user-input failures with scoped forwarding policy ($prefix)",
+    async ({ reason, prefix }) => {
+      const responseCommandId = `${prefix}cmd-user-input-respond-stale`;
       const harness = await createHarness();
       const now = new Date().toISOString();
       harness.respondToUserInput.mockImplementation(() =>
@@ -15841,7 +15887,7 @@ describe("ProviderCommandReactor", () => {
       await Effect.runPromise(
         harness.engine.dispatch({
           type: "thread.user-input.respond",
-          commandId: CommandId.makeUnsafe("cmd-user-input-respond-stale"),
+          commandId: CommandId.makeUnsafe(responseCommandId),
           threadId: ThreadId.makeUnsafe("thread-1"),
           requestId: asApprovalRequestId("user-input-request-1"),
           answers: {
@@ -15867,7 +15913,7 @@ describe("ProviderCommandReactor", () => {
       expect(failureActivity).toBeDefined();
       expect(failureActivity?.payload).toMatchObject({
         requestId: "user-input-request-1",
-        responseCommandId: "cmd-user-input-respond-stale",
+        responseCommandId,
         settlementStatus: "uncertain",
         detail: expect.stringContaining("Stale pending user-input request: user-input-request-1"),
       });
@@ -15880,7 +15926,7 @@ describe("ProviderCommandReactor", () => {
       );
       expect(Option.getOrUndefined(uncertainUserInput)).toMatchObject({
         status: "uncertain",
-        responseCommandId: "cmd-user-input-respond-stale",
+        responseCommandId,
         decision: null,
         // Expired, not merely ambiguous: stamped with the stale failure time.
         resolvedAt: failureActivity?.createdAt,
@@ -15895,19 +15941,29 @@ describe("ProviderCommandReactor", () => {
       );
       expect(resolvedActivity).toBeUndefined();
 
-      // The answer the dead callback rejected resumes the thread as a message.
-      const forwardedMessageId = "user-input-answer:cmd-user-input-respond-stale";
-      await waitFor(
-        async () =>
+      const forwardedMessageId = `user-input-answer:${responseCommandId}`;
+      if (prefix) {
+        await harness.drain();
+        expect(harness.sendTurn).not.toHaveBeenCalled();
+        expect(
           (await readHarnessThread(harness))?.messages.some(
             (message) => message.id === forwardedMessageId,
-          ) === true,
-      );
-      const forwardedMessage = (await readHarnessThread(harness))?.messages.find(
-        (message) => message.id === forwardedMessageId,
-      );
-      expect(forwardedMessage).toMatchObject({ role: "user" });
-      expect(forwardedMessage?.text).toContain("Which mode should be used?\nworkspace-write");
+          ),
+        ).toBe(false);
+      } else {
+        // The direct desktop answer retains its existing follow-up recovery.
+        await waitFor(
+          async () =>
+            (await readHarnessThread(harness))?.messages.some(
+              (message) => message.id === forwardedMessageId,
+            ) === true,
+        );
+        const forwardedMessage = (await readHarnessThread(harness))?.messages.find(
+          (message) => message.id === forwardedMessageId,
+        );
+        expect(forwardedMessage).toMatchObject({ role: "user" });
+        expect(forwardedMessage?.text).toContain("Which mode should be used?\nworkspace-write");
+      }
 
       // Explicit invalidation is terminal, unlike an ambiguous delivery failure.
       harness.respondToUserInput.mockImplementation(() => Effect.void);
@@ -15939,14 +15995,14 @@ describe("ProviderCommandReactor", () => {
       );
       expect(Option.getOrUndefined(reclaimedUserInput)).toMatchObject({
         status: "uncertain",
-        responseCommandId: "cmd-user-input-respond-stale",
+        responseCommandId,
       });
       // A refused retry never held the claim, so it forwards nothing more.
       expect(
         (await readHarnessThread(harness))?.messages.filter((message) =>
           message.id.startsWith("user-input-answer:"),
         ),
-      ).toHaveLength(1);
+      ).toHaveLength(prefix ? 0 : 1);
     },
   );
 

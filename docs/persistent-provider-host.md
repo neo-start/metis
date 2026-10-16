@@ -1,5 +1,11 @@
 # Persistent native Codex host
 
+For ordinary desktop-window independence, the macOS/Linux `npm run metis`
+launcher now uses the [shared background runtime](workbench/background-runtime.md)
+by default. That path retains Gateway and other Metis capabilities. The optional
+native Codex host described below has a separate backend-restart boundary and
+keeps its existing native-only restrictions.
+
 Metis includes an independent local host for **native Codex app-server sessions on
 macOS and Linux**. It owns the existing `CodexAppServerManager`, its stdio child,
 request registry, active turn, approval and user-input responders. A controller

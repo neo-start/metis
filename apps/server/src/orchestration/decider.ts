@@ -1735,6 +1735,26 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           detail: THREAD_DELIVERY_PRECONDITION_DETAIL,
         });
       }
+      if (
+        command.followUpPrecondition !== undefined &&
+        (targetThread.updatedAt !== command.followUpPrecondition.expectedThreadUpdatedAt ||
+          targetThread.archivedAt != null ||
+          threadHasInFlightTurn(targetThread) ||
+          targetThread.hasPendingApprovals ||
+          targetThread.hasPendingUserInput ||
+          targetThread.claudeCacheReview ||
+          command.runtimeMode !== targetThread.runtimeMode ||
+          command.interactionMode !== targetThread.interactionMode ||
+          command.sourceProposedPlan !== undefined)
+      ) {
+        // Intentional plan feedback is allowed, but it must neither switch out
+        // of plan mode nor carry the separate implementation authorization.
+        return yield* new OrchestrationCommandInvariantError({
+          commandType: command.type,
+          detail:
+            "Task follow-up rejected because the thread changed, is busy, or requires separate authorization.",
+        });
+      }
       if (command.resumePrecondition !== undefined) {
         // Quit-resume continuations are only valid while the thread is exactly as
         // it was recorded; checked here so it holds inside the serialized dispatch.
@@ -2157,6 +2177,29 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         command,
         threadId: command.threadId,
       });
+      // Scoped task-control cancels require an exact run. Legacy desktop Stop
+      // and shutdown recovery use turnId as a hint while projections catch up.
+      if (command.commandId.startsWith("external_task_control_") && command.turnId !== undefined) {
+        const projectedRunId =
+          thread.latestTurn?.state === "running" ? thread.latestTurn.turnId : null;
+        const sessionRunId =
+          thread.session?.status !== "error" && thread.session?.status !== "stopped"
+            ? (thread.session?.activeTurnId ?? null)
+            : null;
+        if (
+          (projectedRunId === null && sessionRunId === null) ||
+          (projectedRunId !== null && projectedRunId !== command.turnId) ||
+          (sessionRunId !== null && sessionRunId !== command.turnId)
+        ) {
+          // Validate inside serialized admission, before constructing even the
+          // goal-pause event. A stale cancel must not affect a replacement run.
+          return yield* new OrchestrationCommandInvariantError({
+            commandType: command.type,
+            detail:
+              "The requested interrupt run is no longer active. Read progress before cancelling.",
+          });
+        }
+      }
       const interruptEvent: Omit<OrchestrationEvent, "sequence"> = {
         ...withEventBase({
           aggregateKind: "thread",

@@ -342,6 +342,7 @@ describe("macOS source bundle reopen", () => {
     mkdirSync(dirname(entry), { recursive: true });
     writeFileSync(entry, "// current build");
     configureMacLauncher(executable, {
+      METIS_REQUIRE_SHARED_SERVICE: "1",
       SYNARA_HOME: join(desktop, "isolated home"),
       VITE_DEV_SERVER_URL: "http://localhost:8891",
       SYNARA_AUTH_TOKEN: "synthetic-secret",
@@ -358,7 +359,8 @@ describe("macOS source bundle reopen", () => {
     assert.equal(result.environment.SYNARA_HOME, join(desktop, "isolated home"));
     assert.equal(result.environment.VITE_DEV_SERVER_URL, "http://localhost:8891");
     assert.equal(result.environment.SYNARA_DESKTOP_FLAVOR, "development");
-    assert.equal(Object.keys(result.environment).length, 4);
+    assert.equal(result.environment.METIS_REQUIRE_SHARED_SERVICE, "1");
+    assert.equal(Object.keys(result.environment).length, 5);
     const configuration = readFileSync(
       join(desktop, ".electron-runtime", "Metis.app.launch.json"),
       "utf8",

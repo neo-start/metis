@@ -4,6 +4,7 @@ import {
   ProviderApprovalDecision,
   ProviderUserInputAnswers,
 } from "./orchestration";
+import { UserInputQuestion } from "./providerRuntime";
 
 const RequestId = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9:_-]{1,128}$/));
 const Text = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(32000));
@@ -16,6 +17,33 @@ export const PeerTaskState = Schema.Literals([
   "error",
   "interrupted",
 ]);
+// Optional additive fields keep version-1 paired devices readable.
+export const PeerTaskAttention = Schema.Struct({
+  kind: Schema.Literals(["approval", "userInput"]),
+  requestId: Schema.String,
+  lifecycleGeneration: Schema.NullOr(Schema.String),
+  responseAttemptId: Schema.NullOr(Schema.String),
+  createdAt: Schema.String,
+  detail: Schema.String,
+  questions: Schema.Array(UserInputQuestion),
+});
+export type PeerTaskAttention = typeof PeerTaskAttention.Type;
+export const PeerTaskResponse = Schema.Struct({
+  action: Schema.Literal("respond"),
+  taskId: RequestId,
+  requestId: Schema.String,
+  lifecycleGeneration: Schema.NullOr(Schema.String),
+  responseAttemptId: Schema.NullOr(Schema.String),
+  createdAt: Schema.String,
+  response: Schema.Union([
+    Schema.Struct({
+      kind: Schema.Literal("approval"),
+      decision: Schema.Literals(["accept", "decline", "cancel"]),
+    }),
+    Schema.Struct({ kind: Schema.Literal("userInput"), answers: ProviderUserInputAnswers }),
+  ]),
+});
+export type PeerTaskResponse = typeof PeerTaskResponse.Type;
 export const PeerTask = Schema.Struct({
   id: Schema.String,
   peerId: PeerId,
@@ -26,6 +54,23 @@ export const PeerTask = Schema.Struct({
   state: PeerTaskState,
   result: Schema.String,
   createdAt: Schema.String,
+  updatedAt: Schema.optional(Schema.String),
+  // Transport receipt and execution observation are deliberately independent.
+  syncedAt: Schema.optional(Schema.String),
+  observedAt: Schema.optional(Schema.String),
+  observationAgeMs: Schema.optional(
+    Schema.NullOr(Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))),
+  ),
+  stale: Schema.optional(Schema.Boolean),
+  attention: Schema.optional(Schema.Array(PeerTaskAttention)),
+  localRecovery: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        requestId: Schema.String,
+        status: Schema.Literals(["responding", "uncertain"]),
+      }),
+    ),
+  ),
 });
 export type PeerTask = typeof PeerTask.Type;
 export const PeerMessage = Schema.Struct({
@@ -111,6 +156,7 @@ export function isPeerChatRequest(request: PeerRemoteRequest): request is PeerCh
 }
 export const PeerRemoteRequest = Schema.Union([
   PeerChatRequest,
+  PeerTaskResponse,
   Schema.Struct({ action: Schema.Literal("status"), taskId: Schema.optional(RequestId) }),
   Schema.Struct({
     action: Schema.Literal("message"),
@@ -125,6 +171,7 @@ export type PeerRemoteRequest = typeof PeerRemoteRequest.Type;
 export const PeerRemoteReply = Schema.Struct({
   chatProtocol: Schema.optional(Schema.Literal(1)),
   chat: Schema.optional(PeerChatReply),
+  capabilities: Schema.optional(Schema.Array(Schema.String)),
   name: Schema.String,
   project: Schema.NullOr(Schema.String),
   tasks: Schema.Array(PeerTask),
@@ -165,6 +212,8 @@ export const PeerOverview = Schema.Struct({
       name: Schema.String,
       address: Schema.String,
       online: Schema.Boolean,
+      lastSeenAt: Schema.optional(Schema.String),
+      capabilities: Schema.optional(Schema.Array(Schema.String)),
       error: Schema.NullOr(Schema.String),
     }),
   ),

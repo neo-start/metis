@@ -355,7 +355,16 @@ describe("external MCP gateway stdio flow", () => {
         const issued = yield* service.createIntegration({
           name: "Codex e2e",
           projectIds: [PROJECT_ID],
-          capabilities: ["projects:read", "tasks:create", "tasks:wait", "tasks:read"],
+          capabilities: [
+            "projects:read",
+            "tasks:create",
+            "tasks:wait",
+            "tasks:read",
+            "tasks:follow-up",
+            "tasks:answer",
+            "tasks:approve",
+            "tasks:cancel",
+          ],
           expiresInDays: 30,
         });
         const paired = yield* service.pair(
@@ -431,6 +440,11 @@ describe("external MCP gateway stdio flow", () => {
           "synara_create_task",
           "synara_wait_for_task",
           "synara_read_task",
+          "synara_follow_up_task",
+          "synara_answer_task",
+          "synara_approve_task",
+          "synara_interrupt_task",
+          "synara_cancel_task",
         ]);
         const readTaskProperties = listedTools.find((tool) => tool.name === "synara_read_task")
           ?.inputSchema.properties;
@@ -685,6 +699,57 @@ describe("external MCP gateway stdio flow", () => {
         `;
         expect(operationPlans).toHaveLength(1);
         expect(operationPlans[0]!.planJson).not.toContain(prompt);
+
+        const followUpArguments = {
+          threadId,
+          requestId: "follow-up-e2e",
+          requestedAt: new Date().toISOString(),
+          expectedUpdatedAt: details.get(threadId)!.updatedAt,
+          expectedRuntimeMode: "approval-required",
+          expectedInteractionMode: "default",
+          prompt: "Continue the task.",
+        };
+        const callControl = (
+          name: string,
+          args: Record<string, unknown>,
+          credential = paired.credential,
+        ) =>
+          gateway.handlePost({
+            authorizationHeader: `Bearer ${credential}`,
+            body: {
+              jsonrpc: "2.0",
+              id: "control",
+              method: "tools/call",
+              params: { name, arguments: args },
+            },
+          });
+        const deniedControl = yield* callControl(
+          "synara_follow_up_task",
+          followUpArguments,
+          restrictedCredential,
+        );
+        expect(JSON.stringify(deniedControl.body)).toContain("capability_denied");
+        const forbiddenOverride = yield* callControl("synara_follow_up_task", {
+          ...followUpArguments,
+          model: "spoofed",
+        });
+        expect(JSON.stringify(forbiddenOverride.body)).toContain('"isError":true');
+        const continued = yield* callControl("synara_follow_up_task", followUpArguments);
+        expect(toolPayload(continued.body as Record<string, unknown>)).toMatchObject({
+          threadId,
+          accepted: true,
+          replayed: false,
+        });
+        expect(dispatched.filter((command) => command.type === "thread.turn.start")).toHaveLength(
+          2,
+        );
+        const staleCancel = yield* callControl("synara_cancel_task", {
+          threadId,
+          requestId: "cancel-e2e",
+          requestedAt: new Date().toISOString(),
+          runId: TURN_ID,
+        });
+        expect(JSON.stringify(staleCancel.body)).toContain("stale_task_state");
 
         yield* sql`
           CREATE TRIGGER reject_external_mcp_gateway_audit_finish

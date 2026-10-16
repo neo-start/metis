@@ -1408,6 +1408,10 @@ export const ThreadTurnStartCommand = Schema.Struct({
   // ClientThreadTurnStartCommand omits the field, so decoding strips a spoofed value.
   // Server-only PR feedback: invalidate admission if user/runtime state changed after the idle gate.
   deliveryPrecondition: Schema.optional(Schema.Struct({ expectedThreadUpdatedAt: IsoDateTime })),
+  // Server-only intentional task feedback: permits discussing an actionable plan,
+  // but preserves current execution modes and never authorizes plan implementation.
+  // ClientThreadTurnStartCommand deliberately omits this admission guard.
+  followUpPrecondition: Schema.optional(Schema.Struct({ expectedThreadUpdatedAt: IsoDateTime })),
   resumePrecondition: Schema.optional(
     Schema.Struct({
       /** Turn in flight when the chat was recorded; null while the provider was still connecting. */

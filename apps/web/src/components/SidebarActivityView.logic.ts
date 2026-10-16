@@ -4,6 +4,7 @@
 
 import type { ProjectId, ThreadId } from "@synara/contracts";
 import type { SidebarThreadSummary } from "../types";
+import { canSessionAnswerPendingRequests } from "../session-logic";
 import { hasUnseenCompletion, isThreadActivelyWorking } from "./Sidebar.logic";
 
 export function isThreadRunningForActivity(
@@ -14,13 +15,90 @@ export function isThreadRunningForActivity(
 
 /**
  * Threads that belong in the task feed: top-level, not archived, and having run
- * at least once. Drafts stay out, but a thread whose very first turn is
- * starting up already counts as running work.
+ * at least once. Drafts stay out, but a first turn that is starting, has a live
+ * request, or failed before a turn record arrived already belongs here.
  */
 export function isActivityThread(thread: SidebarThreadSummary): boolean {
   if (thread.archivedAt != null) return false;
   if (thread.parentThreadId) return false;
-  return thread.latestTurn !== null || isThreadRunningForActivity(thread);
+  return (
+    thread.latestTurn !== null ||
+    isThreadRunningForActivity(thread) ||
+    thread.session?.status === "error" ||
+    (canSessionAnswerPendingRequests(thread.session) &&
+      (thread.hasPendingApprovals || thread.hasPendingUserInput))
+  );
+}
+
+export const ACTIVITY_ATTENTION_KINDS = ["approval", "question", "review", "error"] as const;
+export type ActivityAttentionKind = (typeof ACTIVITY_ATTENTION_KINDS)[number];
+
+/** Live requests cannot be dismissed by settling or reading their thread. */
+export function resolveActivityAttention(
+  thread: SidebarThreadSummary,
+  settledOverrideByThreadId?: ReadonlyMap<ThreadId, boolean>,
+): ActivityAttentionKind[] {
+  const kinds: ActivityAttentionKind[] = [];
+  if (canSessionAnswerPendingRequests(thread.session)) {
+    if (thread.hasPendingApprovals) kinds.push("approval");
+    if (thread.hasPendingUserInput) kinds.push("question");
+  }
+  if (isThreadSettledForActivity(thread, settledOverrideByThreadId)) return kinds;
+  // Like T3's resolveSidebarThreadStatus, a failed session outranks stale
+  // background liveness. It cannot receive any of its leftover requests.
+  if (thread.session?.status === "error") return ["error"];
+  // Working/reconnecting threads may still carry the previous turn's result.
+  if (isThreadRunningForActivity(thread)) return kinds;
+  if (thread.latestTurn?.state === "error") {
+    kinds.push("error");
+  } else if (
+    kinds.length === 0 &&
+    (thread.latestTurn?.state === "completed" || thread.hasActionableProposedPlan)
+  ) {
+    kinds.push("review");
+  }
+  return kinds;
+}
+
+/** Counts are tasks per category, not fabricated counts of individual requests. */
+export function buildActivityAttentionModel(
+  model: ActivityViewModel,
+  settledOverrideByThreadId?: ReadonlyMap<ThreadId, boolean>,
+) {
+  const byThreadId = new Map<ThreadId, ActivityAttentionKind[]>();
+  const counts: Record<ActivityAttentionKind, number> = {
+    approval: 0,
+    question: 0,
+    review: 0,
+    error: 0,
+  };
+  for (const thread of [...model.pinned, ...model.active, ...model.settled]) {
+    const kinds = resolveActivityAttention(thread, settledOverrideByThreadId);
+    if (kinds.length === 0) continue;
+    byThreadId.set(thread.id, kinds);
+    for (const kind of kinds) counts[kind] += 1;
+  }
+  // Pinned rows retain their existing place and carry the same action controls.
+  const threads = [...model.active, ...model.settled]
+    .filter((thread) => byThreadId.has(thread.id))
+    .toSorted((left, right) => {
+      const leftPriority = ACTIVITY_ATTENTION_KINDS.indexOf(byThreadId.get(left.id)![0]!);
+      const rightPriority = ACTIVITY_ATTENTION_KINDS.indexOf(byThreadId.get(right.id)![0]!);
+      return (
+        leftPriority - rightPriority ||
+        resolveActivityRecencyMs(right) - resolveActivityRecencyMs(left) ||
+        compareThreadIds(left, right)
+      );
+    });
+  return {
+    byThreadId,
+    counts,
+    threads,
+    total: byThreadId.size,
+    pinnedCount: model.pinned.filter((thread) => byThreadId.has(thread.id)).length,
+    active: model.active.filter((thread) => !byThreadId.has(thread.id)),
+    settled: model.settled.filter((thread) => !byThreadId.has(thread.id)),
+  };
 }
 
 export function isThreadSettledForActivity(
@@ -330,6 +408,7 @@ export function collectVisibleActivityThreadIds(input: {
   groupMode: ActivityGroupMode;
   pinnedOpen: boolean;
   pinned: readonly SidebarThreadSummary[];
+  attention?: readonly SidebarThreadSummary[];
   recent: readonly SidebarThreadSummary[];
   today: readonly SidebarThreadSummary[];
   yesterday: readonly SidebarThreadSummary[];
@@ -341,6 +420,7 @@ export function collectVisibleActivityThreadIds(input: {
 }): ThreadId[] {
   const visible: SidebarThreadSummary[] = [];
   if (input.pinnedOpen) visible.push(...input.pinned);
+  if (input.attention) visible.push(...input.attention);
   if (input.groupMode === "project") {
     for (const group of input.projectGroups) visible.push(...group);
   } else {

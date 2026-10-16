@@ -31,6 +31,7 @@ import {
 import { Effect, Encoding, Layer, Schema } from "effect";
 
 import { createLogger } from "../../logger";
+import { isNativeAgentTerminal } from "../nativeAgentTerminal";
 import { PtyAdapter, PtyAdapterShape, type PtyExitEvent, type PtyProcess } from "../Services/PTY";
 import { ServerConfig } from "../../config";
 import {
@@ -711,6 +712,7 @@ function resetSessionHistory(session: TerminalSessionState): void {
 }
 
 function deriveActivityAgentState(session: TerminalSessionState): TerminalActivityState | null {
+  if (isNativeAgentTerminal(session.terminalId)) return null;
   if (session.managedAgentState !== null) {
     return session.managedAgentState;
   }
@@ -883,7 +885,9 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
           unsubscribeData: null,
           unsubscribeExit: null,
           hasRunningSubprocess: false,
-          detectedCliKind: cliKindFromRuntimeEnv(normalizedRuntimeEnv(input.env)),
+          detectedCliKind: isNativeAgentTerminal(input.terminalId)
+            ? null
+            : cliKindFromRuntimeEnv(normalizedRuntimeEnv(input.env)),
           providerDescendantObserved: false,
           managedAgentRunning: false,
           managedAgentState: null,
@@ -998,7 +1002,9 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
         `Terminal is not running for thread: ${input.threadId}, terminal: ${input.terminalId}`,
       );
     }
-    const nextIdentityState = consumeTerminalIdentityInput(session.pendingInputBuffer, input.data);
+    const nextIdentityState = isNativeAgentTerminal(session.terminalId)
+      ? { buffer: "", identity: null }
+      : consumeTerminalIdentityInput(session.pendingInputBuffer, input.data);
     session.pendingInputBuffer = nextIdentityState.buffer;
     if (
       nextIdentityState.identity &&
@@ -1095,7 +1101,9 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
           unsubscribeData: null,
           unsubscribeExit: null,
           hasRunningSubprocess: false,
-          detectedCliKind: cliKindFromRuntimeEnv(normalizedRuntimeEnv(input.env)),
+          detectedCliKind: isNativeAgentTerminal(input.terminalId)
+            ? null
+            : cliKindFromRuntimeEnv(normalizedRuntimeEnv(input.env)),
           providerDescendantObserved: false,
           managedAgentRunning: false,
           managedAgentState: null,
@@ -1254,7 +1262,9 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
     session.exitCode = null;
     session.exitSignal = null;
     session.hasRunningSubprocess = false;
-    session.detectedCliKind = cliKindFromRuntimeEnv(session.runtimeEnv);
+    session.detectedCliKind = isNativeAgentTerminal(session.terminalId)
+      ? null
+      : cliKindFromRuntimeEnv(session.runtimeEnv);
     session.providerDescendantObserved = false;
     session.managedAgentRunning = false;
     session.managedAgentState = null;
@@ -1271,10 +1281,16 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
     let startedShell: string | null = null;
     try {
       const shellCandidates = resolveShellCandidates(this.shellResolver);
-      const terminalEnv = createTerminalSpawnEnv(process.env, session.runtimeEnv, {
-        binDir: this.managedWrapperBinDir,
-        zshDir: this.managedWrapperZshDir,
-      });
+      const terminalEnv = createTerminalSpawnEnv(
+        process.env,
+        session.runtimeEnv,
+        isNativeAgentTerminal(session.terminalId)
+          ? undefined
+          : {
+              binDir: this.managedWrapperBinDir,
+              zshDir: this.managedWrapperZshDir,
+            },
+      );
       let lastSpawnError: unknown = null;
 
       const spawnWithCandidate = (candidate: ShellCandidate) =>
@@ -1423,7 +1439,7 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
     const sanitized = sanitizeTerminalHistoryChunk(session.pendingHistoryControlSequence, data);
     session.pendingHistoryControlSequence = sanitized.pendingControlSequence;
     const latestHookEvent = sanitized.hookEvents.at(-1) ?? null;
-    if (latestHookEvent) {
+    if (latestHookEvent && !isNativeAgentTerminal(session.terminalId)) {
       session.managedAgentObserved = true;
       const nextManagedAgentRunning = latestHookEvent !== "Stop";
       const nextManagedAgentState = agentStateFromHookEvent(latestHookEvent);
@@ -2163,7 +2179,10 @@ export class TerminalManagerRuntime extends EventEmitter<TerminalManagerEvents> 
               !subprocessActivity.hasProviderDescendant &&
               (providerDescendantObserved || !isProviderSessionBusy(session, Date.now()));
             session.providerDescendantObserved = providerDescendantObserved;
-            if (session.managedAgentObserved) {
+            if (isNativeAgentTerminal(session.terminalId)) {
+              // Process existence only: never infer an agent turn from terminal text.
+              hasRunningSubprocess = subprocessActivity.hasRunningSubprocess;
+            } else if (session.managedAgentObserved) {
               // Hooks have fired — trust them as the sole source of truth (superset model).
               // Only override with non-provider subprocesses (e.g. user spawned a build).
               hasRunningSubprocess =

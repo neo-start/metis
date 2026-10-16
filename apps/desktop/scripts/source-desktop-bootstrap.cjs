@@ -18,6 +18,7 @@ try {
   if (!process.env.SYNARA_SOURCE_DESKTOP_BUILD_MARKER) {
     const configuration = JSON.parse(fs.readFileSync(configurationPath, "utf8"));
     for (const name of [
+      "METIS_REQUIRE_SHARED_SERVICE",
       "SYNARA_HOME",
       "SYNARA_DESKTOP_FLAVOR",
       "SYNARA_SOURCE_DESKTOP_BUILD_MARKER",

@@ -128,6 +128,8 @@ export type ProviderStartReviewInput = typeof ProviderStartReviewInput.Type;
 export const ProviderInterruptTurnInput = Schema.Struct({
   threadId: ThreadId,
   turnId: Schema.optional(TurnId),
+  /** Scoped cancellation must not substitute a newer runtime turn for this ID. */
+  strictTurnId: Schema.optional(Schema.Boolean),
   providerThreadId: Schema.optional(TrimmedNonEmptyString),
 });
 export type ProviderInterruptTurnInput = typeof ProviderInterruptTurnInput.Type;

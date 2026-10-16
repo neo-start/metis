@@ -445,7 +445,7 @@ export const makeExternalMcpService = Effect.gen(function* () {
         // Ownership does not disappear merely because compensation marked the
         // durable task failed. If cleanup is incomplete, the issuing integration
         // must retain read/wait authority over its stranded thread.
-        if (task !== null) return Effect.void;
+        if (task !== null) return assertProject(client, task.projectId);
         if (client.capabilities.has("tasks:read-project")) {
           return snapshotQuery.getThreadShellById(ThreadId.makeUnsafe(threadId)).pipe(
             Effect.mapError((cause) =>

@@ -293,6 +293,92 @@ describe("TerminalManager", () => {
     manager.dispose();
   });
 
+  it("native Agent terminal reattach preserves ownership, cwd, env and the single explicit command", async () => {
+    const { manager, ptyAdapter, logsDir } = makeManager();
+    const terminalId = "native-agent-terminal-test";
+    const input = openInput({ terminalId, env: { CUSTOM_FLAG: "original" } });
+    try {
+      const first = await manager.open(input);
+      expect(ptyAdapter.processes[0]?.writes).toEqual([]);
+      const command = `'./agent with spaces' --prompt 'literal $HOME; value'\r`;
+      await manager.write({ threadId: input.threadId, terminalId, data: command });
+      const attached = await manager.open({
+        ...input,
+        cwd: logsDir,
+        env: { CUSTOM_FLAG: "changed" },
+      });
+      expect(attached.pid).toBe(first.pid);
+      expect(attached.cwd).toBe(input.cwd);
+      expect(ptyAdapter.spawnInputs).toHaveLength(1);
+      expect(ptyAdapter.spawnInputs[0]?.env.CUSTOM_FLAG).toBe("original");
+      expect(ptyAdapter.spawnInputs[0]?.env.SYNARA_MANAGED_BIN_DIR).toBeUndefined();
+      expect(ptyAdapter.processes[0]?.writes).toEqual([command]);
+      expect(ptyAdapter.processes[0]?.killSignals).toEqual([]);
+      await expect(
+        manager.write({ threadId: "another-task", terminalId, data: "unexpected\r" }),
+      ).rejects.toThrow("Unknown terminal");
+      expect(ptyAdapter.processes[0]?.writes).toEqual([command]);
+    } finally {
+      manager.dispose();
+    }
+  });
+
+  it("native Agent terminals ignore provider identity and hook output, using only subprocess existence", async () => {
+    const { manager, ptyAdapter } = makeManager(5, {
+      subprocessChecker: async () => ({
+        cliKind: "codex",
+        hasNonProviderSubprocess: false,
+        hasProviderDescendant: true,
+        hasRunningSubprocess: true,
+      }),
+      subprocessPollIntervalMs: 20,
+    });
+    const events: TerminalEvent[] = [];
+    manager.on("event", (event) => events.push(event));
+    const terminalId = "native-agent-terminal-test";
+    try {
+      await manager.open(openInput({ terminalId, env: { SYNARA_TERMINAL_CLI_KIND: "codex" } }));
+      await manager.write({ threadId: "thread-1", terminalId, data: "codex\r" });
+      ptyAdapter.processes[0]?.emitData(
+        "Claude Code\n\u001b]633;SYNARA_AGENT_EVENT=PermissionRequest\u0007",
+      );
+      await waitFor(
+        () =>
+          events.some((event) => event.type === "output") &&
+          events.some((event) => event.type === "activity" && event.hasRunningSubprocess),
+      );
+      const activity = events.filter((event) => event.type === "activity");
+      expect(activity.length).toBeGreaterThan(0);
+      expect(activity.every((event) => event.cliKind === null && event.agentState === null)).toBe(
+        true,
+      );
+    } finally {
+      manager.dispose();
+    }
+  });
+
+  it("stops only the selected native Agent PTY and never replays its launch command", async () => {
+    const { manager, ptyAdapter } = makeManager();
+    const terminalId = "native-agent-terminal-test";
+    const input = openInput({ terminalId });
+    try {
+      await manager.open(input);
+      await manager.open(openInput());
+      await manager.open({ ...input, threadId: "another-task" });
+      await manager.write({ threadId: input.threadId, terminalId, data: "my-agent\r" });
+      ptyAdapter.processes[0]?.emitData("retained native output\n");
+      await manager.close({ threadId: input.threadId, terminalId, deleteHistory: false });
+      expect(ptyAdapter.processes[0]?.killSignals).toContain("SIGTERM");
+      expect(ptyAdapter.processes[1]?.killSignals).toEqual([]);
+      expect(ptyAdapter.processes[2]?.killSignals).toEqual([]);
+      const reopened = await manager.open(input);
+      expect(reopened.history).toContain("retained native output");
+      expect(ptyAdapter.processes[3]?.writes).toEqual([]);
+    } finally {
+      manager.dispose();
+    }
+  });
+
   it("forwards write and resize to active pty process", async () => {
     const { manager, ptyAdapter } = makeManager();
     await manager.open(openInput());

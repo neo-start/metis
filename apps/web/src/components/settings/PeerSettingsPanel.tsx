@@ -1,6 +1,7 @@
-import { Link } from "@tanstack/react-router";
+import { RemoteTaskOverview } from "~/components/RemoteTaskOverview";
+import { REMOTE_TASKS_KEY, useRemoteTasks } from "~/hooks/useRemoteTasks";
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { PeerControlInput, PeerRemoteRequest } from "@synara/contracts";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
@@ -18,25 +19,11 @@ import {
   SettingsSelectPopup,
 } from "./SettingsPanelPrimitives";
 
-const KEY = ["metis", "peers"] as const;
-const states = {
-  queued: "排队中",
-  running: "执行中",
-  waiting: "等待本机审批或回答",
-  completed: "已完成",
-  error: "失败",
-  interrupted: "已取消",
-};
+const KEY = REMOTE_TASKS_KEY;
 
 export function PeerSettingsPanel({ owner }: { owner: boolean }) {
   const cache = useQueryClient();
-  const query = useQuery({
-    queryKey: KEY,
-    queryFn: () => ensureNativeApi().peers.control({ action: "overview" }),
-    enabled: owner,
-    refetchInterval: 3000,
-    retry: false,
-  });
+  const { query } = useRemoteTasks(owner);
   const view = query.data?.overview;
   const [name, setName] = useState<string | null>(null);
   const [template, setTemplate] = useState<string | null | undefined>(undefined);
@@ -374,60 +361,7 @@ export function PeerSettingsPanel({ owner }: { owner: boolean }) {
               </SettingsRow>
             </SettingsCard>
           )}
-          {view.tasks.length > 0 && (
-            <SettingsCard>
-              {view.tasks
-                .slice(-12)
-                .toReversed()
-                .map((task) => (
-                  <SettingsListRow
-                    key={`${task.direction}:${task.peerId}:${task.id}`}
-                    title={`${task.direction === "incoming" ? "收到的任务" : "发出的任务"} · ${states[task.state]}`}
-                    description={
-                      <>
-                        <div className="whitespace-pre-wrap break-words">
-                          {task.text.slice(0, 250)}
-                        </div>
-                        {task.result && (
-                          <details className="mt-2">
-                            <summary className="cursor-pointer">查看结果</summary>
-                            <p className="whitespace-pre-wrap break-words">{task.result}</p>
-                          </details>
-                        )}
-                        {task.direction === "incoming" && task.threadId && (
-                          <Link
-                            to="/$threadId"
-                            params={{ threadId: task.threadId }}
-                            className="text-primary underline underline-offset-4 transition-colors hover:text-primary/80 focus-visible:outline-2"
-                          >
-                            打开本机任务会话
-                          </Link>
-                        )}
-                      </>
-                    }
-                    actions={
-                      task.direction === "outgoing" &&
-                      !["completed", "error", "interrupted"].includes(task.state) ? (
-                        <Button
-                          size="xs"
-                          variant="outline"
-                          disabled={mutation.isPending || !view.enabled}
-                          onClick={() =>
-                            mutation.mutate({
-                              action: "remote",
-                              peerId: task.peerId,
-                              request: { action: "cancel", taskId: task.id },
-                            })
-                          }
-                        >
-                          请求取消
-                        </Button>
-                      ) : undefined
-                    }
-                  />
-                ))}
-            </SettingsCard>
-          )}
+          <RemoteTaskOverview owner={owner} />
           {view.messages.length > 0 && (
             <SettingsCard>
               {view.messages

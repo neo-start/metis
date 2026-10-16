@@ -1,6 +1,6 @@
 // FILE: SidebarActivityView.tsx
-// Purpose: Task-feed sidebar surface — every thread is a 2-line task row
-//          (provider + title / project + branch) grouped by status, with settle.
+// Purpose: Task-feed sidebar with an actionable attention inbox, existing
+//          provider/project rows, and explicit settlement.
 // Layer: Sidebar UI component
 // Exports: SidebarActivityView
 
@@ -39,6 +39,8 @@ import {
 } from "../sidebarRowStyles";
 import { resolveThreadPullRequestFallback } from "../hooks/useThreadPullRequests";
 import type { Project, SidebarThreadSummary } from "../types";
+import { useRightDockStore } from "../rightDockStore";
+import { ATTENTION_LABELS, AttentionInboxActions } from "./AttentionInboxActions";
 import { ComposerPickerMenuPopup } from "./chat/ComposerPickerMenuPopup";
 import { FolderClosed } from "./FolderClosed";
 import { ProviderIcon } from "./ProviderIcon";
@@ -52,6 +54,8 @@ import {
   type ThreadStatusPill,
 } from "./Sidebar.logic";
 import {
+  ACTIVITY_ATTENTION_KINDS,
+  buildActivityAttentionModel,
   buildActivityViewModel,
   collectActivityScopeOptions,
   collectUnreadActivityThreads,
@@ -65,6 +69,7 @@ import {
   type ActivityProjectGroup,
   type ActivityScopeOption,
   type ActivityScopeSelection,
+  type ActivityAttentionKind,
 } from "./SidebarActivityView.logic";
 import { SIDEBAR_TRAILING_ICON_CLASS, sidebarGlyphClass } from "./sidebarGlyphs";
 import { SIDEBAR_HOVER_CARD_TRIGGER_PROPS } from "./sidebarHoverCardStyles";
@@ -117,6 +122,8 @@ function ActivityThreadRow({
   onRenamePointerUp,
   onContextMenu,
   renderHoverCard,
+  attentionKinds,
+  onOpenDiff,
 }: {
   thread: SidebarThreadSummary;
   project: Project | undefined;
@@ -134,6 +141,8 @@ function ActivityThreadRow({
   onRenamePointerUp: (event: ReactPointerEvent<HTMLElement>, threadId: ThreadId) => void;
   onContextMenu: (threadId: ThreadId, position: SidebarRowContextMenuPosition) => void;
   renderHoverCard: (anchorId: string) => ReactNode;
+  attentionKinds: readonly ActivityAttentionKind[];
+  onOpenDiff: () => void;
 }) {
   const provider = thread.session?.provider ?? thread.modelSelection.provider;
   const branch = resolveThreadDisplayBranch(thread);
@@ -191,13 +200,8 @@ function ActivityThreadRow({
             isSettled && "opacity-55 transition-opacity hover:opacity-85",
           )}
         >
-          <span
-            className={cn(
-              "flex min-w-0 items-center gap-1.5 overflow-hidden pr-5 transition-[padding] duration-150 ease-out",
-              // Yield the title row to the hover action cluster (pin + archive + done).
-              "group-hover/activity-row:pr-[4.25rem] group-focus-within/activity-row:pr-[4.25rem]",
-            )}
-          >
+          {/* Reserve the action cluster's space; revealing it must not move text. */}
+          <span className="flex min-w-0 items-center gap-1.5 overflow-hidden pr-[4.25rem]">
             <ProviderIcon
               provider={provider}
               className="size-3 shrink-0"
@@ -239,6 +243,15 @@ function ActivityThreadRow({
             </span>
           </span>
         </button>
+        {attentionKinds.length > 0 ? (
+          <AttentionInboxActions
+            thread={thread}
+            kinds={attentionKinds}
+            onOpen={onOpen}
+            onOpenDiff={onOpenDiff}
+            onSettle={() => onSetSettled(true)}
+          />
+        ) : null}
         {trailingStatus ? (
           <span
             data-slot="activity-completion-status"
@@ -251,7 +264,7 @@ function ActivityThreadRow({
           </span>
         ) : null}
         <span
-          className="absolute top-1 right-1 inline-flex items-center gap-1 opacity-0 transition-opacity group-hover/activity-row:opacity-100 group-focus-within/activity-row:opacity-100"
+          className="absolute top-1 right-1 inline-flex items-center gap-1 opacity-0 transition-opacity motion-reduce:transition-none group-hover/activity-row:opacity-100 group-focus-within/activity-row:opacity-100"
           // Double-clicking an action button toggles it twice; it must not also open
           // the row's rename dialog. Pointer-up is the touch/pen double-tap signal,
           // so keep action taps out of that detector too.
@@ -599,6 +612,8 @@ export function SidebarActivityView({
   const [earlierExtraPages, setEarlierExtraPages] = useState(0);
   const [settledOpen, setSettledOpen] = useState(false);
   const [settledExtraPages, setSettledExtraPages] = useState(0);
+  const [attentionExtraPages, setAttentionExtraPages] = useState(0);
+  const openDockPane = useRightDockStore((store) => store.openPane);
   const [projectExtraPagesByKey, setProjectExtraPagesByKey] = useState<ReadonlyMap<string, number>>(
     () => new Map(),
   );
@@ -637,12 +652,22 @@ export function SidebarActivityView({
     [pinnedThreadIdSet, projectFilterIds, settledOverrideByThreadId, threads],
   );
   const scopedPinnedThreads = model.pinned;
+  const attention = useMemo(
+    () => buildActivityAttentionModel(model, settledOverrideByThreadId),
+    [model, settledOverrideByThreadId],
+  );
+  const attentionPaging = resolveSidebarThreadListPaging({
+    totalCount: attention.threads.length,
+    baseLimit: ACTIVITY_LIST_BASE_LIMIT,
+    pageSize: ACTIVITY_LIST_PAGE_SIZE,
+    requestedExtraPages: attentionExtraPages,
+  });
   // Coarse clock so the date bucketing memo stays effective across renders that
   // happen within the same minute; buckets are day-granular anyway.
   const nowMs = Math.floor(Date.now() / 60_000) * 60_000;
   const { recent: recentThreads, rest: remainingActiveThreads } = useMemo(
-    () => splitRecentActivityThreads(model.active, { nowMs }),
-    [model.active, nowMs],
+    () => splitRecentActivityThreads(attention.active, { nowMs }),
+    [attention.active, nowMs],
   );
   const dateBuckets = useMemo(
     () => splitActivityThreadsByDateBucket(remainingActiveThreads, nowMs),
@@ -651,9 +676,9 @@ export function SidebarActivityView({
   const projectGroups = useMemo(
     () =>
       groupMode === "project"
-        ? groupActivityThreadsByProject(model.active, isRealProject)
+        ? groupActivityThreadsByProject(attention.active, isRealProject)
         : EMPTY_PROJECT_GROUPS,
-    [groupMode, isRealProject, model.active],
+    [groupMode, isRealProject, attention.active],
   );
 
   const earlierPaging = resolveSidebarThreadListPaging({
@@ -663,7 +688,7 @@ export function SidebarActivityView({
     requestedExtraPages: earlierExtraPages,
   });
   const settledPaging = resolveSidebarThreadListPaging({
-    totalCount: model.settled.length,
+    totalCount: attention.settled.length,
     baseLimit: ACTIVITY_LIST_BASE_LIMIT,
     pageSize: ACTIVITY_LIST_PAGE_SIZE,
     requestedExtraPages: settledExtraPages,
@@ -688,6 +713,7 @@ export function SidebarActivityView({
         groupMode,
         pinnedOpen,
         pinned: scopedPinnedThreads,
+        attention: attention.threads.slice(0, attentionPaging.previewLimit),
         recent: recentThreads,
         today: dateBuckets.today,
         yesterday: dateBuckets.yesterday,
@@ -695,7 +721,7 @@ export function SidebarActivityView({
         earlier: dateBuckets.earlier.slice(0, earlierPaging.previewLimit),
         projectGroups: pagedProjectGroups.map((group) => group.threads),
         settledOpen,
-        settled: model.settled.slice(0, settledPaging.previewLimit),
+        settled: attention.settled.slice(0, settledPaging.previewLimit),
       }),
     [
       dateBuckets.earlier,
@@ -704,7 +730,9 @@ export function SidebarActivityView({
       earlierOpen,
       earlierPaging.previewLimit,
       groupMode,
-      model.settled,
+      attention.settled,
+      attention.threads,
+      attentionPaging.previewLimit,
       pagedProjectGroups,
       pinnedOpen,
       recentThreads,
@@ -754,7 +782,16 @@ export function SidebarActivityView({
             })
       }
       status={resolveThreadStatus(thread)}
+      attentionKinds={attention.byThreadId.get(thread.id) ?? []}
       onOpen={() => onOpenThread(thread.id)}
+      onOpenDiff={() => {
+        onOpenThread(thread.id);
+        openDockPane(thread.id, {
+          kind: "diff",
+          diffTurnId: thread.latestTurn?.turnId ?? null,
+          diffFilePath: null,
+        });
+      }}
       onOpenPullRequest={(event, pr) => onOpenThreadPullRequest(event, thread, pr)}
       onSetSettled={(settled) => {
         if (settled) onMarkThreadRead(thread.id, thread.latestTurn?.completedAt ?? undefined);
@@ -829,6 +866,41 @@ export function SidebarActivityView({
           onMarkAllRead={markAllRead}
         />
       </div>
+
+      <section aria-label="Attention inbox" className="space-y-1.5">
+        <ActivitySectionLabel label={`Needs attention (${attention.total})`} />
+        <div className="flex flex-wrap gap-x-3 gap-y-1 px-2 text-ui-xs text-muted-foreground">
+          {ACTIVITY_ATTENTION_KINDS.map((kind) => (
+            <span key={kind} title={`Tasks needing ${ATTENTION_LABELS[kind].toLowerCase()}`}>
+              {ATTENTION_LABELS[kind]}{" "}
+              <span className="tabular-nums">{attention.counts[kind]}</span>
+            </span>
+          ))}
+        </div>
+        {attention.pinnedCount > 0 ? (
+          <p className="px-2 text-ui-xs text-muted-foreground">
+            {attention.pinnedCount} {attention.pinnedCount === 1 ? "task is" : "tasks are"} in
+            Pinned
+            {!pinnedOpen ? " · expand Pinned to act" : " above"}.
+          </p>
+        ) : null}
+        {attention.total === 0 ? (
+          <p className="px-2 text-ui-sm text-muted-foreground">
+            {threadsHydrated ? "No tasks need attention in this scope." : "Loading attention…"}
+          </p>
+        ) : null}
+        <div className="flex flex-col gap-0.5">
+          {attention.threads.slice(0, attentionPaging.previewLimit).map(renderActiveRow)}
+          <ActivityShowMoreRow
+            canShowMore={attentionPaging.canShowMore}
+            canShowLess={attentionPaging.canShowLess}
+            onShowMore={() => setAttentionExtraPages(attentionPaging.effectiveExtraPages + 1)}
+            onShowLess={() =>
+              setAttentionExtraPages(Math.max(0, attentionPaging.effectiveExtraPages - 1))
+            }
+          />
+        </div>
+      </section>
 
       {isEmpty ? (
         <div className="px-2 pt-4 text-center text-ui text-muted-foreground/58">
@@ -917,13 +989,13 @@ export function SidebarActivityView({
         </>
       )}
 
-      {model.settled.length > 0 ? (
+      {attention.settled.length > 0 ? (
         <ActivityCollapsibleSection
           label="Done"
           open={settledOpen}
           onToggle={() => setSettledOpen((open) => !open)}
         >
-          {model.settled
+          {attention.settled
             .slice(0, settledPaging.previewLimit)
             .map((thread) => renderRow(thread, true))}
           <ActivityShowMoreRow

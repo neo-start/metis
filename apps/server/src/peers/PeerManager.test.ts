@@ -1,11 +1,16 @@
 import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import os from "node:os";
+import https from "node:https";
+import type { TLSSocket } from "node:tls";
 import path from "node:path";
+import { PeerRemoteReply, type PeerTaskResponse } from "@synara/contracts";
+import { Schema } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PeerManager, type PeerExecution } from "./PeerManager.ts";
 import {
   discoverCertificate,
   peerRequest,
+  readPeerJson,
   instanceId,
   parsePeerAddress,
   type PeerIdentity,
@@ -177,7 +182,12 @@ describe("Metis LAN peer protocol (real mutual TLS, isolated stores)", () => {
       "不属于",
     );
     expect((await c.manager.remote(b.id, { action: "status" })).tasks).toHaveLength(0);
+    expect((await a.manager.overview()).tasks[0]?.stale).toBe(false);
     await a.manager.remote(b.id, { action: "cancel", taskId: "cancel-me" });
+    expect((await a.manager.overview()).tasks[0]).toMatchObject({
+      state: "interrupted",
+      stale: false,
+    });
     await b.manager.tick();
     expect(b.adapter.submit).not.toHaveBeenCalled();
     expect((await b.manager.overview()).tasks[0]?.state).toBe("interrupted");
@@ -218,5 +228,308 @@ describe("Metis LAN peer protocol (real mutual TLS, isolated stores)", () => {
       expect.objectContaining({ text: "需要补充信息" }),
     );
     await expect(c.manager.remote(a.id, { ...message, id: "foreign" })).rejects.toThrow("不属于");
+  });
+  it("marks retained remote state stale offline and synchronizes after reconnect", async () => {
+    const a = await create("A");
+    const b = await create("B");
+    await pair(a, b);
+    await a.manager.remote(b.id, { action: "task", id: "freshness", text: "Track progress" });
+    await b.manager.tick();
+    await a.manager.tick();
+    const fresh = (await a.manager.overview()).tasks[0]!;
+    expect(fresh.stale).toBe(false);
+    expect(fresh.syncedAt).toBeTruthy();
+    expect(fresh.updatedAt).toBeTruthy();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 16000);
+    try {
+      expect((await a.manager.overview()).tasks[0]?.stale).toBe(true);
+    } finally {
+      clock.mockRestore();
+    }
+    await b.manager.stop();
+    await a.manager.tick();
+    const offline = await a.manager.overview();
+    expect(offline.tasks[0]?.stale).toBe(true);
+    expect(offline.tasks[0]?.state).toBe(fresh.state);
+    expect(offline.peers[0]?.lastSeenAt).toBeTruthy();
+    const restarted = await create("B", b.directory);
+    await restarted.manager.tick();
+    await a.manager.tick();
+    expect((await a.manager.overview()).tasks[0]).toMatchObject({
+      state: "completed",
+      stale: false,
+      result: "测试完成",
+    });
+  });
+
+  it("routes owner responses over paired TLS and rejects foreign tasks and agent callers", async () => {
+    const a = await create("A");
+    const adapter = execution();
+    adapter.status = vi.fn(async () => ({ state: "waiting" as const, result: "Need approval" }));
+    adapter.respond = vi.fn(async () => {});
+    const b = await create("B", undefined, adapter);
+    const c = await create("C");
+    await pair(a, b);
+    await pair(c, b);
+    await a.manager.remote(b.id, { action: "task", id: "response-task", text: "Review" });
+    await b.manager.tick();
+    const response: PeerTaskResponse = {
+      action: "respond",
+      taskId: "response-task",
+      requestId: "approval-1",
+      lifecycleGeneration: "generation-1",
+      responseAttemptId: null,
+      createdAt: "2026-10-14T00:00:00.000Z",
+      response: { kind: "approval", decision: "accept" },
+    };
+    await expect(a.manager.remote(b.id, response, "agent-thread")).rejects.toThrow("所有者");
+    const identity = JSON.parse(
+      await readFile(path.join(c.directory, "identity.json"), "utf8"),
+    ) as PeerIdentity;
+    const cert = await discoverCertificate(b.address, b.id, identity);
+    await expect(peerRequest(b.address, cert, identity, "/rpc", response)).rejects.toThrow(
+      "不属于",
+    );
+    expect(adapter.respond).not.toHaveBeenCalled();
+    await a.manager.remote(b.id, response);
+    expect(adapter.respond).toHaveBeenCalledWith(
+      (await b.manager.overview()).tasks[0]?.threadId,
+      response,
+    );
+    await a.manager.remote(b.id, {
+      ...response,
+      response: { kind: "userInput", answers: { choice: "yes" } },
+    });
+    expect(adapter.respond).toHaveBeenCalledTimes(2);
+    await b.manager.control({ action: "revoke", peerId: a.id });
+    await expect(a.manager.remote(b.id, response)).rejects.toThrow("撤销");
+    expect(adapter.respond).toHaveBeenCalledTimes(2);
+  });
+
+  it("decodes legacy summaries and refuses responses without explicit remote capability", async () => {
+    const legacy = Schema.decodeUnknownSync(PeerRemoteReply)({
+      name: "old",
+      project: null,
+      tasks: [],
+      messages: [],
+    });
+    expect(legacy.capabilities).toBeUndefined();
+    const a = await create("A");
+    const b = await create("Old execution");
+    await pair(a, b);
+    await a.manager.remote(b.id, { action: "task", id: "legacy-task", text: "Work" });
+    await expect(
+      a.manager.remote(b.id, {
+        action: "respond",
+        taskId: "legacy-task",
+        requestId: "q",
+        lifecycleGeneration: null,
+        responseAttemptId: null,
+        createdAt: "2026-10-14T00:00:00.000Z",
+        response: { kind: "approval", decision: "accept" },
+      }),
+    ).rejects.toThrow("不支持");
+  });
+  it("refreshes heartbeat freshness without rewriting unchanged durable snapshots", async () => {
+    const a = await create("A");
+    const b = await create("B");
+    await pair(a, b);
+    await a.manager.remote(b.id, { action: "task", id: "heartbeat", text: "Work" });
+    await b.manager.tick();
+    await b.manager.tick();
+    await a.manager.tick();
+    const persisted = await readFile(path.join(a.directory, "state.json"), "utf8");
+    await a.manager.tick();
+    expect(await readFile(path.join(a.directory, "state.json"), "utf8")).toBe(persisted);
+    expect((await a.manager.overview()).tasks[0]?.stale).toBe(false);
+  });
+  it("keeps live HTTP replies stale until the executor observes its running task again", async () => {
+    const a = await create("A");
+    const adapter = execution();
+    adapter.status = vi.fn(async () => ({ state: "waiting" as const, result: "Approval pending" }));
+    adapter.respond = vi.fn(async () => {});
+    const b = await create("B", undefined, adapter);
+    await pair(a, b);
+    await a.manager.remote(b.id, { action: "task", id: "stalled", text: "Work" });
+    await b.manager.tick();
+    await b.manager.tick();
+    const fresh = await a.manager.remote(b.id, { action: "status" });
+    expect(fresh.tasks[0]?.stale).toBe(false);
+    const observedAt = fresh.tasks[0]?.observedAt;
+    expect(observedAt).toBeTruthy();
+    const response: PeerTaskResponse = {
+      action: "respond",
+      taskId: "stalled",
+      requestId: "q",
+      lifecycleGeneration: null,
+      responseAttemptId: null,
+      createdAt: "2026-10-14T00:00:00.000Z",
+      response: { kind: "approval", decision: "accept" },
+    };
+    const identity = JSON.parse(
+      await readFile(path.join(a.directory, "identity.json"), "utf8"),
+    ) as PeerIdentity;
+    const cert = await discoverCertificate(b.address, b.id, identity);
+    const clock = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 20000);
+    try {
+      // No executor tick: it can answer HTTP, but only has an old observation.
+      const cached = await a.manager.remote(b.id, { action: "status" });
+      expect(cached.tasks[0]).toMatchObject({ stale: true, observedAt });
+      expect(cached.tasks[0]?.observationAgeMs).toBeGreaterThanOrEqual(20000);
+      const view = await a.manager.overview();
+      expect(view.peers[0]?.online).toBe(true);
+      expect(view.tasks[0]).toMatchObject({ stale: true, observedAt });
+      expect(Date.parse(view.tasks[0]!.syncedAt!)).toBeGreaterThan(Date.parse(observedAt!));
+      await expect(a.manager.remote(b.id, response)).rejects.toThrow("已过期");
+      // Older clients cannot bypass the execution-side freshness guard either.
+      await expect(peerRequest(b.address, cert, identity, "/rpc", response)).rejects.toThrow(
+        "已过期",
+      );
+      expect(adapter.respond).not.toHaveBeenCalled();
+      await b.manager.tick();
+      await a.manager.remote(b.id, { action: "status" });
+      expect((await a.manager.overview()).tasks[0]?.stale).toBe(false);
+      expect((await a.manager.overview()).tasks[0]?.observedAt).not.toBe(observedAt);
+      await a.manager.remote(b.id, response);
+      expect(adapter.respond).toHaveBeenCalledOnce();
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it("treats legacy freshness as unknown and uses executor age, not cross-machine clock offsets", async () => {
+    const a = await create("A");
+    const b = await create("B");
+    await pair(a, b);
+    await a.manager.remote(b.id, { action: "task", id: "legacy-observation", text: "Work" });
+    await b.manager.tick();
+    const local = (await b.manager.overview()).tasks[0]!;
+    const identity = JSON.parse(
+      await readFile(path.join(b.directory, "identity.json"), "utf8"),
+    ) as PeerIdentity;
+    await b.manager.stop();
+    // A real authenticated older peer endpoint: status and response capabilities
+    // predate observation metadata. Pairing and certificate pins remain real.
+    let capabilities = ["task-status-v1", "task-responses-v1"];
+    let fields: Partial<typeof local> = {};
+    const actions: unknown[] = [];
+    const server = https.createServer(
+      {
+        cert: identity.cert,
+        key: identity.private,
+        requestCert: true,
+        rejectUnauthorized: false,
+        minVersion: "TLSv1.3",
+      },
+      (req, res) => {
+        const raw = (req.socket as TLSSocket).getPeerCertificate().raw;
+        if (!raw || instanceId(raw) !== a.id) {
+          res.writeHead(403);
+          res.end();
+          return;
+        }
+        void readPeerJson(req)
+          .then((body) => {
+            actions.push((body as { action: string }).action);
+            res.writeHead(200, { "content-type": "application/json" });
+            res.end(
+              JSON.stringify({
+                name: "old",
+                project: null,
+                capabilities,
+                messages: [],
+                tasks: [
+                  {
+                    id: local.id,
+                    peerId: a.id,
+                    direction: "incoming",
+                    text: local.text,
+                    threadId: local.threadId,
+                    sourceThreadId: null,
+                    state: "waiting",
+                    result: "cached",
+                    createdAt: local.createdAt,
+                    stale: false,
+                    ...fields,
+                  },
+                ],
+              }),
+            );
+          })
+          .catch(() => {
+            res.writeHead(400);
+            res.end();
+          });
+      },
+    );
+    await new Promise<void>((resolve) =>
+      server.listen(Number(new URL(b.address).port), "127.0.0.1", resolve),
+    );
+    try {
+      await a.manager.remote(b.id, { action: "status" });
+      expect((await a.manager.overview()).tasks[0]).toMatchObject({
+        stale: true,
+        observationAgeMs: null,
+      });
+      expect((await a.manager.overview()).peers[0]?.online).toBe(true);
+      await expect(
+        a.manager.remote(b.id, {
+          action: "respond",
+          taskId: local.id,
+          requestId: "q",
+          lifecycleGeneration: null,
+          responseAttemptId: null,
+          createdAt: local.createdAt,
+          response: { kind: "approval", decision: "accept" },
+        }),
+      ).rejects.toThrow("观测时间未知");
+      expect(actions).not.toContain("respond");
+      capabilities = [...capabilities, "task-observation-v1"];
+      fields = { observedAt: "2099-01-01T00:00:00.000Z", observationAgeMs: 20000 };
+      await a.manager.remote(b.id, { action: "status" });
+      expect((await a.manager.overview()).tasks[0]?.stale).toBe(true);
+      fields = { observedAt: "2000-01-01T00:00:00.000Z", observationAgeMs: 0 };
+      await a.manager.remote(b.id, { action: "status" });
+      expect((await a.manager.overview()).tasks[0]?.stale).toBe(false);
+      fields = { ...fields, stale: true };
+      await a.manager.remote(b.id, { action: "status" });
+      expect((await a.manager.overview()).tasks[0]?.stale).toBe(true);
+      fields = { ...fields, stale: false, observationAgeMs: null };
+      await a.manager.remote(b.id, { action: "status" });
+      expect((await a.manager.overview()).tasks[0]?.stale).toBe(true);
+    } finally {
+      await new Promise<void>((resolve) => {
+        server.close(() => resolve());
+        server.closeAllConnections();
+      });
+    }
+  });
+  it("preserves an adapter's observation age when a delayed status read finally returns", async () => {
+    const a = await create("A");
+    const adapter = execution();
+    adapter.status = vi.fn(async () => ({
+      state: "waiting" as const,
+      result: "cached projection",
+      observedAt: "2020-01-01T00:00:00.000Z",
+    }));
+    const b = await create("B", undefined, adapter);
+    await pair(a, b);
+    await a.manager.remote(b.id, { action: "task", id: "slow-read", text: "Work" });
+    await b.manager.tick();
+    await b.manager.tick();
+    await a.manager.remote(b.id, { action: "status" });
+    expect((await a.manager.overview()).peers[0]?.online).toBe(true);
+    expect((await a.manager.overview()).tasks[0]).toMatchObject({
+      stale: true,
+      observedAt: "2020-01-01T00:00:00.000Z",
+    });
+    adapter.status = vi.fn(async () => ({
+      state: "waiting" as const,
+      result: "cached projection",
+      observedAt: new Date().toISOString(),
+    }));
+    await b.manager.tick();
+    await a.manager.remote(b.id, { action: "status" });
+    expect((await a.manager.overview()).tasks[0]?.stale).toBe(false);
   });
 });

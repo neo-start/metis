@@ -29,6 +29,20 @@ The controller `/clear` fix reuses Synara's `apps/web/src/components/ChatView.ts
 
 ## T3 Code license
 
+The Agent task management additions reuse Synara's existing Activity rows,
+terminal drawer/PTY manager, orchestration command receipts, pending interaction
+rules, private-file checks and lifecycle locks. Local adaptation started at
+`362f8b80063dc737ce9b163af287d4a977689e7d`. T3's `Sidebar.tsx`, `Sidebar.logic.ts`,
+`ThreadTerminalDrawer.tsx`, terminal `Manager.ts` and `ManagedEndpointRuntime.ts`
+were inspected at `f5ef0ddb90a8c36584e181b1913e7b8a5df30ffc`; the actionable and
+failed-state priority design is adapted to Synara's session and settlement model.
+No T3 runtime/event store or Herdr source was transplanted. Source paths, targets
+and adaptations are recorded in `docs/workbench/upstream.json`. Existing license
+notices remain in force.
+
+Peer task machine labels additionally reference T3 `apps/web/src/components/Sidebar.tsx`
+at `6002c5c68c637de2cd2557bd6c40e46c153e39b1`; no code was copied from that revision.
+
 MIT License
 
 Copyright (c) 2026 T3 Tools Inc.

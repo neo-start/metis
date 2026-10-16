@@ -10,27 +10,29 @@
 npm run metis
 ```
 
-启动已构建的 Electron 桌面窗口。源码变更后先运行下方 `build:desktop` 更新。可加 `--dev` 使用热更新（本机当前遇到 FSEvent 文件监听错误，默认采用构建版）。首次使用保留上游引导与授权流程；完成后从左侧「工作台」进入统一首页。启动器通过 npm 获取固定版本 Bun，不修改全局工具安装。
+macOS/Linux 默认先启动或连接持续运行的本机共享后台，再打开已构建的 Electron 桌面窗口；退出窗口不会停止任务。需要停止后台时，使用桌面菜单的停止后台操作，或 `npm run metis -- --stop-background`。源码变更后先运行下方 `build:desktop` 更新。可加 `--dev` 使用热更新（本机当前遇到 FSEvent 文件监听错误，默认采用构建版）。首次使用保留上游引导与授权流程；完成后从左侧「工作台」进入统一首页。启动器通过 npm 获取固定版本 Bun，不修改全局工具安装。
 
-只运行网页版时，先关闭桌面开发进程，再运行：
+只运行热更新网页版时，先停止共享后台和桌面开发进程，再运行：
 
 ```sh
 node scripts/workbench.mjs --web
 ```
 
-浏览器入口为 http://127.0.0.1:5843/workbench，网页版后端端口为 4783。桌面版的后端由 Electron 单独分配本机端口和认证令牌，不能把桌面版的 Vite 地址直接当成已认证的网页客户端。
+浏览器入口为 http://127.0.0.1:5843/workbench，网页版后端端口为 4783。默认桌面连接 `http://127.0.0.1:4785` 的共享后台；`--dev` 模式仍由 Electron 管理开发后端，不能把 Vite 地址直接当成已认证的网页客户端。
 
-两个模式共用本项目的 `.agent-workbench/` 数据目录，请勿同时启动。桌面开发配置另存于 `agent-workbench-dev`，不会复用已安装 Synara 的配置。按 Ctrl+C 结束当前开发进程。启动前可加 `--dry-run` 查看目录与端口。
+热更新开发模式与默认共享后台共用本项目的 `.agent-workbench/` 数据目录，不能同时拥有该目录。桌面开发配置另存于 `agent-workbench-dev`，不会复用已安装 Synara 的配置。按 Ctrl+C 结束当前开发进程。启动前可加 `--dry-run` 查看目录与端口。
 
 ### 持续运行的共享服务
 
-退出 Electron 桌面后运行 `npm run metis:serve`，使用同一份现有会话数据，在电脑浏览器访问 `http://127.0.0.1:4785`。首次管理员配对链接写入 `.agent-workbench/owner-pairing-url.txt`，5 分钟有效，只可使用一次。关闭浏览器页面不会停止服务；终端中 Ctrl+C 才会结束服务。
+默认桌面启动后共享后台已在运行。需要独立启动前台服务时，先停止已有后台，再运行 `npm run metis:serve`，使用同一份现有会话数据，在电脑浏览器访问 `http://127.0.0.1:4785`。首次管理员配对链接写入 `.agent-workbench/owner-pairing-url.txt`，5 分钟有效，只可使用一次。关闭浏览器页面不会停止服务；终端中 Ctrl+C 才会结束前台服务。
 
 配置自己的 HTTPS 域名和 Cloudflare Tunnel 后，改用 `npm run metis:remote`，电脑与已配对手机连接同一个后端。两个命令默认使用桌面现有 `.agent-workbench/` 数据；之前独立远程目录可用 `-- --isolated` 打开。数据库锁阻止同时启动两个后端，不复制或重置会话。
 
-共享服务启动后，再运行 `npm run metis` 即可打开 Electron 桌面窗口。macOS/Linux 桌面会识别同一数据目录中的运行服务，使用已有 HTTPS 入口（本机服务使用回环入口）；退出桌面不会关闭共享后台或手机连接。桌面保留独立登录会话：首次启动可使用尚未消费且未过期的本机管理员配对链接，之后由 Electron profile 记住登录。共享模式的 Windows 支持及后台调用桌面浏览器/电脑控制 host 的桥接仍待接入。
+共享服务启动后，再运行 `npm run metis` 即可打开 Electron 桌面窗口。macOS/Linux 桌面会识别同一数据目录中的运行服务，使用已有 HTTPS 入口（本机服务使用回环入口）；退出桌面不会关闭共享后台或手机连接。桌面保留独立登录会话：首次启动可使用尚未消费且未过期的本机管理员配对链接，之后由 Electron profile 记住登录。共享后台可连接桌面提供的浏览器和电脑控制 host；这类工具依赖桌面在线。Windows 共享后台支持仍待接入。
 
 旧 `workbench` 命令与数据目录保留兼容；改名不会迁移原会话或原生 CLI 账号。
+
+任务管理入口见 [Agent 任务管理](docs/workbench/agent-task-management.md)。
 
 ## 当前实现
 

@@ -11,7 +11,7 @@ export function makePeerTools(manager: PeerManager): ReadonlyArray<ToolEntry> {
       definition: {
         name: "metis_devices",
         description:
-          "List your paired Metis devices, their online state, recent messages and delegated tasks. Device IDs are stable. Pairing and trust changes are only available to the owner in Settings > Connections > My devices.",
+          "List your paired Metis devices, their online state, recent messages and delegated tasks, including execution direction, last update/sync time, stale status and attention. Incoming tasks execute here; outgoing tasks execute on peerId. Stale task state is not proof of current progress. Device IDs are stable. Pairing and trust changes are only available to the owner in Settings > Connections > My devices.",
         inputSchema: { type: "object", properties: {}, additionalProperties: false },
       },
       requiredCapability: "thread:read",
@@ -69,6 +69,8 @@ export function makePeerTools(manager: PeerManager): ReadonlyArray<ToolEntry> {
         Effect.gen(function* () {
           yield* context.assertCallerTurnActive();
           return yield* Effect.tryPromise(async () => {
+            if (!["status", "message", "task", "cancel"].includes(String(args.action)))
+              throw new Error("Agent 工具不允许审批或回答权限请求，请由所有者在设备任务中处理。");
             const peerId = Schema.decodeUnknownSync(PeerId)(args.peerId);
             const id =
               typeof args.requestId === "string"

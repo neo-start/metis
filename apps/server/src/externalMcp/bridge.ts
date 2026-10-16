@@ -756,9 +756,7 @@ export async function pairExternalMcpClient(input: {
     );
   }
   if (body.credential !== pending.value.credential) {
-    throw new ExternalMcpBridgeError(
-      "Metis returned a different pairing credential; refusing it.",
-    );
+    throw new ExternalMcpBridgeError("Metis returned a different pairing credential; refusing it.");
   }
   const storePath = writeExternalMcpClientCredential(input.baseDir, body);
   fs.rmSync(pending.path, { force: true });

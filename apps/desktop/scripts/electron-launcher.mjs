@@ -49,6 +49,7 @@ export function configureMacLauncher(electronPath, environment = process.env) {
   const sourceEnvironment = createSourceDesktopEnvironment({ environment });
   const configuration = Object.fromEntries(
     [
+      "METIS_REQUIRE_SHARED_SERVICE",
       "SYNARA_HOME",
       "SYNARA_DESKTOP_FLAVOR",
       "SYNARA_SOURCE_DESKTOP_BUILD_MARKER",

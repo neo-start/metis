@@ -18,6 +18,7 @@ import {
   type PeerControlInput,
   type PeerControlResult,
   type PeerOverview,
+  type PeerTaskResponse,
 } from "@synara/contracts";
 import type { PeerChatExecution } from "./PeerChatExecution.ts";
 import { writeFileStringAtomically } from "../atomicWrite.ts";
@@ -69,13 +70,19 @@ type Pending = TrustedPeer & {
   expiresAt: number;
 };
 const terminal = (task: PeerTask) => ["completed", "error", "interrupted"].includes(task.state);
+const taskKey = (task: PeerTask) => `${task.direction}:${task.peerId}:${task.id}`;
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 export interface PeerExecution {
   templates(): Promise<Array<{ id: string; title: string }>>;
   project(template: string | null): Promise<string | null>;
   submit(task: PeerTask, template: string): Promise<string>;
-  status(threadId: string): Promise<{ state: PeerTask["state"]; result: string }>;
+  status(
+    threadId: string,
+  ): Promise<
+    Pick<PeerTask, "state" | "result" | "attention" | "updatedAt" | "localRecovery" | "observedAt">
+  >;
+  respond?(threadId: string, request: PeerTaskResponse): Promise<void>;
   cancel(threadId: string, requestId: string): Promise<void>;
   notify(task: PeerTask): Promise<void>;
   deliver(threadId: string, message: PeerMessage): Promise<void>;
@@ -105,8 +112,25 @@ export class PeerManager {
   private error: string | null = null;
   private readonly nearby = new Map<string, { id: string; name: string; address: string }>();
   private readonly chatSupport = new Map<string, boolean>();
-  private readonly health = new Map<string, { online: boolean; error: string | null }>();
+  private readonly health = new Map<
+    string,
+    {
+      online: boolean;
+      error: string | null;
+      lastSeenAt?: string;
+      capabilities?: readonly string[];
+    }
+  >();
   private readonly pending = new Map<string, Pending>();
+  private readonly taskSync = new Map<string, string>();
+  private readonly taskObservations = new Map<
+    string,
+    {
+      observedAt?: string;
+      localObservedAt: number | null;
+      stale: boolean;
+    }
+  >();
   private writes: Promise<void> = Promise.resolve();
   private lastSaved: string | undefined;
   private incoming: Promise<unknown> = Promise.resolve();
@@ -411,8 +435,42 @@ export class PeerManager {
           incoming: entry.incoming,
           expiresAt: entry.expiresAt,
         })),
-      tasks: this.state.tasks.slice(-100),
+      tasks: this.state.tasks.slice(-100).map((task) => this.taskSnapshot(task)),
       messages: this.state.messages.slice(-100),
+    };
+  }
+
+  /** Observation age is measured on the executor and anchored to receipt on this
+   * machine. Never subtract clocks on different machines or renew it on HTTP 200. */
+  private taskSnapshot(task: PeerTask): PeerTask {
+    const observation = this.taskObservations.get(taskKey(task));
+    // Queued work has not entered the engine: this manager is its authoritative
+    // observer, so reading its queue is a current observation (unlike running work).
+    const queuedHere = task.direction === "incoming" && task.state === "queued";
+    const observedAt = queuedHere
+      ? new Date(Date.now()).toISOString()
+      : (observation?.observedAt ?? task.observedAt);
+    const localObservedAt = queuedHere
+      ? Date.now()
+      : observation
+        ? observation.localObservedAt
+        : task.direction === "incoming"
+          ? Date.parse(observedAt ?? "")
+          : null;
+    const age = localObservedAt === null ? NaN : Date.now() - localObservedAt;
+    const observationAgeMs = Number.isFinite(age) && age >= 0 ? age : null;
+    const syncedAt = this.taskSync.get(taskKey(task)) ?? task.syncedAt;
+    return {
+      ...task,
+      ...(observedAt ? { observedAt } : {}),
+      ...(syncedAt ? { syncedAt } : {}),
+      observationAgeMs,
+      stale:
+        observation?.stale === true ||
+        observationAgeMs === null ||
+        observationAgeMs > 15000 ||
+        (task.direction === "outgoing" &&
+          (!this.state.enabled || !this.health.get(task.peerId)?.online)),
     };
   }
 
@@ -519,6 +577,22 @@ export class PeerManager {
     this.trusted(peerId);
     if (isPeerChatRequest(request) && this.chatSupport.get(peerId) === false)
       throw new Error("另一台电脑需要更新 Metis 才能使用主控对话。");
+    if (request.action === "respond") {
+      // Only the owner control surface can answer; agent tools cannot grant approvals.
+      if (sourceThreadId !== null) throw new Error("远程审批和回答只能由所有者操作。");
+      const task = this.state.tasks.find(
+        (entry) =>
+          entry.direction === "outgoing" && entry.peerId === peerId && entry.id === request.taskId,
+      );
+      if (!task) throw new Error("任务不存在或不属于此设备。");
+      // Negotiate afresh before sending a new action to a version-1 peer.
+      const status = await this.remote(peerId, { action: "status", taskId: request.taskId });
+      if (!status.capabilities?.includes("task-responses-v1"))
+        throw new Error("对方版本不支持远程审批或回答，请在执行设备处理。");
+      const current = this.state.tasks.find((entry) => taskKey(entry) === taskKey(task));
+      if (!current || this.taskSnapshot(current).stale)
+        throw new Error("执行状态已过期或观测时间未知，请等待执行设备刷新后再处理。");
+    }
     // An inbound worker can communicate, but cannot recursively delegate work.
     if (
       request.action === "task" &&
@@ -568,7 +642,7 @@ export class PeerManager {
                 threadId: null,
                 state: "queued",
                 result: "",
-                createdAt: new Date().toISOString(),
+                createdAt: new Date(Date.now()).toISOString(),
               },
             ],
           };
@@ -584,7 +658,7 @@ export class PeerManager {
                 text: request.text,
                 ...(request.taskId ? { taskId: request.taskId } : {}),
                 delivered: false,
-                createdAt: new Date().toISOString(),
+                createdAt: new Date(Date.now()).toISOString(),
               },
             ],
           };
@@ -612,13 +686,14 @@ export class PeerManager {
     }
     const peer = this.trusted(peerId);
     try {
+      const requestStartedAt = Date.now();
       const reply = Schema.decodeUnknownSync(PeerRemoteReply)(
         await peerRequest(this.address(peer), peer.cert, this.identity, "/rpc", request),
       );
       // Revocation during a network request must not resurrect its authority.
       this.trusted(peerId);
       this.chatSupport.set(peerId, reply.chatProtocol === 1 || reply.chat !== undefined);
-      await this.mergeReply(peerId, reply);
+      await this.mergeReply(peerId, reply, Math.max(0, Date.now() - requestStartedAt));
       if (
         request.action === "task" ||
         request.action === "message" ||
@@ -646,24 +721,67 @@ export class PeerManager {
         };
         await this.save();
       }
-      this.health.set(peerId, { online: true, error: null });
+      this.health.set(peerId, {
+        online: true,
+        error: null,
+        lastSeenAt: new Date(Date.now()).toISOString(),
+        capabilities: reply.capabilities ?? [],
+      });
       return reply;
     } catch (error) {
-      this.health.set(peerId, { online: false, error: errorText(error) });
+      this.health.set(peerId, {
+        ...this.health.get(peerId),
+        online: false,
+        error: errorText(error),
+      });
       throw error;
     }
   }
 
-  private async mergeReply(peerId: string, reply: PeerRemoteReply) {
+  private async mergeReply(peerId: string, reply: PeerRemoteReply, transitMs: number) {
     this.state = {
       ...this.state,
       tasks: this.state.tasks.map((task) => {
         const remote = reply.tasks.find(
-          (entry) => entry.id === task.id && entry.direction === "incoming",
+          (entry) =>
+            entry.id === task.id && entry.direction === "incoming" && entry.peerId === this.id,
         );
-        return task.direction === "outgoing" && task.peerId === peerId && remote
-          ? { ...task, threadId: remote.threadId, state: remote.state, result: remote.result }
-          : task;
+        if (task.direction !== "outgoing" || task.peerId !== peerId || !remote) return task;
+        const now = new Date(Date.now()).toISOString();
+        this.taskSync.set(taskKey(task), now);
+        const knownObservation =
+          reply.capabilities?.includes("task-observation-v1") &&
+          remote.observationAgeMs != null &&
+          remote.observedAt &&
+          Number.isFinite(Date.parse(remote.observedAt));
+        this.taskObservations.set(taskKey(task), {
+          ...(remote.observedAt ? { observedAt: remote.observedAt } : {}),
+          localObservedAt: knownObservation
+            ? Date.now() - remote.observationAgeMs! - transitMs
+            : null,
+          stale: remote.stale === true || !knownObservation,
+        });
+        const changed =
+          task.state !== remote.state ||
+          task.result !== remote.result ||
+          task.threadId !== remote.threadId ||
+          task.updatedAt !== (remote.updatedAt ?? task.updatedAt) ||
+          JSON.stringify(task.attention ?? []) !== JSON.stringify(remote.attention ?? []) ||
+          JSON.stringify(task.localRecovery ?? []) !== JSON.stringify(remote.localRecovery ?? []);
+        return {
+          ...task,
+          threadId: remote.threadId,
+          state: remote.state,
+          result: remote.result,
+          updatedAt: remote.updatedAt ?? (changed ? now : (task.updatedAt ?? task.createdAt)),
+          // Heartbeats are in memory; durable snapshots change only with task data.
+          syncedAt: changed || !task.syncedAt ? now : task.syncedAt,
+          attention: remote.attention ?? [],
+          localRecovery: remote.localRecovery ?? [],
+          ...(remote.observedAt && (changed || !task.observedAt)
+            ? { observedAt: remote.observedAt }
+            : {}),
+        };
       }),
     };
     await this.save();
@@ -714,7 +832,22 @@ export class PeerManager {
       )
     )
       throw new Error("请求 ID 已用于任务。");
-    if (request.action === "message") {
+    if (request.action === "respond") {
+      const task = this.state.tasks.find(
+        (entry) =>
+          entry.direction === "incoming" && entry.peerId === peerId && entry.id === request.taskId,
+      );
+      if (!task?.threadId) throw new Error("任务不存在或不属于此设备。");
+      if (terminal(task) || task.state === "queued") throw new Error("任务当前不可回答。");
+      if (this.taskSnapshot(task).stale)
+        throw new Error("执行状态已过期，请等待本机刷新后再处理。");
+      if (!this.execution.respond) throw new Error("此设备不支持远程审批或回答。");
+      // Adapter validates the live interaction generation before dispatching through
+      // the ordinary execution-side engine. Responses never enter the retry outbox.
+      await this.execution.respond(task.threadId, request);
+      this.updateTaskStatus(task, await this.execution.status(task.threadId));
+      await this.save();
+    } else if (request.action === "message") {
       if (request.taskId && !this.messageTarget(peerId, request.taskId))
         throw new Error("消息关联的任务不存在或不属于此设备。");
       const existing = this.state.messages.find(
@@ -735,7 +868,7 @@ export class PeerManager {
               text: request.text,
               ...(request.taskId ? { taskId: request.taskId } : {}),
               delivered: !request.taskId,
-              createdAt: new Date().toISOString(),
+              createdAt: new Date(Date.now()).toISOString(),
             },
           ],
         };
@@ -767,7 +900,7 @@ export class PeerManager {
               sourceThreadId: null,
               state: "queued",
               result: "",
-              createdAt: new Date().toISOString(),
+              createdAt: new Date(Date.now()).toISOString(),
             },
           ],
         };
@@ -783,23 +916,23 @@ export class PeerManager {
         if (task.state !== "queued" && task.threadId) {
           await this.execution.cancel(task.threadId, task.id);
           const status = await this.execution.status(task.threadId);
-          this.state = {
-            ...this.state,
-            tasks: this.state.tasks.map((entry) =>
-              entry === task ? { ...task, ...status } : entry,
-            ),
-          };
+          this.updateTaskStatus(task, status);
         } else
           this.state = {
             ...this.state,
             tasks: this.state.tasks.map((entry) =>
-              entry === task ? { ...task, state: "interrupted" } : entry,
+              entry === task
+                ? { ...task, state: "interrupted", observedAt: new Date(Date.now()).toISOString() }
+                : entry,
             ),
           };
         await this.save();
       }
     }
     return {
+      capabilities: this.execution.respond
+        ? ["task-status-v1", "task-responses-v1", "task-observation-v1"]
+        : ["task-status-v1", "task-observation-v1"],
       name: this.state.name,
       ...(this.options.chats ? { chatProtocol: 1 as const } : {}),
       project: await this.execution.project(this.state.templateThreadId),
@@ -810,8 +943,40 @@ export class PeerManager {
             task.peerId === peerId &&
             (!("taskId" in request) || !request.taskId || task.id === request.taskId),
         )
-        .slice(-50),
+        .slice(-50)
+        .map((task) => this.taskSnapshot(task)),
       messages: this.state.messages.filter((message) => message.peerId === peerId).slice(-20),
+    };
+  }
+
+  private updateTaskStatus(task: PeerTask, status: Awaited<ReturnType<PeerExecution["status"]>>) {
+    const now = new Date(Date.now()).toISOString();
+    const observedAt = status.observedAt ?? now;
+    this.taskObservations.set(taskKey(task), {
+      observedAt,
+      localObservedAt: Date.parse(observedAt),
+      stale: false,
+    });
+    const changed =
+      task.state !== status.state ||
+      task.result !== status.result ||
+      JSON.stringify(task.attention ?? []) !== JSON.stringify(status.attention ?? []) ||
+      JSON.stringify(task.localRecovery ?? []) !== JSON.stringify(status.localRecovery ?? []);
+    this.state = {
+      ...this.state,
+      tasks: this.state.tasks.map((entry) =>
+        entry === task
+          ? {
+              ...task,
+              ...status,
+              attention: status.attention ?? [],
+              localRecovery: status.localRecovery ?? [],
+              observedAt: changed || !task.observedAt ? observedAt : task.observedAt,
+              updatedAt: status.updatedAt ?? (changed ? now : (task.updatedAt ?? task.createdAt)),
+              syncedAt: changed || !task.syncedAt ? now : task.syncedAt,
+            }
+          : entry,
+      ),
     };
   }
 
@@ -923,12 +1088,7 @@ export class PeerManager {
         for (const task of active) {
           if (!task.threadId) continue;
           const status = await this.execution.status(task.threadId);
-          this.state = {
-            ...this.state,
-            tasks: this.state.tasks.map((entry) =>
-              entry === task ? { ...task, ...status } : entry,
-            ),
-          };
+          this.updateTaskStatus(task, status);
         }
         const busy = this.state.tasks.some(
           (task) => task.direction === "incoming" && task.state !== "queued" && !terminal(task),
@@ -945,7 +1105,15 @@ export class PeerManager {
             this.state = {
               ...this.state,
               tasks: this.state.tasks.map((task) =>
-                task === next ? { ...task, threadId, state: "running" } : task,
+                task === next
+                  ? {
+                      ...task,
+                      threadId,
+                      state: "running",
+                      updatedAt: new Date(Date.now()).toISOString(),
+                      observedAt: new Date(Date.now()).toISOString(),
+                    }
+                  : task,
               ),
             };
           } catch (error) {

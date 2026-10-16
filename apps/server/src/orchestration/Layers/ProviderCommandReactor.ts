@@ -4760,6 +4760,7 @@ const make = Effect.gen(function* () {
     readonly turnId?: TurnId | undefined;
     readonly createdAt: string;
     readonly intentionalQuit?: boolean;
+    readonly strictTurnId?: boolean;
   }) {
     const thread = yield* resolveThread(input.threadId);
     const providerThread = yield* resolveProviderSessionThread(input.threadId);
@@ -4767,14 +4768,23 @@ const make = Effect.gen(function* () {
       return;
     }
 
-    // P1 activation stickiness: Stop is an explicit off. A crowded inbox of
+    // A queued cancellation names the run the caller observed. Never redirect
+    // it to a newer turn, or clear that newer turn's computer-control intent.
+    const liveTurnId = yield* resolveLiveProviderTurnId(input.threadId);
+    const observedTurnId = liveTurnId ?? thread.session?.activeTurnId;
+    if (input.strictTurnId && input.turnId && observedTurnId && input.turnId !== observedTurnId) {
+      return;
+    }
+
+    // P1 activation stickiness: desktop Stop is an explicit off. A crowded inbox of
     // queued and steered turns must not resurrect computer control after the
     // user halted it, so clear the durable chat intent up front. Best-effort:
     // a consent-store failure must not fail the stop itself (that would leave
     // the turn running with the button looking dead); it is logged and the
     // interrupt proceeds. The generation is irrelevant for "off": admission is
-    // unconditionally disabled and the intent unconditionally cleared.
-    if (Option.isSome(computerService)) {
+    // unconditionally disabled and the intent unconditionally cleared. A scoped
+    // cancel targets one run and must not clear future chat-wide intent.
+    if (!input.strictTurnId && Option.isSome(computerService)) {
       yield* Effect.promise(() =>
         computerService.value.manager.admitControl(input.threadId, "off", 0),
       ).pipe(
@@ -4797,6 +4807,7 @@ const make = Effect.gen(function* () {
     // changing the UI state: a half-started session may still emit events.
     const interruptSession = thread.session;
     if (
+      !input.strictTurnId &&
       interruptSession !== null &&
       (interruptSession.status === "starting" || interruptSession.status === "running") &&
       interruptSession.activeTurnId === null &&
@@ -4830,6 +4841,7 @@ const make = Effect.gen(function* () {
         return;
       }
       yield* reportInterruptFailure("No active provider session is bound to this thread.");
+      if (input.strictTurnId) return;
       // Nothing is left that could ever emit a terminal event for this turn.
       return yield* settleInterruptedProviderTurn({
         threadId: input.threadId,
@@ -4837,22 +4849,35 @@ const make = Effect.gen(function* () {
       });
     }
 
-    // Forward the observed turn only as an expectation. ProviderService owns the
-    // exact generation-scoped provider turn and rejects a stale mismatch.
+    // Scoped cancels retain the exact expectation through ProviderService's
+    // runtime fence; generic desktop Stop continues to use the live turn.
     const providerThreadId = resolveSubagentProviderThreadId(thread.id, providerThread.id);
-    const liveTurnId = yield* resolveLiveProviderTurnId(input.threadId);
-    const turnId = liveTurnId ?? input.turnId ?? thread.session?.activeTurnId ?? undefined;
+    const turnId = input.strictTurnId
+      ? input.turnId
+      : (liveTurnId ?? input.turnId ?? thread.session?.activeTurnId ?? undefined);
     const result = yield* runBoundedProviderCall({
       label: "The provider interrupt",
       timeout: PROVIDER_COMMAND_INTERRUPT_TIMEOUT,
       call: providerService.interruptTurn({
         threadId: providerThread.id,
         ...(turnId ? { turnId } : {}),
+        ...(input.strictTurnId ? { strictTurnId: true } : {}),
         ...(providerThreadId ? { providerThreadId } : {}),
       }),
     });
     if (result._tag === "ok") {
       return;
+    }
+
+    // The provider can advance while the interrupt is in flight. A stale
+    // targeted rejection must not settle or stop the replacement run either.
+    if (input.strictTurnId && input.turnId) {
+      const currentTurnId = yield* resolveLiveProviderTurnId(input.threadId);
+      if (currentTurnId && currentTurnId !== input.turnId) return;
+      if (result._tag !== "timeout" && result.outcome._tag === "rejected") {
+        yield* reportInterruptFailure(result.outcome.detail);
+        return;
+      }
     }
 
     // Desktop quit also closes the provider. If that closure already settled
@@ -4908,6 +4933,7 @@ const make = Effect.gen(function* () {
       turnId: event.payload.turnId,
       createdAt: event.payload.createdAt,
       intentionalQuit: event.commandId?.startsWith("quit-resume-interrupt:") === true,
+      strictTurnId: event.commandId?.startsWith("external_task_control_") === true,
     });
   });
 
@@ -5027,6 +5053,15 @@ const make = Effect.gen(function* () {
   const forwardStaleUserInputAnswer = (event: InteractionResponseEvent) =>
     Effect.gen(function* () {
       if (event.type !== "thread.user-input-response-requested" || event.commandId === null) {
+        return;
+      }
+      // These durable command namespaces are minted by the scoped task-control
+      // and paired-device adapters. Permission to answer one callback does not
+      // authorize a replacement turn under the thread's execution policy.
+      if (
+        event.commandId.startsWith("external_task_control_") ||
+        event.commandId.startsWith("peer:response:")
+      ) {
         return;
       }
       const thread = yield* resolveThread(event.payload.threadId);
