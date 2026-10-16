@@ -36,6 +36,11 @@ a local agent turn. Restarting the receiver temporarily interrupts observation;
 the sender retries reading the same conversation after reconnecting. Both source
 and receiver need the existing remote controller chat protocol.
 
+An interrupted turn remains waiting so a receiver restarting itself cannot admit
+another update while recovering. Continue or resolve that remote conversation if
+it does not resume automatically. Observation also continues after a terminal
+turn, since a delayed restart continuation can change its status and result.
+
 The remote chat layout uses the shared transcript/composer horizontal gutter and
 a flex-sized route surface, with bottom space for the composer. No browser or
 visual verification was performed. Per the user's instruction, tests were not

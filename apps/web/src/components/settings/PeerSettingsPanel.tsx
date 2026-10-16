@@ -296,7 +296,7 @@ export function PeerSettingsPanel({ owner }: { owner: boolean }) {
                   pending: "等待通知送达",
                   sent: "已发送更新请求",
                   running: "远端正在处理",
-                  waiting: "等待远端审批或回答",
+                  waiting: "等待远端处理或重启恢复",
                   completed: "远端会话已结束，请查看执行结果",
                   error: "远端执行已中断或失败",
                 };

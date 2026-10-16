@@ -1083,16 +1083,19 @@ export class PeerManager {
       try {
         // Wait for this machine's previous update turn before sending another.
         // Read-only observation never injects remote output into a local agent turn.
-        if (!rule.pending && rule.chatId && ["sent", "running", "waiting"].includes(rule.status)) {
+        if (!rule.pending && rule.chatId) {
           const reply = await this.remote(rule.peerId, {
             action: "chat.read",
             chatId: rule.chatId,
           });
           const thread = reply.chat?.thread;
           if (!thread) throw new Error("无法读取更新会话，请在远端会话查看执行结果。");
-          const waiting =
-            thread.hasPendingApprovals || thread.hasPendingUserInput || thread.claudeCacheReview;
           const turn = thread.latestTurn;
+          const waiting =
+            thread.hasPendingApprovals ||
+            thread.hasPendingUserInput ||
+            thread.claudeCacheReview ||
+            turn?.state === "interrupted";
           const result =
             thread.messages.findLast((message) => message.role === "assistant")?.text ?? "";
           const status = waiting
