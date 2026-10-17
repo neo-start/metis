@@ -18,6 +18,7 @@ import { LegendList, type LegendListRef } from "@legendapp/list/react";
 import {
   memo,
   useCallback,
+  useContext,
   useEffect,
   useId,
   useLayoutEffect,
@@ -47,6 +48,8 @@ import {
 } from "../../types";
 import { AsyncUserInputCard } from "./AsyncUserInputCard";
 import ChatMarkdown from "../ChatMarkdown";
+import { RemoteImagePreviewContext } from "~/lib/remoteChatContent";
+import { toastManager } from "../ui/toast";
 import type { WorkingLabel } from "../ChatView.logic";
 import { InlineLinkChip } from "../InlineLinkChip";
 import {
@@ -3200,21 +3203,47 @@ const UserImageAttachmentThumbnail = memo(function UserImageAttachmentThumbnail(
   onTimelineImageLoad: () => void;
   resolvedTheme: "light" | "dark";
 }) {
+  const loadRemoteImage = useContext(RemoteImagePreviewContext);
+  const [remoteUrl, setRemoteUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const previewUrl = props.image.previewUrl ?? remoteUrl;
+  const expand = async () => {
+    if (loading) return;
+    if (loadRemoteImage) {
+      setLoading(true);
+      try {
+        const src = previewUrl ?? (await loadRemoteImage(props.image));
+        setRemoteUrl(src);
+        props.onImageExpand({ images: [{ src, name: props.image.name }], index: 0 });
+      } catch (cause) {
+        toastManager.add({
+          type: "error",
+          title: "无法加载远端图片",
+          description: cause instanceof Error ? cause.message : "请重试。",
+        });
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+    const preview = buildExpandedImagePreview(props.userImages, props.image.id);
+    if (preview) props.onImageExpand(preview);
+  };
   return (
     <button
       type="button"
       className="flex size-15 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border/70 bg-background/82 text-left shadow-[0_1px_0_rgba(255,255,255,0.2)_inset] transition-colors hover:bg-background/94"
       aria-label={`Preview ${props.image.name}`}
-      title={props.image.name}
-      onClick={() => {
-        const preview = buildExpandedImagePreview(props.userImages, props.image.id);
-        if (!preview) return;
-        props.onImageExpand(preview);
-      }}
+      title={loading ? "正在加载远端图片…" : props.image.name}
+      aria-busy={loading}
+      disabled={loading}
+      onClick={() => void expand()}
     >
-      {props.image.previewUrl ? (
+      {loading ? (
+        <span className="text-ui-xs text-muted-foreground">加载中…</span>
+      ) : previewUrl ? (
         <img
-          src={props.image.previewUrl}
+          src={previewUrl}
           alt={props.image.name}
           className="size-full object-cover"
           onLoad={props.onTimelineImageLoad}

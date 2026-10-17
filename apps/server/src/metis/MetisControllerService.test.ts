@@ -1,4 +1,8 @@
 import path from "node:path";
+import fs from "node:fs/promises";
+import { PEER_ATTACHMENT_CHUNK_BYTES } from "@synara/contracts";
+import { ManagedAttachmentRepository } from "../persistence/Services/ManagedAttachments";
+import { Option } from "effect";
 import { ProjectionTurnRepositoryLive } from "../persistence/Layers/ProjectionTurns.ts";
 import { QueuedTurnPromotionRepositoryLive } from "../persistence/Layers/QueuedTurnPromotions.ts";
 import { CommandId, MessageId, ThreadId } from "@synara/contracts";
@@ -238,6 +242,72 @@ describe("Metis controller with the real orchestration engine", () => {
         a.remote(bv.instanceId, { ...send, text: "不允许用同一 ID 改写内容" }),
       ).rejects.toThrow("其他内容");
       expect((await b.overview()).tasks).toHaveLength(0);
+      // Binary data larger than the peer JSON limit crosses bounded chunks and
+      // is claimed by the real engine under the sending peer's principal.
+      await a.remote(bv.instanceId, { action: "chat.open", id: "uploads", title: "新对话" });
+      const bytes = Buffer.alloc(300_000, 42);
+      const begun = await a.remote(bv.instanceId, {
+        action: "chat.attachment.begin",
+        chatId: "uploads",
+        type: "file",
+        name: "report.bin",
+        mimeType: "application/octet-stream",
+        sizeBytes: bytes.length,
+      });
+      const attachmentId = begun.chat!.attachment!.id;
+      for (let offset = 0; offset < bytes.length; offset += PEER_ATTACHMENT_CHUNK_BYTES) {
+        const chunk = {
+          action: "chat.attachment.chunk",
+          chatId: "uploads",
+          attachmentId,
+          offset,
+          data: bytes.subarray(offset, offset + PEER_ATTACHMENT_CHUNK_BYTES).toString("base64"),
+        } as const;
+        await a.remote(bv.instanceId, chunk);
+        await a.remote(bv.instanceId, chunk);
+      }
+      const finish = {
+        action: "chat.attachment.finish",
+        chatId: "uploads",
+        attachmentId,
+        sha256: createHash("sha256").update(bytes).digest("hex"),
+      } as const;
+      const uploaded = (await a.remote(bv.instanceId, finish)).chat!.attachment!;
+      expect((await a.remote(bv.instanceId, finish)).chat!.attachment).toEqual(uploaded);
+      await expect(a.remote(bv.instanceId, { ...finish, chatId: "chat" })).rejects.toThrow(
+        "不属于",
+      );
+      const attachmentSend = {
+        action: "chat.send",
+        chatId: "uploads",
+        id: "attachment-only",
+        text: "",
+        attachments: [uploaded],
+      } as const;
+      await a.remote(bv.instanceId, attachmentSend);
+      await a.remote(bv.instanceId, attachmentSend);
+      const uploadedChat = (
+        await a.remote(bv.instanceId, { action: "chat.read", chatId: "uploads" })
+      ).chat!;
+      expect(uploadedChat.thread!.messages).toHaveLength(1);
+      expect(uploadedChat.thread!.messages[0]!.attachments).toEqual([uploaded]);
+      expect(uploadedChat.thread!.title).toBe("Remote · report.bin");
+      const repository = await runtime.runPromise(Effect.service(ManagedAttachmentRepository));
+      const blob = Option.getOrThrow(
+        await runtime.runPromise(repository.findClaimedById({ attachmentId })),
+      );
+      expect(blob.ownerId).toBe(`peer-chat:${av.instanceId}`);
+      expect(await fs.readFile(path.join(config.attachmentsDir, blob.relativePath))).toEqual(bytes);
+      await expect(
+        b.remote(av.instanceId, {
+          action: "chat.attachment.begin",
+          chatId: "chat",
+          type: "file",
+          name: "old.txt",
+          mimeType: "text/plain",
+          sizeBytes: 1,
+        }),
+      ).rejects.toThrow("更新并重启");
       await b.stop();
       await expect(
         a.remote(bv.instanceId, {

@@ -81,6 +81,18 @@
         "apps/web/src/components/chat/TranscriptQuickComposerForm.tsx"
       ],
       "changes": "Share the local landing hero, full-size editor and composer footer with Remote. Preserve device-scoped drafts, stable send IDs, queued follow-ups and approvals; display remote model and permission settings without invoking local configuration or file APIs."
+    },
+    "remoteChatAttachmentAdaptation": {
+      "localBaseCommit": "616d313842952948cf19e67291aaca6f79689623",
+      "sources": [
+        "apps/web/src/lib/composerSend.ts",
+        "apps/web/src/components/chat/ComposerImageAttachmentChip.tsx",
+        "apps/web/src/components/chat/FileAttachmentChip.tsx",
+        "apps/server/src/managedAttachmentStore.ts",
+        "apps/server/src/persistence/Layers/ManagedAttachments.ts",
+        "apps/server/src/peers/peerTransport.ts"
+      ],
+      "changes": "Reuse local attachment intake, presentation, managed storage quotas, cleanup and engine claim semantics. Add bounded peer chunks with digest checks, scoped image previews and capability negotiation without embedding file bytes in durable commands."
     }
   },
   "t3code": {
@@ -139,6 +151,11 @@
       ],
       "target": "apps/web/src/components/remote/RemoteChatComposer.tsx",
       "changes": "Reviewed empty-landing and composer entrypoints. No T3 code copied; reuse the existing Synara presentation components and retain its peer transport."
+    },
+    "remoteChatAttachmentReference": {
+      "commit": "f5ef0ddb90a8c36584e181b1913e7b8a5df30ffc",
+      "source": "apps/mobile/src/lib/attachmentUpload.ts",
+      "changes": "Reviewed capability negotiation and upload lifecycle ownership; no T3 source copied. Keep Synara managed attachment IDs and paired-device transport."
     }
   },
   "agentOrchestrator": {

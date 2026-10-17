@@ -6,6 +6,7 @@ import {
   MessageId,
   ThreadId,
   TurnId,
+  PEER_ATTACHMENT_CAPABILITY,
   type PeerChatReply,
   type PeerChatRequest,
 } from "@synara/contracts";
@@ -14,8 +15,12 @@ import { MetisControllerService } from "../metis/MetisControllerService.ts";
 import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { OrchestrationCommandReceiptRepository } from "../persistence/Services/OrchestrationCommandReceipts.ts";
+import { ManagedAttachmentRepository } from "../persistence/Services/ManagedAttachments";
+import { ServerConfig } from "../config";
+import { makePeerChatAttachments, peerAttachmentPrincipal } from "./PeerChatAttachments";
 
 export interface PeerChatExecution {
+  attachments?: boolean;
   handle(peerId: string, request: PeerChatRequest): Promise<PeerChatReply>;
   revoke(peerId: string): Promise<void>;
 }
@@ -27,11 +32,17 @@ export const makePeerChatExecution = Effect.gen(function* () {
   const engine = yield* OrchestrationEngineService;
   const query = yield* ProjectionSnapshotQuery;
   const receipts = yield* OrchestrationCommandReceiptRepository;
+  const attachments = makePeerChatAttachments(
+    yield* ManagedAttachmentRepository,
+    (yield* ServerConfig).attachmentsDir,
+  );
   const run = <A, E>(effect: Effect.Effect<A, E>) => Effect.runPromise(effect);
   return {
+    attachments: true,
     revoke: (peerId) => controller.revokePeer(peerId),
     handle: async (peerId, request) => {
       const list = async (): Promise<PeerChatReply> => ({
+        capabilities: [PEER_ATTACHMENT_CAPABILITY],
         controllerId: controller.identity.id,
         chats: await Promise.all(
           (await controller.peerChats(peerId)).map(async ({ id, title, createdAt }) => {
@@ -60,6 +71,20 @@ export const makePeerChatExecution = Effect.gen(function* () {
         return { ...(await list()), chatId: request.chatId };
       }
       const threadId = ThreadId.makeUnsafe(await controller.peerChatThread(peerId, request.chatId));
+      if (
+        request.action === "chat.attachment.begin" ||
+        request.action === "chat.attachment.chunk" ||
+        request.action === "chat.attachment.finish" ||
+        request.action === "chat.attachment.cancel" ||
+        request.action === "chat.attachment.read"
+      ) {
+        return {
+          controllerId: controller.identity.id,
+          chats: [],
+          chatId: request.chatId,
+          ...(await attachments(peerId, threadId, request)),
+        };
+      }
       const detail = Option.getOrUndefined(await run(query.getThreadDetailById(threadId)));
       if (!detail) throw new Error("远端对话不存在。");
       if (request.action === "chat.read") {
@@ -77,6 +102,7 @@ export const makePeerChatExecution = Effect.gen(function* () {
         const revision = createHash("sha256").update(JSON.stringify(thread)).digest("hex");
         return {
           controllerId: controller.identity.id,
+          capabilities: [PEER_ATTACHMENT_CAPABILITY],
           chats: [],
           chatId: request.chatId,
           revision,
@@ -88,20 +114,25 @@ export const makePeerChatExecution = Effect.gen(function* () {
         const createdAt = new Date().toISOString();
         const common = { commandId: commandId!, threadId, createdAt };
         if (request.action === "chat.send") {
+          if (!request.text.trim() && !request.attachments?.length)
+            throw new Error("消息和附件不能同时为空。");
           await run(
-            engine.dispatch({
-              ...common,
-              type: "thread.turn.start",
-              dispatchMode: "queue",
-              runtimeMode: detail.runtimeMode,
-              interactionMode: detail.interactionMode,
-              message: {
-                messageId: MessageId.makeUnsafe(commandId!),
-                role: "user",
-                text: request.text,
-                attachments: [],
+            engine.dispatch(
+              {
+                ...common,
+                type: "thread.turn.start",
+                dispatchMode: "queue",
+                runtimeMode: detail.runtimeMode,
+                interactionMode: detail.interactionMode,
+                message: {
+                  messageId: MessageId.makeUnsafe(commandId!),
+                  role: "user",
+                  text: request.text,
+                  attachments: request.attachments ?? [],
+                },
               },
-            }),
+              { attachmentPrincipal: peerAttachmentPrincipal(peerId) },
+            ),
           );
         } else if (request.action === "chat.async-answer") {
           const input = detail.messages.find(
@@ -195,7 +226,9 @@ export const makePeerChatExecution = Effect.gen(function* () {
         (detail.messages.length === 0 ||
           detail.messages[0]?.id === MessageId.makeUnsafe(commandId!))
       ) {
-        const title = request.text.replace(/\s+/g, " ").slice(0, 48);
+        const title = (request.text.trim() || request.attachments?.[0]?.name || "新对话")
+          .replace(/\s+/g, " ")
+          .slice(0, 48);
         await run(
           engine.dispatch({
             type: "thread.meta.update",

@@ -5,7 +5,13 @@
 // Layer: Chat transcript UI
 // Exports: TranscriptQuickComposerForm, useTranscriptQuickComposerSubmit
 
-import { useRef, useState, type ReactNode, type RefObject } from "react";
+import {
+  useRef,
+  useState,
+  type ClipboardEventHandler,
+  type ReactNode,
+  type RefObject,
+} from "react";
 
 import { ComposerSendArrowIcon, LoaderCircleIcon } from "~/lib/icons";
 import { cn } from "~/lib/utils";
@@ -83,6 +89,8 @@ interface TranscriptQuickComposerFormProps {
   readonly error: string | null;
   /** Row above the editor: context chip / hint on the left, close or extra actions on the right. */
   readonly header: ReactNode;
+  readonly attachments?: ReactNode;
+  readonly onPaste?: ClipboardEventHandler<HTMLElement>;
   /** Leading footer content (e.g. an environment picker); the send button always trails. */
   readonly footerLeading?: ReactNode;
   /** Full chat surfaces can reuse the standard composer footer and editor spacing. */
@@ -110,6 +118,8 @@ export function TranscriptQuickComposerForm({
   busy,
   error,
   header,
+  attachments,
+  onPaste,
   footerLeading,
   footer,
   layout = "compact",
@@ -141,6 +151,7 @@ export function TranscriptQuickComposerForm({
               {(header || layout === "compact") && (
                 <div className="mb-1 flex items-center justify-between gap-2">{header}</div>
               )}
+              {attachments}
               <ComposerPromptEditor
                 ref={inputRef}
                 value={value}
@@ -151,7 +162,7 @@ export function TranscriptQuickComposerForm({
                 className={layout === "compact" ? "min-h-[1lh]" : ""}
                 placeholder={placeholder}
                 onRemoveTerminalContext={() => {}}
-                onPaste={() => {}}
+                onPaste={onPaste ?? (() => {})}
                 onChange={onChange}
                 onCommandKeyDown={(key, event) => {
                   if (key !== "Enter" || event.shiftKey || event.isComposing) return false;

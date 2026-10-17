@@ -1,5 +1,9 @@
 import { Schema } from "effect";
 import {
+  ChatFileAttachment,
+  ChatImageAttachment,
+  PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
+  PROVIDER_SEND_TURN_MAX_FILE_BYTES,
   OrchestrationThread,
   ProviderApprovalDecision,
   ProviderUserInputAnswers,
@@ -8,6 +12,15 @@ import { UserInputQuestion } from "./providerRuntime";
 
 const RequestId = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9:_-]{1,128}$/));
 const Text = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(32000));
+export const PEER_ATTACHMENT_CHUNK_BYTES = 96 * 1024;
+export const PEER_ATTACHMENT_CAPABILITY = "chat-attachments-v1";
+export const PeerChatAttachment = Schema.Union([ChatImageAttachment, ChatFileAttachment]);
+export type PeerChatAttachment = typeof PeerChatAttachment.Type;
+const AttachmentId = Schema.String.check(Schema.isPattern(/^att_v2_[a-f0-9]{32}$/));
+const AttachmentOffset = Schema.Int.check(
+  Schema.isGreaterThanOrEqualTo(0),
+  Schema.isLessThanOrEqualTo(PROVIDER_SEND_TURN_MAX_FILE_BYTES),
+);
 export const PeerId = Schema.String.check(Schema.isPattern(/^metis-[a-f0-9]{32}$/));
 export const PeerTaskState = Schema.Literals([
   "queued",
@@ -84,6 +97,38 @@ export const PeerMessage = Schema.Struct({
 });
 export type PeerMessage = typeof PeerMessage.Type;
 export const PeerChatRequest = Schema.Union([
+  Schema.Struct({
+    action: Schema.Literal("chat.attachment.read"),
+    chatId: RequestId,
+    attachmentId: AttachmentId,
+    offset: AttachmentOffset,
+  }),
+  Schema.Struct({
+    action: Schema.Literal("chat.attachment.begin"),
+    chatId: RequestId,
+    type: Schema.Literals(["image", "file"]),
+    name: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(255)),
+    mimeType: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(100)),
+    sizeBytes: AttachmentOffset.check(Schema.isGreaterThan(0)),
+  }),
+  Schema.Struct({
+    action: Schema.Literal("chat.attachment.chunk"),
+    chatId: RequestId,
+    attachmentId: AttachmentId,
+    offset: AttachmentOffset,
+    data: Schema.String.check(Schema.isMaxLength((PEER_ATTACHMENT_CHUNK_BYTES * 4) / 3)),
+  }),
+  Schema.Struct({
+    action: Schema.Literal("chat.attachment.finish"),
+    chatId: RequestId,
+    attachmentId: AttachmentId,
+    sha256: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)),
+  }),
+  Schema.Struct({
+    action: Schema.Literal("chat.attachment.cancel"),
+    chatId: RequestId,
+    attachmentId: AttachmentId,
+  }),
   Schema.Struct({ action: Schema.Literal("chat.list") }),
   Schema.Struct({ action: Schema.Literal("chat.open"), id: RequestId, title: Text }),
   Schema.Struct({
@@ -96,7 +141,12 @@ export const PeerChatRequest = Schema.Union([
     action: Schema.Literal("chat.send"),
     chatId: RequestId,
     id: RequestId,
-    text: Text,
+    text: Schema.String.check(Schema.isMaxLength(32000)),
+    attachments: Schema.optional(
+      Schema.Array(PeerChatAttachment).check(
+        Schema.isMaxLength(PROVIDER_SEND_TURN_MAX_ATTACHMENTS),
+      ),
+    ),
   }),
   Schema.Struct({
     action: Schema.Literal("chat.stop"),
@@ -143,6 +193,11 @@ export const PeerChat = Schema.Struct({
 });
 export type PeerChat = typeof PeerChat.Type;
 export const PeerChatReply = Schema.Struct({
+  attachment: Schema.optional(PeerChatAttachment),
+  attachmentData: Schema.optional(
+    Schema.String.check(Schema.isMaxLength((PEER_ATTACHMENT_CHUNK_BYTES * 4) / 3)),
+  ),
+  capabilities: Schema.optional(Schema.Array(Schema.String)),
   controllerId: Schema.String,
   chats: Schema.Array(PeerChat),
   chatId: Schema.optional(RequestId),

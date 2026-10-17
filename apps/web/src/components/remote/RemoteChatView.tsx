@@ -12,7 +12,7 @@ import {
   useDesktopTopBarWindowControlsGutterClassName,
 } from "~/hooks/useDesktopTopBarGutter";
 import { remoteChat, remoteChatsKey, remoteThreadKey, useRemoteDevices } from "~/lib/remoteChats";
-import { RemoteChatContentContext } from "~/lib/remoteChatContent";
+import { RemoteChatContentContext, RemoteImagePreviewContext } from "~/lib/remoteChatContent";
 import { WorkspaceFileOpenerContext } from "~/lib/workspaceFileOpener";
 import { cn, randomUUID } from "~/lib/utils";
 import { EllipsisIcon } from "~/lib/icons";
@@ -44,6 +44,11 @@ import { ComposerPickerMenuPopup } from "../chat/ComposerPickerMenuPopup";
 import { ChatEmptyStateHero } from "../chat/ChatEmptyStateHero";
 import { ChatSurfaceHeader } from "../chat/ChatSurfaceHeader";
 import { RemoteChatComposer } from "./RemoteChatComposer";
+import { useRemoteChatAttachments } from "./useRemoteChatAttachments";
+import { ComposerImageAttachmentChip } from "../chat/ComposerImageAttachmentChip";
+import { FileAttachmentChip } from "../chat/FileAttachmentChip";
+import { ExpandedImageOverlay } from "../chat/ExpandedImageOverlay";
+import type { ExpandedImagePreview } from "../chat/ExpandedImagePreview";
 import {
   CHAT_SURFACE_HEADER_HEIGHT_CLASS,
   CHAT_SURFACE_HEADER_PADDING_X_CLASS,
@@ -176,6 +181,33 @@ function Conversation({
   );
   const pendingRef = useRef(pending);
   const submittingRef = useRef(false);
+  const [sending, setSending] = useState(false);
+  const attachments = useRemoteChatAttachments(peerId, chatId);
+  const clearAttachments = attachments.clear;
+  const [expandedImage, setExpandedImage] = useState<ExpandedImagePreview | null>(null);
+  useEffect(() => {
+    if (!expandedImage) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setExpandedImage(null);
+      }
+      if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+        event.preventDefault();
+        const direction = event.key === "ArrowLeft" ? -1 : 1;
+        setExpandedImage((current) =>
+          current
+            ? {
+                ...current,
+                index: (current.index + direction + current.images.length) % current.images.length,
+              }
+            : null,
+        );
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [expandedImage]);
   const editor = useRef<ComposerPromptEditorHandle | null>(null);
   const listRef = useRef<LegendListRef | null>(null);
   const [older, setOlder] = useState<OrchestrationThread["messages"]>([]);
@@ -249,35 +281,56 @@ function Conversation({
   const send = async () => {
     if (
       submittingRef.current ||
+      attachments.preparingRef.current ||
       mutate.isPending ||
       !enabled ||
       !thread ||
-      (!pendingRef.current && !draft.trim())
+      (!pendingRef.current && !draft.trim() && !attachments.items.length)
     )
       return;
     submittingRef.current = true;
+    setSending(true);
+    setExpandedImage(null);
     scroll.armTranscriptAutoFollow(scrollThreadId, true);
-    const request = pendingRef.current ?? {
-      action: "chat.send" as const,
-      chatId,
-      id: randomUUID(),
-      text: draft.trim(),
-    };
-    pendingRef.current = request;
-    setPending(request);
-    localStorage.setItem(pendingKey, JSON.stringify(request));
+    let staged: Awaited<ReturnType<typeof attachments.stage>> = [];
     try {
+      let request = pendingRef.current;
+      if (!request) {
+        staged = await attachments.stage();
+        request = {
+          action: "chat.send",
+          chatId,
+          id: randomUUID(),
+          text: draft.trim(),
+          ...(staged.length ? { attachments: staged } : {}),
+        };
+        // Persist only remote metadata, never file bytes. A retry must use this
+        // exact command, even when the peer accepted it but its reply was lost.
+        localStorage.setItem(pendingKey, JSON.stringify(request));
+        pendingRef.current = request;
+        setPending(request);
+      }
       await mutate.mutateAsync(request);
+      attachments.clear();
       pendingRef.current = null;
       setPending(null);
       localStorage.removeItem(pendingKey);
       setDraft("");
       setCursor(0);
       localStorage.removeItem(storageKey);
-    } catch {
+    } catch (cause) {
+      if (!pendingRef.current) {
+        await attachments.cancel(staged);
+        toastManager.add({
+          type: "error",
+          title: "未发送消息",
+          description: cause instanceof Error ? cause.message : "附件上传失败，请重试。",
+        });
+      }
       /* Stable id and text remain available for confirmation/retry. */
     } finally {
       submittingRef.current = false;
+      setSending(false);
     }
   };
   const stop = () => {
@@ -295,9 +348,15 @@ function Conversation({
         (message) => [message.id, message],
       ),
     );
-    return [...merged.values()].map((message) =>
-      normalizeChatMessage({ ...message, attachments: [], skills: [], mentions: [] }, undefined),
-    );
+    return [...merged.values()].map((message) => {
+      const normalized = normalizeChatMessage(
+        { ...message, attachments: [], skills: [], mentions: [] },
+        undefined,
+      );
+      // Preserve remote metadata without constructing URLs against local storage.
+      normalized.attachments = [...(message.attachments ?? [])];
+      return normalized;
+    });
   }, [older, olderThreadId, thread?.id, thread?.messages]);
   const timeline = useMemo(
     () =>
@@ -328,13 +387,14 @@ function Conversation({
     )
       return;
     pendingRef.current = null;
+    clearAttachments();
     setPending(null);
     setDraft("");
     setCursor(0);
     localStorage.removeItem(pendingKey);
     localStorage.removeItem(storageKey);
     mutate.reset();
-  }, [pending, thread?.messages, instance, pendingKey, storageKey, mutate]);
+  }, [pending, thread?.messages, instance, pendingKey, storageKey, mutate, clearAttachments]);
   const approval = thread
     ? derivePendingApprovals(thread.activities, thread.pendingInteractions)[0]
     : undefined;
@@ -417,64 +477,66 @@ function Conversation({
         )}
         <div className="relative min-h-0 flex-1">
           <RemoteChatContentContext.Provider value={true}>
-            <WorkspaceFileOpenerContext.Provider value={remoteFileOpener}>
-              <MessagesTimeline
-                listRef={listRef}
-                followLiveOutput={hasStreamingAssistantText && !scroll.isUserScrollDetached}
-                onIsAtEndChange={scroll.onIsAtEndChange}
-                onNavigate={scroll.onTranscriptNavigate}
-                onMessagesScroll={scroll.onMessagesScrollBase}
-                onMessagesWheel={scroll.onMessagesWheelBase}
-                onMessagesClickCapture={scroll.onMessagesClickCaptureBase}
-                onMessagesPointerDown={scroll.onMessagesPointerDownBase}
-                onMessagesPointerUp={scroll.onMessagesPointerUpBase}
-                onMessagesPointerCancel={scroll.onMessagesPointerCancelBase}
-                onMessagesTouchStart={scroll.onMessagesTouchStartBase}
-                onMessagesTouchMove={scroll.onMessagesTouchMoveBase}
-                onMessagesTouchEnd={scroll.onMessagesTouchEndBase}
-                hasMessages={messages.length > 0}
-                isWorking={running}
-                activeTurnInProgress={running}
-                activeTurnStartedAt={thread?.latestTurn?.startedAt ?? null}
-                timelineEntries={timeline}
-                messageChangeSignal={thread?.messages}
-                turnDiffSummaryByAssistantMessageId={new Map()}
-                revertTurnCountByUserMessageId={new Map()}
-                onRespondToAsyncUserInput={async (messageId, answers) => {
-                  await mutate.mutateAsync({
-                    action: "chat.async-answer",
-                    chatId,
-                    id: randomUUID(),
-                    messageId,
-                    answers: [...answers],
-                  });
-                }}
-                onOpenTurnDiff={() => {
-                  remoteFileOpener.openFile();
-                }}
-                onRevertUserMessage={noAction}
-                isRevertingCheckpoint={false}
-                onImageExpand={noAction}
-                markdownCwd={undefined}
-                workspaceRoot={undefined}
-                resolvedTheme={resolvedTheme}
-                timestampFormat={settings.timestampFormat}
-                chatFontSizePx={settings.chatFontSizePx}
-                emptyStateContent={
-                  thread ? (
-                    <ChatEmptyStateHero variant="landing" />
-                  ) : (
-                    <div role="status" className="px-6 text-center text-ui text-muted-foreground">
-                      {!enabled
-                        ? "协作已关闭"
-                        : query.error
-                          ? "连接中断，请重连后继续。"
-                          : "连接远端主控…"}
-                    </div>
-                  )
-                }
-              />
-            </WorkspaceFileOpenerContext.Provider>
+            <RemoteImagePreviewContext.Provider value={attachments.preview}>
+              <WorkspaceFileOpenerContext.Provider value={remoteFileOpener}>
+                <MessagesTimeline
+                  listRef={listRef}
+                  followLiveOutput={hasStreamingAssistantText && !scroll.isUserScrollDetached}
+                  onIsAtEndChange={scroll.onIsAtEndChange}
+                  onNavigate={scroll.onTranscriptNavigate}
+                  onMessagesScroll={scroll.onMessagesScrollBase}
+                  onMessagesWheel={scroll.onMessagesWheelBase}
+                  onMessagesClickCapture={scroll.onMessagesClickCaptureBase}
+                  onMessagesPointerDown={scroll.onMessagesPointerDownBase}
+                  onMessagesPointerUp={scroll.onMessagesPointerUpBase}
+                  onMessagesPointerCancel={scroll.onMessagesPointerCancelBase}
+                  onMessagesTouchStart={scroll.onMessagesTouchStartBase}
+                  onMessagesTouchMove={scroll.onMessagesTouchMoveBase}
+                  onMessagesTouchEnd={scroll.onMessagesTouchEndBase}
+                  hasMessages={messages.length > 0}
+                  isWorking={running}
+                  activeTurnInProgress={running}
+                  activeTurnStartedAt={thread?.latestTurn?.startedAt ?? null}
+                  timelineEntries={timeline}
+                  messageChangeSignal={thread?.messages}
+                  turnDiffSummaryByAssistantMessageId={new Map()}
+                  revertTurnCountByUserMessageId={new Map()}
+                  onRespondToAsyncUserInput={async (messageId, answers) => {
+                    await mutate.mutateAsync({
+                      action: "chat.async-answer",
+                      chatId,
+                      id: randomUUID(),
+                      messageId,
+                      answers: [...answers],
+                    });
+                  }}
+                  onOpenTurnDiff={() => {
+                    remoteFileOpener.openFile();
+                  }}
+                  onRevertUserMessage={noAction}
+                  isRevertingCheckpoint={false}
+                  onImageExpand={setExpandedImage}
+                  markdownCwd={undefined}
+                  workspaceRoot={undefined}
+                  resolvedTheme={resolvedTheme}
+                  timestampFormat={settings.timestampFormat}
+                  chatFontSizePx={settings.chatFontSizePx}
+                  emptyStateContent={
+                    thread ? (
+                      <ChatEmptyStateHero variant="landing" />
+                    ) : (
+                      <div role="status" className="px-6 text-center text-ui text-muted-foreground">
+                        {!enabled
+                          ? "协作已关闭"
+                          : query.error
+                            ? "连接中断，请重连后继续。"
+                            : "连接远端主控…"}
+                      </div>
+                    )
+                  }
+                />
+              </WorkspaceFileOpenerContext.Provider>
+            </RemoteImagePreviewContext.Provider>
           </RemoteChatContentContext.Provider>
         </div>
         <div className={cn("shrink-0 pb-3 pt-3 sm:pb-4", CHAT_COLUMN_GUTTER_CLASS_NAME)}>
@@ -531,9 +593,50 @@ function Conversation({
               deviceName={name}
               value={pending?.text ?? draft}
               cursor={cursor}
-              busy={!enabled || !thread || mutate.isPending}
+              busy={!enabled || !thread || mutate.isPending || sending || attachments.preparing}
               pending={pending !== null}
-              error={mutate.error?.message ?? null}
+              error={attachments.error ?? mutate.error?.message ?? null}
+              uploadStatus={
+                attachments.progress ?? (attachments.preparing ? "正在准备附件…" : null)
+              }
+              hasAttachments={!!attachments.items.length || !!pending?.attachments?.length}
+              onAddFiles={(files) => {
+                if (!pendingRef.current && !submittingRef.current) void attachments.add(files);
+              }}
+              attachments={
+                <div className="flex flex-wrap items-start gap-1.5">
+                  {attachments.items.map((item) =>
+                    item.type === "image" ? (
+                      <ComposerImageAttachmentChip
+                        key={item.id}
+                        image={item}
+                        images={attachments.items.filter((entry) => entry.type === "image")}
+                        nonPersisted={!pending}
+                        onExpandImage={setExpandedImage}
+                        onRemoveImage={(id) => {
+                          if (!pending && !sending) attachments.remove(id);
+                        }}
+                      />
+                    ) : (
+                      <FileAttachmentChip
+                        key={item.id}
+                        file={item}
+                        variant="card"
+                        nonPersisted={!pending}
+                        onRemove={!pending && !sending ? attachments.remove : undefined}
+                      />
+                    ),
+                  )}
+                  {!attachments.items.length &&
+                    pending?.attachments?.map((item) => (
+                      <FileAttachmentChip
+                        key={item.id}
+                        file={{ ...item, type: "file" }}
+                        variant="card"
+                      />
+                    ))}
+                </div>
+              }
               onChange={(value, position) => {
                 if (pending) return;
                 setDraft(value);
@@ -542,6 +645,22 @@ function Conversation({
               }}
               onSend={() => void send()}
               onStop={stop}
+            />
+            <ExpandedImageOverlay
+              expandedImage={expandedImage}
+              onClose={() => setExpandedImage(null)}
+              onNavigate={(direction) =>
+                setExpandedImage((current) =>
+                  current
+                    ? {
+                        ...current,
+                        index:
+                          (current.index + direction + current.images.length) %
+                          current.images.length,
+                      }
+                    : null,
+                )
+              }
             />
             {thread?.claudeCacheReview && (
               <p className="pt-2 text-ui-xs text-muted-foreground">

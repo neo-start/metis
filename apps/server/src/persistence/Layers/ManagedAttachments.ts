@@ -145,6 +145,7 @@ const makeRepository = (limits: ManagedAttachmentLimits) =>
           AND (
             state = 'claimed'
             OR (state = 'staged' AND staging_expires_at > ${input.now})
+            OR (state = 'uploading' AND created_at > ${input.uploadingCutoff ?? null})
           )
       `.pipe(
         Effect.map((rows) => Option.fromNullishOr(rows[0])),

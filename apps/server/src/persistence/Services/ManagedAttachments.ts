@@ -120,6 +120,8 @@ export interface ManagedAttachmentRepositoryShape {
     readonly ownerKind: string;
     readonly ownerId: string;
     readonly now: string;
+    /** Peer chunk uploads may resume a live reservation, scoped to the same owner/thread. */
+    readonly uploadingCutoff?: string;
   }) => Effect.Effect<Option.Option<ManagedAttachmentBlob>, PersistenceSqlError>;
   readonly findClaimedById: (input: {
     readonly attachmentId: string;

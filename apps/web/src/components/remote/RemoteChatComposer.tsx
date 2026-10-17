@@ -1,8 +1,8 @@
 import type { OrchestrationThread } from "@synara/contracts";
-import type { RefObject } from "react";
+import { useRef, type ReactNode, type RefObject } from "react";
 import { HiOutlineHandRaised } from "react-icons/hi2";
 import { CentralIcon } from "~/lib/central-icons";
-import { DeviceLaptopIcon, FastModeIcon } from "~/lib/icons";
+import { DeviceLaptopIcon, FastModeIcon, PlusIcon } from "~/lib/icons";
 import { RUNTIME_MODE_PRESENTATION } from "~/lib/runtimeMode";
 import { resolveThreadModelSummary } from "~/lib/threadModelSummary";
 import { cn } from "~/lib/utils";
@@ -32,6 +32,10 @@ export function RemoteChatComposer({
   onChange,
   onSend,
   onStop,
+  attachments,
+  hasAttachments,
+  uploadStatus,
+  onAddFiles,
 }: {
   inputRef: RefObject<ComposerPromptEditorHandle | null>;
   thread: OrchestrationThread | undefined;
@@ -44,13 +48,39 @@ export function RemoteChatComposer({
   onChange: (value: string, cursor: number) => void;
   onSend: () => void;
   onStop: () => void;
+  attachments: ReactNode;
+  hasAttachments: boolean;
+  uploadStatus: string | null;
+  onAddFiles: (files: File[]) => void;
 }) {
+  const fileInput = useRef<HTMLInputElement | null>(null);
   const running = thread?.latestTurn?.state === "running";
   const model = resolveThreadModelSummary(thread?.modelSelection);
   const runtimeMode = thread?.runtimeMode;
-  const hasContent = value.trim().length > 0;
+  const hasContent = value.trim().length > 0 || hasAttachments;
   return (
-    <>
+    <div
+      onDragOver={(event) => {
+        if (event.dataTransfer.types.includes("Files")) event.preventDefault();
+      }}
+      onDrop={(event) => {
+        if (!event.dataTransfer.files.length) return;
+        event.preventDefault();
+        if (!busy && !pending) onAddFiles(Array.from(event.dataTransfer.files));
+      }}
+    >
+      <input
+        ref={fileInput}
+        type="file"
+        multiple
+        className="hidden"
+        aria-label="添加图片和文件"
+        onChange={(event) => {
+          const files = Array.from(event.target.files ?? []);
+          event.target.value = "";
+          if (files.length) onAddFiles(files);
+        }}
+      />
       <div className="mb-2 flex min-w-0 items-center gap-2 px-3 text-ui-sm text-muted-foreground">
         <DeviceLaptopIcon aria-hidden="true" className="size-3.5 shrink-0" />
         <span className="truncate">{deviceName}</span>
@@ -63,10 +93,17 @@ export function RemoteChatComposer({
         busy={busy}
         editorDisabled={pending}
         error={error}
+        attachments={attachments}
+        onPaste={(event) => {
+          const files = Array.from(event.clipboardData.files);
+          if (!files.length) return;
+          event.preventDefault();
+          if (!busy && !pending) onAddFiles(files);
+        }}
         header={
-          pending ? (
+          uploadStatus || pending ? (
             <span role="status" className="text-ui-xs text-muted-foreground">
-              消息正在确认；再次发送会确认同一条消息。
+              {uploadStatus ?? "消息正在确认；再次发送会确认同一条消息。"}
             </span>
           ) : null
         }
@@ -80,6 +117,23 @@ export function RemoteChatComposer({
             isComposerFooterCompact={false}
             leadingControls={
               <>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="添加图片和文件"
+                        disabled={busy || pending}
+                        onClick={() => fileInput.current?.click()}
+                      />
+                    }
+                  >
+                    <PlusIcon className="size-4" />
+                  </TooltipTrigger>
+                  <TooltipPopup side="top">添加图片和文件 · 最多 8 个，单个文件 25 MB</TooltipPopup>
+                </Tooltip>
                 {runtimeMode && (
                   <Tooltip>
                     <TooltipTrigger
@@ -184,6 +238,6 @@ export function RemoteChatComposer({
           />
         }
       />
-    </>
+    </div>
   );
 }

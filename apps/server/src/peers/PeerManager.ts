@@ -645,6 +645,14 @@ export class PeerManager {
   ): Promise<PeerRemoteReply> {
     this.requireEnabled();
     this.trusted(peerId);
+    if (
+      request.action === "chat.attachment.begin" ||
+      (request.action === "chat.send" && request.attachments?.length)
+    ) {
+      const status = await this.remote(peerId, { action: "status" });
+      if (!status.capabilities?.includes("chat-attachments-v1"))
+        throw new Error("另一台电脑需要更新并重启 Metis，才能接收图片和文件。");
+    }
     if (isPeerChatRequest(request) && this.chatSupport.get(peerId) === false)
       throw new Error("另一台电脑需要更新 Metis 才能使用主控对话。");
     if (request.action === "respond") {
@@ -884,6 +892,7 @@ export class PeerManager {
         messages: [],
         chat,
         chatProtocol: 1,
+        capabilities: this.options.chats.attachments ? ["chat-attachments-v1"] : [],
       };
     }
     if (
@@ -1000,9 +1009,12 @@ export class PeerManager {
       }
     }
     return {
-      capabilities: this.execution.respond
-        ? ["task-status-v1", "task-responses-v1", "task-observation-v1"]
-        : ["task-status-v1", "task-observation-v1"],
+      capabilities: [
+        "task-status-v1",
+        "task-observation-v1",
+        ...(this.execution.respond ? ["task-responses-v1"] : []),
+        ...(this.options.chats?.attachments ? ["chat-attachments-v1"] : []),
+      ],
       name: this.state.name,
       ...(this.options.chats ? { chatProtocol: 1 as const } : {}),
       project: await this.execution.project(this.state.templateThreadId),
