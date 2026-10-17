@@ -4,6 +4,11 @@ import { outboundHttp, decodeOutboundJson } from "@synara/shared/outboundHttp";
 
 export const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 
+// Batch variants require OpenRouter's asynchronous Batch API, not chat completions.
+export function isOpenRouterBatchModel(provider: string, modelId: string): boolean {
+  return provider === "openrouter" && modelId.split(":").slice(1).includes("batch");
+}
+
 function record(value: unknown): Record<string, unknown> | undefined {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -48,6 +53,7 @@ export async function fetchOpenRouterModels(): Promise<ReadonlyArray<Model<"open
         typeof dto.id !== "string" ||
         !dto.id.trim() ||
         dto.id !== dto.id.trim() ||
+        isOpenRouterBatchModel("openrouter", dto.id) ||
         typeof dto.name !== "string" ||
         !dto.name.trim()
       )

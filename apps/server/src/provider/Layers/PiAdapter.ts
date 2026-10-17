@@ -86,7 +86,11 @@ import { makeBoundedCallbackIngress } from "../boundedCallbackIngress.ts";
 import { makeKeyedLock } from "../keyedLock.ts";
 import { settleConcurrentTeardowns } from "../settleConcurrentTeardowns.ts";
 import { classifyPiTurnFailure } from "../piTurnFailure.ts";
-import { fetchOpenRouterModels, OPENROUTER_BASE_URL } from "../OpenRouterDiscovery.ts";
+import {
+  fetchOpenRouterModels,
+  isOpenRouterBatchModel,
+  OPENROUTER_BASE_URL,
+} from "../OpenRouterDiscovery.ts";
 import { openrouterProvider } from "@earendil-works/pi-ai/providers/openrouter";
 import {
   compactProviderRuntimeEventForIngress,
@@ -715,7 +719,9 @@ export function ensurePiAnthropicCatalogModels(
 export function getPiDiscoverableModels(
   registry: Pick<ModelRegistry, "getAvailable" | "getAll">,
 ): ReadonlyArray<Model<Api>> {
-  return ensurePiAnthropicCatalogModels(registry.getAvailable(), registry.getAll());
+  return ensurePiAnthropicCatalogModels(registry.getAvailable(), registry.getAll()).filter(
+    (model) => !isOpenRouterBatchModel(model.provider, model.id),
+  );
 }
 
 /**
@@ -834,6 +840,7 @@ export function findModelInRegistry(
     return undefined;
   }
   if (parsed.provider) {
+    if (isOpenRouterBatchModel(parsed.provider, parsed.id)) return undefined;
     return (
       registry.find(parsed.provider, parsed.id) ??
       createProviderModelFallback(registry, { provider: parsed.provider, id: parsed.id })
@@ -841,7 +848,19 @@ export function findModelInRegistry(
   }
   return registry
     .getAll()
-    .find((model) => model.id === parsed.id || `${model.provider}/${model.id}` === parsed.id);
+    .find(
+      (model) =>
+        !isOpenRouterBatchModel(model.provider, model.id) &&
+        (model.id === parsed.id || `${model.provider}/${model.id}` === parsed.id),
+    );
+}
+
+function piModelUnavailableMessage(modelId: string): string {
+  const parsed = parseModelReference(modelId);
+  if (parsed?.provider && isOpenRouterBatchModel(parsed.provider, parsed.id)) {
+    return `Pi model '${modelId}' requires OpenRouter's asynchronous Batch API and cannot be used for interactive chat. Select a model without the ':batch' variant.`;
+  }
+  return `Pi model '${modelId}' is not available. Use a discovered model or a provider-qualified custom model slug like 'openai/gpt-5.5'.`;
 }
 
 function extractResumeSessionFile(resumeCursor: unknown): string | undefined {
@@ -2178,7 +2197,7 @@ const makePiAdapter = (options?: PiAdapterLiveOptions) =>
           return yield* new ProviderAdapterValidationError({
             provider: PROVIDER,
             operation: "model/set",
-            issue: `Pi model '${selection.model}' is not available. Use a discovered model or a provider-qualified custom model slug like 'openai/gpt-5.5'.`,
+            issue: piModelUnavailableMessage(selection.model),
           });
         }
         yield* Effect.tryPromise({
@@ -2705,15 +2724,14 @@ const makePiAdapter = (options?: PiAdapterLiveOptions) =>
         const requested = parseModelReference(input.modelId);
         if (
           requested?.provider === "openrouter" &&
+          !isOpenRouterBatchModel(requested.provider, requested.id) &&
           !registry.find(requested.provider, requested.id)
         ) {
           await refreshPiOpenRouterModels(services.modelRuntime);
         }
         const model = findModelInRegistry(registry, input.modelId);
         if (input.modelId && !model) {
-          throw new Error(
-            `Pi model '${input.modelId}' is not available. Use a discovered model or a provider-qualified custom model slug like 'openai/gpt-5.5'.`,
-          );
+          throw new Error(piModelUnavailableMessage(input.modelId));
         }
         const shellPath = services.settingsManager.getShellPath();
         const commandPrefix = services.settingsManager.getShellCommandPrefix();

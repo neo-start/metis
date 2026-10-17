@@ -59,6 +59,8 @@ describe("OpenRouter executable catalog", () => {
         null,
         {},
         { ...liveOpenRouterModel, id: 42 },
+        { ...liveOpenRouterModel, id: "z-ai/glm-5.3-flash:batch" },
+        { ...liveOpenRouterModel, id: "vendor/new-model:batch:other" },
         { ...liveOpenRouterModel, id: "missing-output", top_provider: null },
         {
           ...liveOpenRouterModel,

@@ -114,6 +114,10 @@ Custom models remain available. Until discovery succeeds, Synara uses a static f
 refresh keeps the last successful catalog. The shared discovery cache refreshes catalogs in the
 background after its ten-minute fresh window.
 
+Pi excludes OpenRouter `:batch` variants from the chat model catalog, including SDK and cached
+entries. These variants require OpenRouter's asynchronous [Batch API](https://openrouter.ai/docs/batch-quickstart).
+If an existing task has one selected, choose the corresponding model without `:batch` before retrying.
+
 The composer model picker has one tab per connected provider and a Starred tab. Starring a model
 saves it together with its current effort and speed, so one click (or `mod+1`…`mod+9` while the
 picker is open) restores the whole combination. A task that has started stays on its provider: only

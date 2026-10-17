@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { Effect, Layer } from "effect";
+import { Cause, Effect, Exit, Layer } from "effect";
 import { ThreadId } from "@synara/contracts";
 import { outboundHttp } from "@synara/shared/outboundHttp";
 import { afterEach, expect, it, vi } from "vitest";
@@ -57,9 +57,41 @@ function catalog() {
   });
 }
 afterEach(() => {
+  captured.model = undefined;
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+});
+
+it("rejects a saved batch selection before constructing an inference session or fetching metadata", async () => {
+  vi.stubEnv("OPENROUTER_API_KEY", "test-only");
+  vi.stubEnv("PI_OFFLINE", undefined);
+  const dir = directory();
+  const request = catalog();
+  const layer = makePiAdapterLive().pipe(
+    Layer.provideMerge(ServerConfig.layerTest(dir, path.join(dir, "server"))),
+    Layer.provideMerge(NodeServices.layer),
+  );
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const adapter = yield* PiAdapter;
+      const exit = yield* Effect.exit(
+        adapter.startSession({
+          threadId: ThreadId.makeUnsafe("openrouter-batch-test"),
+          cwd: dir,
+          runtimeMode: "full-access",
+          providerOptions: { pi: { agentDir: dir } },
+          modelSelection: { provider: "pi", model: "openrouter/z-ai/glm-5.3-flash:batch" },
+        }),
+      );
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        expect(Cause.pretty(exit.cause)).toContain("cannot be used for interactive chat");
+      }
+      expect(captured.model).toBeUndefined();
+      expect(request).not.toHaveBeenCalled();
+    }).pipe(Effect.scoped, Effect.provide(layer)),
+  );
 });
 
 it("passes a listed live model with its real capacities to a fresh session, including offline fallback", async () => {

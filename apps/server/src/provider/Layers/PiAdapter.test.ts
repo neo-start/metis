@@ -346,6 +346,32 @@ function makePiModel(input: {
 }
 
 describe("getPiDiscoverableModels", () => {
+  it("excludes OpenRouter batch variants from SDK or cached catalogs and blocks custom fallbacks", () => {
+    const chat = {
+      provider: "openrouter",
+      id: "z-ai/glm-5.3-flash",
+      api: "openai-completions",
+      baseUrl: "https://openrouter.ai/api/v1",
+    } as Model<Api>;
+    const batch = { ...chat, id: `${chat.id}:batch` };
+    const free = { ...chat, id: `${chat.id}:free` };
+    const custom = { ...batch, provider: "local" };
+    const models = [batch, chat, free, custom];
+    const registry = {
+      getAvailable: () => models,
+      getAll: () => models,
+      find: (provider: string, id: string) =>
+        models.find((model) => model.provider === provider && model.id === id),
+    };
+
+    expect(getPiDiscoverableModels(registry)).toEqual([chat, free, custom]);
+    expect(findModelInRegistry(registry, `openrouter/${batch.id}`)).toBeUndefined();
+    expect(findModelInRegistry(registry, "openrouter/vendor/unknown:batch")).toBeUndefined();
+    expect(findModelInRegistry(registry, `openrouter/${chat.id}`)).toEqual(chat);
+    expect(findModelInRegistry(registry, `openrouter/${free.id}`)).toEqual(free);
+    expect(findModelInRegistry(registry, `local/${batch.id}`)).toEqual(custom);
+  });
+
   it("normalizes the malformed Pi extension model metadata before returning it through RPC", () => {
     const descriptor = toPiProviderModelDescriptor(
       {
