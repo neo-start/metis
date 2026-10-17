@@ -1,3 +1,4 @@
+export const METIS_BACKEND_STARTUP_TIMEOUT_MS: number;
 export function prepareMetisBackgroundHome(home: string): void;
 export function acquireMetisBackgroundLock(home: string): Promise<() => Promise<void>>;
 export function startMetisBackgroundControl(

@@ -15,6 +15,10 @@ import { setTimeout as delay } from "node:timers/promises";
 
 export { requestMetisBackground };
 
+// Durable replay for a large workspace can outlast the old 30-second startup
+// window. Keep the backend's deadline and its attaching launcher's budget aligned.
+export const METIS_BACKEND_STARTUP_TIMEOUT_MS = 180_000;
+
 export function prepareMetisBackgroundHome(home) {
   if (process.platform !== "darwin" && process.platform !== "linux")
     throw new Error(
@@ -107,7 +111,14 @@ export async function startMetisBackgroundControl(home, status, stop) {
   };
 }
 
-export async function ensureMetisBackground({ home, command, args, cwd, env, timeoutMs = 45_000 }) {
+export async function ensureMetisBackground({
+  home,
+  command,
+  args,
+  cwd,
+  env,
+  timeoutMs = METIS_BACKEND_STARTUP_TIMEOUT_MS + 15_000,
+}) {
   prepareMetisBackgroundHome(home);
   const readReady = async () => {
     let service;

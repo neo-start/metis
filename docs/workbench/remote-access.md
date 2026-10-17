@@ -22,6 +22,8 @@ npm run metis:serve
 
 浏览器页面关闭后服务继续运行。`metis:serve` 默认以前台方式运行，Ctrl+C 会让后端正常结束任务和子进程；加 `-- --background` 可独立在后台运行，默认 `npm run metis` 也采用后台模式。使用 `npm run metis -- --stop-background` 显式停止后台。重开浏览器可使用已授权会话。`.agent-workbench/metis-service.json` 只记录进程、时间、地址和数据目录，不含凭据；后台控制凭据单独保存在仅当前用户可读的文件中。
 
+较大的工作区启动时需要恢复历史运行状态；启动器最多等待后端 3 分钟，外层后台启动命令再预留 15 秒。健康检查就绪且本次后端生成配对链接后才打开桌面。如果超时，检查 `.agent-workbench/metis-background.log`，保留原数据和数据库锁，不要清空工作区。
+
 ## 配置公网入口
 
 需要自己管理的 Cloudflare Tunnel、HTTPS 根域名、tunnel token，以及本机 cloudflared。将 tunnel 的 public hostname 指向 `http://127.0.0.1:4785`。本机仍仅监听回环，公网模式强制会话认证与 Secure cookie。

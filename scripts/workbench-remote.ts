@@ -28,6 +28,7 @@ import {
 } from "./lib/metis-runtime";
 
 import {
+  METIS_BACKEND_STARTUP_TIMEOUT_MS,
   acquireMetisBackgroundLock,
   ensureMetisBackground,
   requestMetisBackground,
@@ -286,7 +287,8 @@ async function runService(): Promise<void> {
       capabilityPipe.end(hostBridge ? hostCapability : "");
     }
     let ready = false;
-    for (let attempt = 0; attempt < 150; attempt++) {
+    const startupDeadline = Date.now() + METIS_BACKEND_STARTUP_TIMEOUT_MS;
+    while (Date.now() < startupDeadline) {
       if (stopping) break;
       try {
         const response = await fetch(`${localOrigin}/health`, { signal: AbortSignal.timeout(500) });
