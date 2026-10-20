@@ -31,6 +31,9 @@ export interface FeishuBridgeConfig {
   readonly appSecret: string;
   /** Only these senders are answered; everyone else is silently ignored. */
   readonly allowedOpenIds: ReadonlyArray<string>;
+  /** Explicit opt-in: trusted senders share the instance controller's conversation. */
+  readonly target: "chat" | "controller";
+  /** Used only when creating a legacy per-chat concierge. */
   readonly modelSelection: ModelSelection;
   /** HTTPS origin of the Metis web app, used to link replies back to the thread. */
   readonly publicOrigin: string | null;
@@ -76,13 +79,17 @@ export function parseFeishuBridgeConfig(
   if (allowedOpenIds.length === 0) {
     return { kind: "disabled", reason: "allowedOpenIds must list at least one ou_ open id" };
   }
+  if (record.target !== undefined && record.target !== "chat" && record.target !== "controller") {
+    return { kind: "disabled", reason: "target must be chat or controller" };
+  }
+  const target = record.target ?? "chat";
   const modelSelection = parseModelSelection(record.modelSelection);
   const publicOrigin =
     parseOrigin(typeof record.publicOrigin === "string" ? record.publicOrigin : undefined) ??
     parseOrigin(env.METIS_PUBLIC_URL);
   return {
     kind: "ready",
-    config: { appId, appSecret, allowedOpenIds, modelSelection, publicOrigin },
+    config: { appId, appSecret, allowedOpenIds, target, modelSelection, publicOrigin },
   };
 }
 

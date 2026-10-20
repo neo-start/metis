@@ -3,6 +3,16 @@
     "url": "https://github.com/Emanuele-web04/synara",
     "commit": "eaa61eded31b6755d4f30ba8eabc5d905cf817cb",
     "role": "main implementation",
+    "feishuControllerAdaptation": {
+      "localBaseCommit": "2b550b726a43e4b45a302524dc88bb2ef838e0fc",
+      "sources": [
+        "apps/server/src/metis/MetisControllerService.ts",
+        "apps/server/src/feishu/Layers/FeishuBridge.ts",
+        "apps/server/src/persistence/Services/OrchestrationCommandReceipts.ts",
+        "apps/server/src/persistence/Services/ProjectionTurns.ts"
+      ],
+      "changes": "Opt in to the persistent instance controller using the existing identity resolver, transport and managed attachments. Preserve controller model/permissions, deduplicate across conversation rotation, and correlate replies by inbound message instead of latest-turn timestamps. T3 server/packages at f5ef0ddb90a8c36584e181b1913e7b8a5df30ffc had no Feishu equivalent."
+    },
     "desktopSharedServiceAdaptation": {
       "source": "apps/server/src/externalMcp/bridge.ts",
       "target": "apps/desktop/src/metisSharedService.ts",

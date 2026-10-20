@@ -54,6 +54,7 @@ import { ServerEnvironmentLive } from "./environment/Layers/ServerEnvironment";
 import { AutomationRepositoryLive } from "./persistence/Layers/AutomationRepository";
 import { ProjectPullRequestPinsLive } from "./persistence/Layers/ProjectPullRequestPins";
 import { ProjectionTurnRepositoryLive } from "./persistence/Layers/ProjectionTurns";
+import { OrchestrationCommandReceiptRepositoryLive } from "./persistence/Layers/OrchestrationCommandReceipts";
 import { OrchestrationEventDeliveryRepositoryLive } from "./persistence/Layers/OrchestrationEventDeliveries";
 import { ProviderRuntimeEventRepositoryLive } from "./persistence/Layers/ProviderRuntimeEvents";
 import { ThreadDiagnosticsQueryLive } from "./diagnostics/Layers/ThreadDiagnosticsQuery";
@@ -188,7 +189,6 @@ export function makeServerRuntimeServicesLayer(
   const automationRunReactorLayer = AutomationRunReactorLive.pipe(
     Layer.provideMerge(automationServiceLayer),
   );
-  const feishuBridgeLayer = FeishuBridgeLive.pipe(Layer.provideMerge(runtimeServicesLayer));
   const externalMcpServiceLayer = ExternalMcpServiceLive.pipe(
     Layer.provideMerge(ExternalMcpRepositoryLive),
     Layer.provideMerge(runtimeServicesLayer),
@@ -208,6 +208,12 @@ export function makeServerRuntimeServicesLayer(
   const metisMemoryLayer = MetisMemoryLive.pipe(Layer.provideMerge(runtimeServicesLayer));
   const metisControllerLayer = MetisControllerLive.pipe(
     Layer.provideMerge(metisMemoryLayer),
+    Layer.provideMerge(runtimeServicesLayer),
+  );
+  const feishuBridgeLayer = FeishuBridgeLive.pipe(
+    Layer.provideMerge(metisControllerLayer),
+    Layer.provideMerge(ProjectionTurnRepositoryLive),
+    Layer.provideMerge(OrchestrationCommandReceiptRepositoryLive),
     Layer.provideMerge(runtimeServicesLayer),
   );
   const peerServiceLayer = PeerServiceLive.pipe(

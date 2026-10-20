@@ -1,7 +1,8 @@
 /**
  * FeishuBridge - talk to Metis from a Feishu private chat.
  *
- * One Feishu chat is one long-lived Metis thread (the concierge). The concierge
+ * Controller mode resolves the instance identity for every message. Legacy mode
+ * maps one Feishu chat to one long-lived Metis thread (the concierge). The concierge
  * is a pinned home chat, above every project: it speaks for Metis as a whole
  * and reaches into projects through the agent gateway tools. Each inbound
  * message becomes a user turn on that thread; while the provider works the
@@ -20,7 +21,7 @@ import { mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 
-import type { OrchestrationThread, OrchestrationThreadShell } from "@synara/contracts";
+import type { OrchestrationThread } from "@synara/contracts";
 import { CommandId, MessageId, ProjectId, ThreadId } from "@synara/contracts";
 import { Cause, Effect, Layer, Option } from "effect";
 
@@ -29,6 +30,13 @@ import { ServerConfig } from "../../config.ts";
 import { OrchestrationEngineService } from "../../orchestration/Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { ManagedAttachmentRepository } from "../../persistence/Services/ManagedAttachments.ts";
+import {
+  ProjectionTurnRepository,
+  type ProjectionTurn,
+} from "../../persistence/Services/ProjectionTurns.ts";
+import { OrchestrationCommandReceiptRepository } from "../../persistence/Services/OrchestrationCommandReceipts.ts";
+import { MetisControllerService } from "../../metis/MetisControllerService.ts";
+import { resolveFeishuController } from "../feishuControllerRoute.ts";
 import { withFeishuInboundAttachments } from "../feishuInboundAttachments.ts";
 import { FeishuBridge, type FeishuBridgeShape } from "../Services/FeishuBridge.ts";
 import {
@@ -74,21 +82,22 @@ function assistantTextForTurn(
   return message?.text ?? null;
 }
 
-/** The turn our message started, once it has stopped running; null while it is still going. */
-function settleTurn(
-  shell: OrchestrationThreadShell | undefined,
-  startedAfterIso: string,
-): OrchestrationThreadShell["latestTurn"] | null {
-  const turn = shell?.latestTurn ?? null;
-  if (!turn || turn.requestedAt < startedAfterIso) return null;
-  return turn.state === "running" ? null : turn;
+/** Bind replies to the inbound message, even while other controller turns run. */
+function feishuTurnForMessage(
+  turns: ReadonlyArray<ProjectionTurn>,
+  messageId: MessageId,
+): ProjectionTurn | undefined {
+  return turns.find((turn) => turn.pendingMessageId === messageId && turn.turnId !== null);
 }
 
-const make = Effect.gen(function* () {
+export const makeFeishuBridge = Effect.gen(function* () {
   const config = yield* ServerConfig;
   const orchestrationEngine = yield* OrchestrationEngineService;
   const snapshotQuery = yield* ProjectionSnapshotQuery;
   const attachmentRepository = yield* ManagedAttachmentRepository;
+  const turnRepository = yield* ProjectionTurnRepository;
+  const receipts = yield* OrchestrationCommandReceiptRepository;
+  const metisController = yield* MetisControllerService;
 
   const configPath = path.join(config.baseDir, FEISHU_APP_CONFIG_FILENAME);
   const chatMapPath = path.join(config.baseDir, FEISHU_CHAT_MAP_FILENAME);
@@ -163,6 +172,9 @@ const make = Effect.gen(function* () {
     chatId: string,
     bridgeConfig: FeishuBridgeConfig,
   ): Promise<ThreadId> => {
+    if (bridgeConfig.target === "controller") {
+      return (await resolveFeishuController(metisController, readShell)).id;
+    }
     const mapped = chatMap[chatId];
     if (mapped) {
       const shell = await readShell(ThreadId.makeUnsafe(mapped));
@@ -202,7 +214,7 @@ const make = Effect.gen(function* () {
 
   const waitForTurn = async (input: {
     readonly threadId: ThreadId;
-    readonly startedAfterIso: string;
+    readonly messageId: MessageId;
     readonly onProgress: (text: string) => Promise<void>;
     readonly onPendingRequest: () => Promise<void>;
   }): Promise<TurnOutcome> => {
@@ -211,19 +223,27 @@ const make = Effect.gen(function* () {
     let lastProgress = "";
     for (;;) {
       const shell = await readShell(input.threadId);
-      const settled = settleTurn(shell, input.startedAfterIso);
-      if (settled) {
+      const turn = feishuTurnForMessage(
+        await run(turnRepository.listByThreadId({ threadId: input.threadId })),
+        input.messageId,
+      );
+      if (turn && turn.state !== "running" && turn.state !== "pending") {
         const detail = await readDetail(input.threadId);
-        const text = assistantTextForTurn(detail, settled.turnId);
+        const text = assistantTextForTurn(detail, turn.turnId);
         return {
           status:
-            settled.state === "completed"
+            turn.state === "completed"
               ? "completed"
-              : settled.state === "interrupted"
+              : turn.state === "interrupted"
                 ? "interrupted"
                 : "error",
           text,
-          error: settled.state === "error" ? (shell?.session?.lastError ?? null) : null,
+          error:
+            turn.state === "error"
+              ? shell?.latestTurn?.turnId === turn.turnId
+                ? (shell.session?.lastError ?? null)
+                : "飞书请求执行失败，请在 Metis 中查看该轮详情。"
+              : null,
         };
       }
       if (
@@ -233,9 +253,9 @@ const make = Effect.gen(function* () {
         announcedPending = true;
         await input.onPendingRequest();
       }
-      if (shell?.latestTurn && shell.latestTurn.requestedAt >= input.startedAfterIso) {
+      if (turn?.state === "running") {
         const detail = await readDetail(input.threadId);
-        const text = assistantTextForTurn(detail, shell.latestTurn.turnId) ?? "";
+        const text = assistantTextForTurn(detail, turn.turnId) ?? "";
         if (text.length >= STREAM_MIN_CHARS && text !== lastProgress) {
           lastProgress = text;
           await input.onProgress(text);
@@ -296,14 +316,24 @@ const make = Effect.gen(function* () {
       const text = normalizeInboundText(message.content);
       if (text.length === 0 && message.resources.length === 0) return;
       try {
+        const commandId = CommandId.makeUnsafe(
+          `feishu:${isStopCommand(text) ? "stop" : "turn"}:${message.messageId}`,
+        );
+        // Command receipts survive controller /clear and provider handoff.
+        // Never redeliver an already accepted message into the new conversation.
+        const receipt = Option.getOrUndefined(await run(receipts.getByCommandId({ commandId })));
+        if (receipt?.status === "accepted") return;
         const threadId = await ensureThreadForChat(message.chatId, bridgeConfig);
+        const thread = await readShell(threadId);
+        if (!thread || thread.archivedAt !== null) throw new Error("Metis 会话暂时不可用。");
         const threadLink = buildThreadLink(bridgeConfig.publicOrigin, threadId);
         if (isStopCommand(text)) {
           await run(
             orchestrationEngine.dispatch({
               type: "thread.turn.interrupt",
-              commandId: CommandId.makeUnsafe(`feishu:stop:${message.messageId}`),
+              commandId,
               threadId,
+              ...(thread.session?.activeTurnId ? { turnId: thread.session.activeTurnId } : {}),
               createdAt: new Date().toISOString(),
             }),
           );
@@ -334,7 +364,7 @@ const make = Effect.gen(function* () {
               orchestrationEngine.dispatch(
                 {
                   type: "thread.turn.start",
-                  commandId: CommandId.makeUnsafe(`feishu:turn:${message.messageId}`),
+                  commandId,
                   threadId,
                   message: {
                     messageId,
@@ -343,8 +373,8 @@ const make = Effect.gen(function* () {
                     attachments,
                   },
                   dispatchMode: "queue",
-                  runtimeMode: "full-access",
-                  interactionMode: "default",
+                  runtimeMode: thread.runtimeMode,
+                  interactionMode: thread.interactionMode,
                   createdAt: startedAt,
                 },
                 { attachmentPrincipal },
@@ -359,7 +389,7 @@ const make = Effect.gen(function* () {
             markdown: async (controller) => {
               outcome = await waitForTurn({
                 threadId,
-                startedAfterIso: startedAt,
+                messageId,
                 onProgress: (progress) => controller.setContent(progress),
                 onPendingRequest: async () => {
                   await channel.send(message.chatId, {
@@ -405,11 +435,12 @@ const make = Effect.gen(function* () {
     }).pipe(Effect.catch((error) => Effect.logWarning(error.message)));
     yield* Effect.logInfo("feishu bridge connected", {
       allowedOpenIds: bridgeConfig.allowedOpenIds.length,
-      model: bridgeConfig.modelSelection.model,
+      target: bridgeConfig.target,
+      ...(bridgeConfig.target === "chat" ? { model: bridgeConfig.modelSelection.model } : {}),
     });
   });
 
   return { start } satisfies FeishuBridgeShape;
 });
 
-export const FeishuBridgeLive = Layer.effect(FeishuBridge, make);
+export const FeishuBridgeLive = Layer.effect(FeishuBridge, makeFeishuBridge);

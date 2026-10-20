@@ -38,7 +38,17 @@ describe("parseFeishuBridgeConfig", () => {
     expect(result.config.appId).toBe("cli_abc123");
     expect(result.config.allowedOpenIds).toEqual(["ou_1"]);
     expect(result.config.modelSelection).toEqual(DEFAULT_FEISHU_MODEL_SELECTION);
+    expect(result.config.target).toBe("chat");
     expect(result.config.publicOrigin).toBe("https://m.example");
+  });
+  it("requires an explicit controller opt-in and rejects unknown targets", () => {
+    const config = JSON.parse(valid);
+    expect(
+      parseFeishuBridgeConfig(JSON.stringify({ ...config, target: "controller" })),
+    ).toMatchObject({ kind: "ready", config: { target: "controller" } });
+    expect(parseFeishuBridgeConfig(JSON.stringify({ ...config, target: "controler" })).kind).toBe(
+      "disabled",
+    );
   });
 });
 
