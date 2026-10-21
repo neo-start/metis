@@ -67,6 +67,11 @@ export function providerStartOptionsFromServerSettings(
       ...(providers.claudeAgent.binaryPath ? { binaryPath: providers.claudeAgent.binaryPath } : {}),
       enableArtifacts: providers.claudeAgent.enableArtifacts,
     },
+    claudeOpenRouter: {
+      ...(providers.claudeOpenRouter.binaryPath
+        ? { binaryPath: providers.claudeOpenRouter.binaryPath }
+        : {}),
+    },
     cursor: {
       ...(providers.cursor.binaryPath ? { binaryPath: providers.cursor.binaryPath } : {}),
       ...(providers.cursor.apiEndpoint ? { apiEndpoint: providers.cursor.apiEndpoint } : {}),

@@ -475,6 +475,7 @@ const PROVIDER_SKILL_ORIGIN_PREFERENCES = {
   codex: ["codex", "agents"],
   codexSecondary: ["codex", "agents"],
   claudeAgent: ["claude"],
+  claudeOpenRouter: ["claude"],
   cursor: ["cursor", "agents", "claude", "codex"],
   antigravity: ["agents"],
   grok: ["grok", "claude", "agents"],

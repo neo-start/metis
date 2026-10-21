@@ -892,7 +892,9 @@ describe("PROVIDER_OPTIONS", () => {
     const pi = PROVIDER_OPTIONS.find((option) => option.value === "pi");
     expect(PROVIDER_OPTIONS).toEqual([
       { value: "codex", label: "Codex", available: true },
+      { value: "codexSecondary", label: "codex-personal", available: true },
       { value: "claudeAgent", label: "Claude", available: true },
+      { value: "claudeOpenRouter", label: "GLM (Claude SDK)", available: true },
       { value: "cursor", label: "Cursor", available: true },
       { value: "antigravity", label: "Antigravity", available: true },
       { value: "grok", label: "Grok", available: true },

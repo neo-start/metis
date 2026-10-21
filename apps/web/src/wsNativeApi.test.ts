@@ -372,6 +372,7 @@ describe("wsNativeApi", () => {
             customModels: [],
           },
           codexSecondary: { enabled: false, binaryPath: "codex", homePath: "", customModels: [] },
+          claudeOpenRouter: { enabled: true, binaryPath: "claude", customModels: [] },
           claudeAgent: {
             enabled: true,
             binaryPath: "claude",

@@ -31,6 +31,7 @@ import {
   checkPiProviderStatus,
   makeDisabledProviderStatus,
   makeCheckClaudeProviderStatus,
+  makeCheckClaudeOpenRouterProviderStatus,
   makeCheckCodexProviderStatus,
   makeCheckCursorProviderStatus,
   makeCheckDevinProviderStatus,
@@ -159,6 +160,7 @@ const allProvidersDisabledSettings = {
     codex: { enabled: false },
     codexSecondary: { enabled: false },
     claudeAgent: { enabled: false },
+    claudeOpenRouter: { enabled: false },
     cursor: { enabled: false },
     devin: { enabled: false },
     antigravity: { enabled: false },
@@ -175,6 +177,7 @@ const allProvidersDisabledServerSettings = {
     codex: { ...DEFAULT_SERVER_SETTINGS.providers.codex, enabled: false },
     codexSecondary: { ...DEFAULT_SERVER_SETTINGS.providers.codexSecondary, enabled: false },
     claudeAgent: { ...DEFAULT_SERVER_SETTINGS.providers.claudeAgent, enabled: false },
+    claudeOpenRouter: { ...DEFAULT_SERVER_SETTINGS.providers.claudeOpenRouter, enabled: false },
     cursor: { ...DEFAULT_SERVER_SETTINGS.providers.cursor, enabled: false },
     devin: { ...DEFAULT_SERVER_SETTINGS.providers.devin, enabled: false },
     antigravity: { ...DEFAULT_SERVER_SETTINGS.providers.antigravity, enabled: false },
@@ -507,7 +510,10 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
       );
       const codex = statuses.find((status) => status.provider === "codex");
 
-      assert.strictEqual(statuses.length, 10);
+      assert.strictEqual(
+        statuses.length,
+        Object.keys(allProvidersDisabledServerSettings.providers).length,
+      );
       assert.strictEqual(codex?.available, false);
       assert.strictEqual(codex?.message, "Provider is disabled in Metis settings.");
     });
@@ -642,7 +648,10 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
         const providerHealth = yield* ProviderHealth;
         const statuses = yield* providerHealth.refresh;
 
-        assert.strictEqual(statuses.length, 10);
+        assert.strictEqual(
+          statuses.length,
+          Object.keys(allProvidersDisabledServerSettings.providers).length,
+        );
         for (const status of statuses) {
           assert.strictEqual(status.available, false);
           assert.strictEqual(status.message, "Provider is disabled in Metis settings.");
@@ -1474,6 +1483,138 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
   });
 
   // ── checkClaudeProviderStatus tests ──────────────────────────
+
+  describe("Claude SDK OpenRouter health", () => {
+    it.effect(
+      "refreshes and broadcasts OpenRouter auth after Pi's credential directory changes",
+      () =>
+        Effect.gen(function* () {
+          const fileSystem = yield* FileSystem.FileSystem;
+          const baseDir = yield* fileSystem.makeTempDirectoryScoped({
+            prefix: "provider-health-openrouter-directory-",
+          });
+          const inspectedDirectories: Array<string | undefined> = [];
+          const layer = makeProviderHealthLive({
+            hasClaudeOpenRouterCredentials: async (agentDir) => {
+              inspectedDirectories.push(agentDir);
+              return agentDir === "/test/pi-with-openrouter";
+            },
+          }).pipe(
+            Layer.provideMerge(
+              ServerSettingsService.layerTest({
+                providers: {
+                  ...allProvidersDisabledSettings.providers,
+                  claudeOpenRouter: { enabled: true },
+                  pi: { enabled: false, agentDir: "/test/pi-without-openrouter" },
+                },
+              }),
+            ),
+            Layer.provideMerge(ServerConfig.layerTest(process.cwd(), baseDir)),
+            Layer.provideMerge(
+              mockSpawnerLayer((args) => {
+                assert.deepEqual(args, ["--version"]);
+                return { stdout: "2.1.267", stderr: "", code: 0 };
+              }),
+            ),
+          );
+          yield* Effect.gen(function* () {
+            const health = yield* ProviderHealth;
+            const settings = yield* ServerSettingsService;
+            const initial = yield* health.refresh;
+            assert.strictEqual(
+              initial.find((status) => status.provider === "claudeOpenRouter")?.authStatus,
+              "unauthenticated",
+            );
+            const broadcast = yield* health.streamChanges.pipe(
+              Stream.filter((statuses) =>
+                statuses.some(
+                  (status) =>
+                    status.provider === "claudeOpenRouter" && status.authStatus === "authenticated",
+                ),
+              ),
+              Stream.take(1),
+              Stream.runCollect,
+              Effect.forkChild,
+            );
+            yield* Effect.yieldNow;
+            yield* settings.updateSettings({
+              providers: { pi: { agentDir: "/test/pi-with-openrouter" } },
+            });
+            yield* Fiber.join(broadcast);
+            assert.deepEqual(inspectedDirectories, [
+              "/test/pi-without-openrouter",
+              "/test/pi-with-openrouter",
+            ]);
+          }).pipe(Effect.provide(layer));
+        }),
+    );
+
+    it.effect("checks the shared CLI and OpenRouter key without probing Claude login", () =>
+      Effect.gen(function* () {
+        const readCredentials = vi.fn(async () => true);
+        const status = yield* makeCheckClaudeOpenRouterProviderStatus(
+          "/test/claude",
+          "/test/pi-agent",
+          readCredentials,
+        );
+        assert.strictEqual(status.provider, "claudeOpenRouter");
+        assert.strictEqual(status.status, "ready");
+        assert.strictEqual(status.authStatus, "authenticated");
+        assert.strictEqual(status.authLabel, "OpenRouter API Key");
+        assert.strictEqual(status.supportsAutoRuntimeMode, false);
+        assert.deepEqual(readCredentials.mock.calls, [["/test/pi-agent"]]);
+      }).pipe(
+        Effect.provide(
+          mockSpawnerLayer((args, command) => {
+            assert.strictEqual(command, "/test/claude");
+            assert.deepEqual(args, ["--version"]);
+            return { stdout: "2.1.267 (Claude Code)", stderr: "", code: 0 };
+          }),
+        ),
+      ),
+    );
+
+    it.effect("does not treat Claude availability as OpenRouter authentication", () =>
+      Effect.gen(function* () {
+        const status = yield* makeCheckClaudeOpenRouterProviderStatus(
+          undefined,
+          undefined,
+          async () => false,
+        );
+        assert.strictEqual(status.available, true);
+        assert.strictEqual(status.authStatus, "unauthenticated");
+        assert.strictEqual(status.status, "warning");
+      }).pipe(
+        Effect.provide(
+          mockSpawnerLayer((args) => {
+            assert.deepEqual(args, ["--version"]);
+            return { stdout: "2.1.267", stderr: "", code: 0 };
+          }),
+        ),
+      ),
+    );
+
+    it.effect("redacts credential failures and does not fall back to Claude login", () =>
+      Effect.gen(function* () {
+        const status = yield* makeCheckClaudeOpenRouterProviderStatus(
+          undefined,
+          undefined,
+          async () => {
+            throw new Error("synthetic-sensitive-credential-detail");
+          },
+        );
+        assert.strictEqual(status.authStatus, "unknown");
+        assert.notInclude(JSON.stringify(status), "synthetic-sensitive-credential-detail");
+      }).pipe(
+        Effect.provide(
+          mockSpawnerLayer((args) => {
+            assert.deepEqual(args, ["--version"]);
+            return { stdout: "2.1.267", stderr: "", code: 0 };
+          }),
+        ),
+      ),
+    );
+  });
 
   describe("checkClaudeProviderStatus", () => {
     it.effect("returns ready when claude is installed and authenticated", () =>

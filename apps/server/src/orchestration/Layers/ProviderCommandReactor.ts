@@ -41,6 +41,7 @@ import {
   type RuntimeMode,
   TurnId,
   isCodexProviderKind,
+  isClaudeSdkProviderKind,
 } from "@synara/contracts";
 import {
   Cache,
@@ -684,7 +685,7 @@ function isUnknownPendingUserInputRequestError(cause: Cause.Cause<ProviderServic
 function isClaudeContextWindowUserInputRejection(error: ProviderServiceError): boolean {
   if (
     error._tag !== "ProviderAdapterRequestError" ||
-    error.provider !== "claudeAgent" ||
+    !isClaudeSdkProviderKind(error.provider) ||
     error.method !== "item/tool/respondToUserInput"
   ) {
     return false;
@@ -738,7 +739,7 @@ function isStaleCodexResumeError(error: unknown): boolean {
 function isStaleClaudeResumeError(error: unknown): boolean {
   if (Schema.is(ProviderAdapterRequestError)(error)) {
     return (
-      error.provider === "claudeAgent" &&
+      isClaudeSdkProviderKind(error.provider) &&
       error.detail.toLowerCase().includes("no conversation found with session id")
     );
   }
@@ -1921,17 +1922,16 @@ const make = Effect.gen(function* () {
       // When the dispatch cache has no entry (the session was started by a turn
       // without a selection), compare against the projected thread selection the
       // session was actually spawned from so spawn-fixed changes still restart.
-      const shouldRestartForModelSelectionChange =
-        currentProvider === "claudeAgent"
-          ? claudeSelectionRequiresRestart(
-              previousModelSelection ?? thread.modelSelection,
-              desiredModelSelection,
-            )
-          : (currentProvider === "droid" ||
-              currentProvider === "grok" ||
-              currentProvider === "devin") &&
-            requestedModelSelection !== undefined &&
-            !Equal.equals(previousModelSelection, requestedModelSelection);
+      const shouldRestartForModelSelectionChange = isClaudeSdkProviderKind(currentProvider)
+        ? claudeSelectionRequiresRestart(
+            previousModelSelection ?? thread.modelSelection,
+            desiredModelSelection,
+          )
+        : (currentProvider === "droid" ||
+            currentProvider === "grok" ||
+            currentProvider === "devin") &&
+          requestedModelSelection !== undefined &&
+          !Equal.equals(previousModelSelection, requestedModelSelection);
       const requestedComputerControl = options?.enableComputerControl;
       // A missing cache entry means the session was started by a dispatch that
       // carried no computer-control flag, which provisions the default (off), so
@@ -1996,7 +1996,7 @@ const make = Effect.gen(function* () {
         };
       }
 
-      if (currentProvider === "claudeAgent" && reusableSession.activeTurnId != null) {
+      if (isClaudeSdkProviderKind(currentProvider) && reusableSession.activeTurnId != null) {
         return yield* new ProviderAdapterValidationError({
           provider: currentProvider,
           operation: "session/reconfigure",
@@ -2808,7 +2808,7 @@ const make = Effect.gen(function* () {
     const finalizeProviderInput = (bootstrap: BootstrapContextSelection | null) => {
       // Native control commands must remain the first token in every mode.
       if (
-        selectedProvider === "claudeAgent" &&
+        isClaudeSdkProviderKind(selectedProvider) &&
         /^\/compact(?:\s|$)/.test(input.messageText.trim())
       ) {
         return input.messageText.trim();
@@ -3053,7 +3053,7 @@ const make = Effect.gen(function* () {
       const sentTurn = yield* sendQueuedProviderTurn(normalizedInput).pipe(
         Effect.catch((error) =>
           Effect.gen(function* () {
-            if (selectedProvider !== "claudeAgent" || !isStaleClaudeResumeError(error)) {
+            if (!isClaudeSdkProviderKind(selectedProvider) || !isStaleClaudeResumeError(error)) {
               return yield* Effect.fail(error);
             }
 

@@ -12,6 +12,8 @@ import {
   type AntigravityModelSelection,
   type ClaudeModelOptions,
   type ClaudeModelSelection,
+  type ClaudeOpenRouterModelOptions,
+  type ClaudeOpenRouterModelSelection,
   type CodexModelOptions,
   type CodexModelSelection,
   type CursorModelOptions,
@@ -91,7 +93,11 @@ export function formatProviderModelOptionName(input: {
     return trimmedSlug;
   }
 
-  if (input.provider === "opencode" || input.provider === "pi") {
+  if (
+    input.provider === "opencode" ||
+    input.provider === "pi" ||
+    input.provider === "claudeOpenRouter"
+  ) {
     const modelIdentifier = trimmedSlug.includes("/")
       ? trimmedSlug.slice(trimmedSlug.lastIndexOf("/") + 1)
       : trimmedSlug;
@@ -374,6 +380,12 @@ export function buildNextProviderOptions(
   if (provider === "claudeAgent") {
     return { ...(modelOptions as ClaudeModelOptions | undefined), ...patch } as ClaudeModelOptions;
   }
+  if (provider === "claudeOpenRouter") {
+    return {
+      ...(modelOptions as ClaudeOpenRouterModelOptions | undefined),
+      ...patch,
+    } as ClaudeOpenRouterModelOptions;
+  }
   if (provider === "cursor") {
     return { ...(modelOptions as CursorModelOptions | undefined), ...patch } as CursorModelOptions;
   }
@@ -432,6 +444,11 @@ export function buildModelSelection(
   options?: ClaudeModelOptions | null | undefined,
   supportsAutoMode?: boolean | undefined,
 ): ClaudeModelSelection;
+export function buildModelSelection(
+  provider: "claudeOpenRouter",
+  model: string,
+  options?: ClaudeOpenRouterModelOptions | null | undefined,
+): ClaudeOpenRouterModelSelection;
 export function buildModelSelection(
   provider: "cursor",
   model: string,
@@ -503,6 +520,12 @@ export function buildModelSelection(
         model,
         ...(options ? { options: options as ClaudeModelOptions } : {}),
         ...(typeof supportsAutoMode === "boolean" ? { supportsAutoMode } : {}),
+      };
+    case "claudeOpenRouter":
+      return {
+        provider,
+        model,
+        ...(options ? { options: options as ClaudeOpenRouterModelOptions } : {}),
       };
     case "cursor":
       return options

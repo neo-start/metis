@@ -29,6 +29,7 @@ const PROVIDER_KINDS = new Set<ProviderKind>([
   "codex",
   "codexSecondary",
   "claudeAgent",
+  "claudeOpenRouter",
   "cursor",
   "antigravity",
   "grok",

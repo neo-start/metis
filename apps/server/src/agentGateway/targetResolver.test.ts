@@ -58,6 +58,37 @@ function makeVariantDescriptor(slug: string): ProviderModelDescriptor {
 }
 
 describe("agent gateway target resolver", () => {
+  it.effect("routes GLM through its own provider with the exact advertised effort", () =>
+    Effect.gen(function* () {
+      const target = {
+        provider: "claudeOpenRouter" as const,
+        model: "z-ai/glm-5.3",
+        options: { effort: "high" as const },
+      };
+      const result = yield* resolveAgentGatewayTarget({
+        target,
+        discovery: {
+          listModels: () =>
+            Effect.succeed({
+              models: [
+                {
+                  slug: target.model,
+                  name: "GLM 5.3",
+                  supportedReasoningEfforts: [
+                    { value: "low" },
+                    { value: "high" },
+                    { value: "max" },
+                  ],
+                  defaultReasoningEffort: "high",
+                },
+              ],
+            }),
+        } as unknown as ProviderDiscoveryServiceShape,
+      });
+      assert.deepEqual(result, target);
+    }),
+  );
+
   it.effect(
     "uses discovered Claude Auto capability instead of caller claims, including aliases",
     () =>

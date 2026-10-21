@@ -10108,53 +10108,60 @@ describe("ProviderCommandReactor", () => {
     expect(retrySendInput.input).toContain("Continue working toward the active thread goal");
   });
 
-  it("retries a stale Claude resume natively before paying the transcript bootstrap", async () => {
-    const harness = await createHarness({
-      threadModelSelection: { provider: "claudeAgent", model: "claude-opus-4-8" },
-    });
-    const now = new Date().toISOString();
-    harness.sendTurn.mockImplementationOnce(() =>
-      Effect.fail(
-        new ProviderAdapterRequestError({
-          provider: "claudeAgent",
-          method: "turn/setModel",
-          detail:
-            "Claude Code returned an error result: No conversation found with session ID: b469168a-2625-4447-927f-d86d94bb7237",
+  it.each(["claudeAgent", "claudeOpenRouter"] as const)(
+    "retries a stale %s resume natively before paying the transcript bootstrap",
+    async (provider) => {
+      const selection = {
+        provider,
+        model: provider === "claudeAgent" ? "claude-opus-4-8" : "z-ai/glm-5.3",
+      };
+      const harness = await createHarness({
+        threadModelSelection: selection,
+      });
+      const now = new Date().toISOString();
+      harness.sendTurn.mockImplementationOnce(() =>
+        Effect.fail(
+          new ProviderAdapterRequestError({
+            provider,
+            method: "turn/setModel",
+            detail:
+              "Claude Code returned an error result: No conversation found with session ID: b469168a-2625-4447-927f-d86d94bb7237",
+          }),
+        ),
+      );
+
+      await Effect.runPromise(
+        harness.engine.dispatch({
+          type: "thread.turn.start",
+          commandId: CommandId.makeUnsafe("cmd-turn-start-claude-native-resume-retry"),
+          threadId: ThreadId.makeUnsafe("thread-1"),
+          message: {
+            messageId: asMessageId("user-message-claude-native-resume-retry"),
+            role: "user",
+            text: "keep going.",
+            attachments: [],
+          },
+          modelSelection: selection,
+          interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+          runtimeMode: "approval-required",
+          createdAt: now,
         }),
-      ),
-    );
+      );
 
-    await Effect.runPromise(
-      harness.engine.dispatch({
-        type: "thread.turn.start",
-        commandId: CommandId.makeUnsafe("cmd-turn-start-claude-native-resume-retry"),
+      await waitFor(() => harness.sendTurn.mock.calls.length === 2);
+      // The session restarts once with the persisted cursor intact...
+      expect(harness.stopRuntimeSession).toHaveBeenCalledWith({
         threadId: ThreadId.makeUnsafe("thread-1"),
-        message: {
-          messageId: asMessageId("user-message-claude-native-resume-retry"),
-          role: "user",
-          text: "keep going.",
-          attachments: [],
-        },
-        modelSelection: { provider: "claudeAgent", model: "claude-opus-4-8" },
-        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
-        runtimeMode: "approval-required",
-        createdAt: now,
-      }),
-    );
-
-    await waitFor(() => harness.sendTurn.mock.calls.length === 2);
-    // The session restarts once with the persisted cursor intact...
-    expect(harness.stopRuntimeSession).toHaveBeenCalledWith({
-      threadId: ThreadId.makeUnsafe("thread-1"),
-    });
-    expect(harness.stopSession).not.toHaveBeenCalled();
-    expect(harness.startSession.mock.calls.length).toBe(2);
-    // ...and the retry succeeds natively: no cursor clear, no bootstrap replay.
-    expect(harness.clearSessionResumeCursor).not.toHaveBeenCalled();
-    const retrySendInput = harness.sendTurn.mock.calls[1]?.[0] as { readonly input?: string };
-    expect(retrySendInput.input).not.toContain("<thread_context>");
-    expect(retrySendInput.input).toContain("keep going.");
-  });
+      });
+      expect(harness.stopSession).not.toHaveBeenCalled();
+      expect(harness.startSession.mock.calls.length).toBe(2);
+      // ...and the retry succeeds natively: no cursor clear, no bootstrap replay.
+      expect(harness.clearSessionResumeCursor).not.toHaveBeenCalled();
+      const retrySendInput = harness.sendTurn.mock.calls[1]?.[0] as { readonly input?: string };
+      expect(retrySendInput.input).not.toContain("<thread_context>");
+      expect(retrySendInput.input).toContain("keep going.");
+    },
+  );
 
   it("skips the native resume retry when background tasks keep the runtime alive", async () => {
     const harness = await createHarness({

@@ -2026,58 +2026,61 @@ describe("ProviderRuntimeIngestion", () => {
     });
   });
 
-  it("keeps a Claude background approval answerable after foreground completion", async () => {
-    const harness = await createHarness();
-    const threadId = asThreadId("thread-1");
-    const turnId = asTurnId("claude-foreground");
-    const requestId = ApprovalRequestId.makeUnsafe("claude-background-approval");
-    const common = {
-      provider: "claudeAgent" as const,
-      threadId,
-      turnId,
-      createdAt: new Date().toISOString(),
-      lifecycleGeneration: "claude-generation",
-    };
-    harness.emit({
-      ...common,
-      type: "turn.started",
-      eventId: asEventId("claude-started"),
-      payload: {},
-    });
-    harness.emit({
-      ...common,
-      type: "request.opened",
-      eventId: asEventId("claude-approval-opened"),
-      requestId,
-      payload: { requestType: "tool_approval", detail: "Background computer operation" },
-    });
-    await waitForProjectedThread(
-      harness.readProjectedThread,
-      (thread) => pendingInteractionStatus(thread, requestId) === "pending",
-    );
-    harness.emit({
-      ...common,
-      type: "turn.completed",
-      eventId: asEventId("claude-foreground-ended"),
-      payload: { state: "completed" },
-    });
-    await harness.drain();
-    const pending = await harness.readProjectedThread();
-    expect(pendingInteractionStatus(pending, requestId)).toBe("pending");
+  it.each(["claudeAgent", "claudeOpenRouter"] as const)(
+    "keeps a %s background approval answerable after foreground completion",
+    async (provider) => {
+      const harness = await createHarness();
+      const threadId = asThreadId("thread-1");
+      const turnId = asTurnId("claude-foreground");
+      const requestId = ApprovalRequestId.makeUnsafe("claude-background-approval");
+      const common = {
+        provider,
+        threadId,
+        turnId,
+        createdAt: new Date().toISOString(),
+        lifecycleGeneration: "claude-generation",
+      };
+      harness.emit({
+        ...common,
+        type: "turn.started",
+        eventId: asEventId("claude-started"),
+        payload: {},
+      });
+      harness.emit({
+        ...common,
+        type: "request.opened",
+        eventId: asEventId("claude-approval-opened"),
+        requestId,
+        payload: { requestType: "tool_approval", detail: "Background computer operation" },
+      });
+      await waitForProjectedThread(
+        harness.readProjectedThread,
+        (thread) => pendingInteractionStatus(thread, requestId) === "pending",
+      );
+      harness.emit({
+        ...common,
+        type: "turn.completed",
+        eventId: asEventId("claude-foreground-ended"),
+        payload: { state: "completed" },
+      });
+      await harness.drain();
+      const pending = await harness.readProjectedThread();
+      expect(pendingInteractionStatus(pending, requestId)).toBe("pending");
 
-    // Only the provider's live callback owner can settle this request.
-    harness.emit({
-      ...common,
-      type: "request.resolved",
-      eventId: asEventId("claude-approval-resolved"),
-      requestId,
-      payload: { requestType: "tool_approval", decision: "accept" },
-    });
-    await waitForProjectedThread(
-      harness.readProjectedThread,
-      (thread) => thread.hasPendingApprovals === false,
-    );
-  });
+      // Only the provider's live callback owner can settle this request.
+      harness.emit({
+        ...common,
+        type: "request.resolved",
+        eventId: asEventId("claude-approval-resolved"),
+        requestId,
+        payload: { requestType: "tool_approval", decision: "accept" },
+      });
+      await waitForProjectedThread(
+        harness.readProjectedThread,
+        (thread) => thread.hasPendingApprovals === false,
+      );
+    },
+  );
 
   it("leaves a concurrent turn's pending user-input request open when another turn ends", async () => {
     const harness = await createHarness();

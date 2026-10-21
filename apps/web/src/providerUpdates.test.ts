@@ -70,6 +70,7 @@ function serverSettings(overrides: Partial<ServerSettings["providers"]> = {}): S
         enableArtifacts: false,
         cacheReviewDecision: "ask",
       },
+      claudeOpenRouter: { ...provider, binaryPath: "claude" },
       cursor: { ...provider, binaryPath: "cursor-agent", apiEndpoint: "" },
       devin: { ...provider, binaryPath: "devin" },
       antigravity: { ...provider, binaryPath: "agy" },

@@ -51,6 +51,7 @@ export function shouldInlineSkillForProvider(provider: ProviderKind, skillPath: 
       // only Synara-owned paths need inlining.
       return segments.has(".synara");
     case "claudeAgent":
+    case "claudeOpenRouter":
       // Claude Code only loads skills from .claude/skills folders.
       return !segments.has(".claude");
     case "devin":

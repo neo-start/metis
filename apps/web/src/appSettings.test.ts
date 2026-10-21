@@ -488,6 +488,7 @@ describe("resolveAppModelSelection", () => {
           codex: ["galapagos-alpha"],
           codexSecondary: [],
           claudeAgent: [],
+          claudeOpenRouter: [],
           cursor: [],
           devin: [],
           antigravity: [],
@@ -509,6 +510,7 @@ describe("resolveAppModelSelection", () => {
           codex: [],
           codexSecondary: [],
           claudeAgent: [],
+          claudeOpenRouter: [],
           cursor: [],
           devin: [],
           antigravity: [],
@@ -530,6 +532,7 @@ describe("resolveAppModelSelection", () => {
           codex: [],
           codexSecondary: [],
           claudeAgent: [],
+          claudeOpenRouter: [],
           cursor: [],
           devin: [],
           antigravity: [],
@@ -551,6 +554,7 @@ describe("resolveAppModelSelection", () => {
           codex: [],
           codexSecondary: [],
           claudeAgent: [],
+          claudeOpenRouter: [],
           cursor: [],
           devin: [],
           antigravity: [],
@@ -572,6 +576,7 @@ describe("resolveAppModelSelection", () => {
           codex: [],
           codexSecondary: [],
           claudeAgent: [],
+          claudeOpenRouter: [],
           cursor: [],
           devin: [],
           antigravity: [],
@@ -724,6 +729,7 @@ describe("getProviderStartOptions", () => {
   it("returns only populated provider overrides", () => {
     expect(
       getProviderStartOptions({
+        claudeOpenRouterBinaryPath: "",
         claudeBinaryPath: "/usr/local/bin/claude",
         codexBinaryPath: "",
         codexHomePath: "/Users/you/.codex",
@@ -767,6 +773,7 @@ describe("getProviderStartOptions", () => {
   it("returns undefined when no provider overrides are configured", () => {
     expect(
       getProviderStartOptions({
+        claudeOpenRouterBinaryPath: "",
         claudeBinaryPath: "",
         codexBinaryPath: "",
         codexHomePath: "",
@@ -790,6 +797,7 @@ describe("getProviderStartOptions", () => {
   it("ignores default provider command names as custom binary overrides", () => {
     expect(
       getProviderStartOptions({
+        claudeOpenRouterBinaryPath: "",
         claudeBinaryPath: "claude",
         codexBinaryPath: "codex",
         codexHomePath: "",
@@ -815,6 +823,7 @@ describe("provider-indexed custom model settings", () => {
   const settings = {
     customCodexModels: ["custom/codex-model"],
     customCodexSecondaryModels: [],
+    customClaudeOpenRouterModels: [],
     customClaudeModels: ["claude/custom-opus"],
     customCursorModels: ["cursor/custom-model"],
     customAntigravityModels: ["Gemini 3.5 Flash (Experimental)"],
@@ -830,6 +839,7 @@ describe("provider-indexed custom model settings", () => {
       "codex",
       "codexSecondary",
       "claudeAgent",
+      "claudeOpenRouter",
       "cursor",
       "devin",
       "antigravity",
@@ -861,6 +871,7 @@ describe("provider-indexed custom model settings", () => {
     const defaults = {
       customCodexModels: ["default/codex-model"],
       customCodexSecondaryModels: [],
+      customClaudeOpenRouterModels: [],
       customClaudeModels: ["claude/default-opus"],
       customCursorModels: ["cursor/default-model"],
       customAntigravityModels: ["Gemini 3.5 Flash (Experimental)"],
@@ -945,6 +956,7 @@ describe("provider-indexed custom model settings", () => {
       codex: ["custom/codex-model"],
       codexSecondary: [],
       claudeAgent: ["claude/custom-opus"],
+      claudeOpenRouter: [],
       cursor: ["cursor/custom-model"],
       antigravity: ["Gemini 3.5 Flash (Experimental)"],
       grok: ["grok/custom-fast"],
@@ -990,6 +1002,7 @@ describe("provider-indexed custom model settings", () => {
     const modelOptionsByProvider = getCustomModelOptionsByProvider({
       customCodexModels: ["  custom/codex-model ", "gpt-5.4", "custom/codex-model"],
       customCodexSecondaryModels: [],
+      customClaudeOpenRouterModels: [],
       customClaudeModels: [" sonnet ", "claude/custom-opus", "claude/custom-opus"],
       customCursorModels: [" composer-2 ", "cursor/custom-model", "cursor/custom-model"],
       customAntigravityModels: [

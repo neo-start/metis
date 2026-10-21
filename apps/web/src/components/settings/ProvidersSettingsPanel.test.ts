@@ -59,9 +59,13 @@ describe("createProviderInstallResetPatch", () => {
       [
         "antigravityBinaryPath",
         "claudeBinaryPath",
+        "claudeOpenRouterBinaryPath",
         "claudeEnableArtifacts",
         "codexBinaryPath",
         "codexHomePath",
+        "codexRuntimeHost",
+        "codexSecondaryBinaryPath",
+        "codexSecondaryHomePath",
         "cursorApiEndpoint",
         "cursorBinaryPath",
         "devinBinaryPath",

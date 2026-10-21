@@ -601,6 +601,10 @@ async function readInstalledClaudeCliVersion(input: {
 }
 
 export interface ClaudeAdapterLiveOptions {
+  /** A separate SDK instance can route inference without borrowing Claude OAuth. */
+  readonly resolveEnvironment?: () => Promise<NodeJS.ProcessEnv>;
+  readonly modelCapabilitiesProvider?: "claudeAgent" | "claudeOpenRouter";
+  readonly gatewayProvider?: "claudeAgent" | "claudeOpenRouter";
   // Async because the default implementation lazily imports the Claude Agent
   // SDK; test doubles may still return a runtime synchronously.
   readonly createQuery?: (input: {
@@ -2023,7 +2027,7 @@ function subagentRunForTask(
   return undefined;
 }
 
-function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
+export function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
   return Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
     const serverConfig = yield* ServerConfig;
@@ -2149,9 +2153,17 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
     const nextEventId = Effect.map(Random.nextUUIDv4, (id) => EventId.makeUnsafe(id));
     const makeEventStamp = () => Effect.all({ eventId: nextEventId, createdAt: nowIso });
     const withSessionLifecycleLock = sessionLifecycleLock.withLock;
-    const resolveClaudeSdkEnv = Effect.sync(() =>
-      buildClaudeProcessEnv({ homeDir: serverConfig.homeDir }),
-    );
+    const resolveClaudeSdkEnv = options?.resolveEnvironment
+      ? Effect.tryPromise({
+          try: options.resolveEnvironment,
+          catch: () =>
+            new ProviderAdapterValidationError({
+              provider: options.gatewayProvider ?? PROVIDER,
+              operation: "resolveEnvironment",
+              issue: "Could not resolve provider credentials. Check the provider settings.",
+            }),
+        })
+      : Effect.sync(() => buildClaudeProcessEnv({ homeDir: serverConfig.homeDir }));
 
     const bindClaudeProcessOwner =
       (owner: ClaudeProcessOwner) =>
@@ -5823,7 +5835,10 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
           modelSelection?.options,
         )?.autoCompactWindow;
         const effectiveClaudeModel = modelSelection?.model ?? getDefaultModel("claudeAgent");
-        const caps = getModelCapabilities("claudeAgent", effectiveClaudeModel);
+        const caps = getModelCapabilities(
+          options?.modelCapabilitiesProvider ?? "claudeAgent",
+          effectiveClaudeModel,
+        );
         const requestedAutoCompactWindowTokens = resolveSelectedClaudeAutoCompactWindow(
           effectiveClaudeModel,
           requestedAutoCompactWindow,
@@ -5881,7 +5896,7 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
         const gatewaySessionLease = acquireAgentGatewaySessionLease(
           agentGatewayCredentials,
           threadId,
-          PROVIDER,
+          options?.gatewayProvider ?? PROVIDER,
           input,
         );
         const queryOptions: ClaudeQueryOptions = {
@@ -6469,7 +6484,10 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
         // `max` effort has no Settings equivalent; transitions involving it
         // restart upstream (claudeSelectionRequiresRestart) before this runs.
         if (modelSelection) {
-          const turnCaps = getModelCapabilities("claudeAgent", modelSelection.model);
+          const turnCaps = getModelCapabilities(
+            options?.modelCapabilitiesProvider ?? "claudeAgent",
+            modelSelection.model,
+          );
           const requestedEffortOption = trimOrNull(modelSelection.options?.effort ?? null);
           const validEffort =
             requestedEffortOption && hasEffortLevel(turnCaps, requestedEffortOption)

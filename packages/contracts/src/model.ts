@@ -7,6 +7,8 @@ export const CODEX_REASONING_EFFORT_OPTIONS = ["low", "medium", "high", "xhigh"]
 export type CodexReasoningEffort = string;
 export const CLAUDE_API_EFFORT_OPTIONS = ["low", "medium", "high", "xhigh", "max"] as const;
 export type ClaudeApiEffort = (typeof CLAUDE_API_EFFORT_OPTIONS)[number];
+export const CLAUDE_OPENROUTER_EFFORT_OPTIONS = ["low", "high", "max"] as const;
+export type ClaudeOpenRouterEffort = (typeof CLAUDE_OPENROUTER_EFFORT_OPTIONS)[number];
 export const CLAUDE_PROMPT_MODE_OPTIONS = ["ultrathink"] as const;
 export type ClaudePromptMode = (typeof CLAUDE_PROMPT_MODE_OPTIONS)[number];
 export const CLAUDE_CODE_MODE_OPTIONS = ["ultracode"] as const;
@@ -47,6 +49,7 @@ export type DroidReasoningEffort = string;
 export type ProviderReasoningEffort =
   | CodexReasoningEffort
   | ClaudeCodeEffort
+  | ClaudeOpenRouterEffort
   | PiThinkingLevel
   | GrokReasoningEffort
   | DroidReasoningEffort;
@@ -113,6 +116,11 @@ export const ClaudeModelOptions = Schema.Struct({
 });
 export type ClaudeModelOptions = typeof ClaudeModelOptions.Type;
 
+export const ClaudeOpenRouterModelOptions = Schema.Struct({
+  effort: Schema.optional(Schema.Literals(CLAUDE_OPENROUTER_EFFORT_OPTIONS)),
+});
+export type ClaudeOpenRouterModelOptions = typeof ClaudeOpenRouterModelOptions.Type;
+
 export const AntigravityModelOptions = Schema.Struct({
   reasoningEffort: Schema.optional(TrimmedNonEmptyString),
 });
@@ -163,6 +171,7 @@ export const ProviderModelOptions = Schema.Struct({
   codex: Schema.optional(CodexModelOptions),
   codexSecondary: Schema.optional(CodexModelOptions),
   claudeAgent: Schema.optional(ClaudeModelOptions),
+  claudeOpenRouter: Schema.optional(ClaudeOpenRouterModelOptions),
   cursor: Schema.optional(CursorModelOptions),
   devin: Schema.optional(DevinModelOptions),
   antigravity: Schema.optional(AntigravityModelOptions),
@@ -641,6 +650,23 @@ const CODEX_MODEL_OPTIONS = [
 export const MODEL_OPTIONS_BY_PROVIDER = {
   codex: CODEX_MODEL_OPTIONS,
   codexSecondary: CODEX_MODEL_OPTIONS,
+  claudeOpenRouter: [
+    {
+      slug: "z-ai/glm-5.3",
+      name: "GLM 5.3",
+      capabilities: {
+        reasoningEffortLevels: [
+          { value: "low", label: "Low" },
+          { value: "high", label: "High", isDefault: true },
+          { value: "max", label: "Max" },
+        ],
+        supportsFastMode: false,
+        supportsThinkingToggle: false,
+        promptInjectedEffortLevels: [],
+        contextWindowOptions: [],
+      },
+    },
+  ],
   claudeAgent: [
     {
       slug: "claude-fable-5-1",
@@ -1171,6 +1197,7 @@ export const DEFAULT_MODEL_BY_PROVIDER: Record<ProviderWithDefaultModel, ModelSl
   codex: "gpt-6-astra",
   codexSecondary: "gpt-6-astra",
   claudeAgent: "claude-sonnet-5",
+  claudeOpenRouter: "z-ai/glm-5.3",
   cursor: "auto",
   devin: "adaptive",
   antigravity: "Gemini 3.5 Flash",
@@ -1216,6 +1243,7 @@ const CODEX_MODEL_SLUG_ALIASES: Record<string, ModelSlug> = {
 export const MODEL_SLUG_ALIASES_BY_PROVIDER: Record<ProviderKind, Record<string, ModelSlug>> = {
   codex: CODEX_MODEL_SLUG_ALIASES,
   codexSecondary: CODEX_MODEL_SLUG_ALIASES,
+  claudeOpenRouter: { "glm-5.3": "z-ai/glm-5.3" },
   claudeAgent: {
     fable: "claude-fable-5-1",
     "fable-5.1": "claude-fable-5-1",
@@ -1399,6 +1427,7 @@ export const PROVIDER_DISPLAY_NAMES: Record<ProviderKind, string> = {
   codex: "Codex",
   codexSecondary: "codex-personal",
   claudeAgent: "Claude",
+  claudeOpenRouter: "GLM (Claude SDK)",
   cursor: "Cursor",
   devin: "Devin",
   antigravity: "Antigravity",

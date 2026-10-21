@@ -67,6 +67,14 @@ export const PROVIDER_DESCRIPTORS = defineProviderDescriptors([
     },
   },
   {
+    kind: "claudeOpenRouter",
+    displayName: PROVIDER_DISPLAY_NAMES.claudeOpenRouter,
+    available: true,
+    setupDocsHref: "https://openrouter.ai/docs/cookbook/coding-agents/claude-code-integration",
+    supportsNativeTurnSteering: true,
+    usage: null,
+  },
+  {
     kind: "cursor",
     displayName: PROVIDER_DISPLAY_NAMES.cursor,
     available: true,

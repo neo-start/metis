@@ -135,7 +135,10 @@ function providerIconClassName(
   provider: ProviderKind | ProviderPickerKind,
   fallbackClassName: string,
 ): string {
-  return provider === "claudeAgent" || provider === "antigravity" || provider === "pi"
+  return provider === "claudeAgent" ||
+    provider === "claudeOpenRouter" ||
+    provider === "antigravity" ||
+    provider === "pi"
     ? "text-foreground"
     : fallbackClassName;
 }

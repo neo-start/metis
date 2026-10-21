@@ -8,6 +8,10 @@ import { Effect, Layer, Stream } from "effect";
 import { AntigravityAdapter, AntigravityAdapterShape } from "../Services/AntigravityAdapter.ts";
 import { ClaudeAdapter, ClaudeAdapterShape } from "../Services/ClaudeAdapter.ts";
 import {
+  ClaudeOpenRouterAdapter,
+  type ClaudeOpenRouterAdapterShape,
+} from "../Services/ClaudeOpenRouterAdapter.ts";
+import {
   CodexAdapter,
   CodexAdapterShape,
   CodexSecondaryAdapter,
@@ -77,6 +81,11 @@ const fakeClaudeAdapter: ClaudeAdapterShape = {
   rollbackThread: vi.fn(),
   stopAll: vi.fn(),
   streamEvents: Stream.empty,
+};
+
+const fakeClaudeOpenRouterAdapter: ClaudeOpenRouterAdapterShape = {
+  ...fakeClaudeAdapter,
+  provider: "claudeOpenRouter",
 };
 
 const fakeCursorAdapter: CursorAdapterShape = {
@@ -206,6 +215,7 @@ const registryLayer = (codexAdapter = fakeCodexAdapter) =>
         Layer.succeed(CodexAdapter, codexAdapter),
         Layer.succeed(CodexSecondaryAdapter, fakeCodexSecondaryAdapter),
         Layer.succeed(ClaudeAdapter, fakeClaudeAdapter),
+        Layer.succeed(ClaudeOpenRouterAdapter, fakeClaudeOpenRouterAdapter),
         Layer.succeed(CursorAdapter, fakeCursorAdapter),
         Layer.succeed(DevinAdapter, fakeDevinAdapter),
         Layer.succeed(AntigravityAdapter, fakeAntigravityAdapter),
@@ -227,6 +237,7 @@ layer("ProviderAdapterRegistryLive", (it) => {
       const codex = yield* registry.getByProvider("codex");
       const codexSecondary = yield* registry.getByProvider("codexSecondary");
       const claude = yield* registry.getByProvider("claudeAgent");
+      const claudeOpenRouter = yield* registry.getByProvider("claudeOpenRouter");
       const cursor = yield* registry.getByProvider("cursor");
       const devin = yield* registry.getByProvider("devin");
       const antigravity = yield* registry.getByProvider("antigravity");
@@ -237,6 +248,7 @@ layer("ProviderAdapterRegistryLive", (it) => {
       assert.equal(codex, fakeCodexAdapter);
       assert.equal(codexSecondary, fakeCodexSecondaryAdapter);
       assert.equal(claude, fakeClaudeAdapter);
+      assert.equal(claudeOpenRouter, fakeClaudeOpenRouterAdapter);
       assert.equal(cursor, fakeCursorAdapter);
       assert.equal(devin, fakeDevinAdapter);
       assert.equal(antigravity, fakeAntigravityAdapter);
@@ -250,6 +262,7 @@ layer("ProviderAdapterRegistryLive", (it) => {
         "codex",
         "codexSecondary",
         "claudeAgent",
+        "claudeOpenRouter",
         "cursor",
         "devin",
         "antigravity",

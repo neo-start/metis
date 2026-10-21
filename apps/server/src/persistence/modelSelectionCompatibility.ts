@@ -9,6 +9,7 @@ type ModelProviderKind =
   | "codex"
   | "codexSecondary"
   | "claudeAgent"
+  | "claudeOpenRouter"
   | "cursor"
   | "antigravity"
   | "grok"
@@ -49,6 +50,9 @@ function readTrimmedString(record: Record<string, unknown>, key: string): string
 // Imported instance ids may be runtime names rather than Synara provider literals.
 function inferProviderFromLabel(label: string): ModelProviderKind | undefined {
   const lowerLabel = label.toLowerCase();
+  if (lowerLabel.includes("claudeopenrouter") || lowerLabel.includes("claude-openrouter")) {
+    return "claudeOpenRouter";
+  }
   if (/(^|[^a-z0-9])pi([^a-z0-9]|$)/u.test(lowerLabel)) {
     return "pi";
   }
@@ -99,6 +103,7 @@ function inferLegacyModelProvider(provider: unknown, model: string): ModelProvid
     provider === "codex" ||
     provider === "codexSecondary" ||
     provider === "claudeAgent" ||
+    provider === "claudeOpenRouter" ||
     provider === "cursor" ||
     provider === "antigravity" ||
     provider === "grok" ||

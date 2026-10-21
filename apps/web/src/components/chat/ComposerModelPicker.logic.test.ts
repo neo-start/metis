@@ -30,6 +30,7 @@ const EMPTY_MODEL_OPTIONS: Record<ProviderKind, ReadonlyArray<ProviderModelOptio
   codex: [],
   codexSecondary: [],
   claudeAgent: [],
+  claudeOpenRouter: [],
   cursor: [],
   devin: [],
   antigravity: [],

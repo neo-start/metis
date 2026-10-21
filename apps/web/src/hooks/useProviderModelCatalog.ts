@@ -124,6 +124,7 @@ export function useProviderModelCatalog(input: {
   };
 
   const claudeModelDiscoveryEnabled = shouldDiscoverProvider("claudeAgent");
+  const claudeOpenRouterModelDiscoveryEnabled = shouldDiscoverProvider("claudeOpenRouter");
   const codexModelDiscoveryEnabled = shouldDiscoverProvider("codex");
   const codexSecondaryModelDiscoveryEnabled = shouldDiscoverProvider("codexSecondary");
   const cursorModelDiscoveryEnabled = shouldDiscoverProvider("cursor");
@@ -141,6 +142,11 @@ export function useProviderModelCatalog(input: {
       provider: "claudeAgent",
       binaryPath: settings.claudeBinaryPath || null,
       enabled: claudeModelDiscoveryEnabled,
+    }),
+    claudeOpenRouter: providerModelsQueryOptions({
+      provider: "claudeOpenRouter",
+      binaryPath: settings.claudeOpenRouterBinaryPath || null,
+      enabled: claudeOpenRouterModelDiscoveryEnabled,
     }),
     codex: providerModelsQueryOptions({
       provider: "codex",
@@ -197,6 +203,7 @@ export function useProviderModelCatalog(input: {
   } as const;
 
   const claudeDynamicModelsQuery = useQuery(modelQueryOptionsByProvider.claudeAgent);
+  const claudeOpenRouterDynamicModelsQuery = useQuery(modelQueryOptionsByProvider.claudeOpenRouter);
   const codexDynamicModelsQuery = useQuery(modelQueryOptionsByProvider.codex);
   const codexSecondaryDynamicModelsQuery = useQuery(modelQueryOptionsByProvider.codexSecondary);
   const cursorDynamicModelsQuery = useQuery(modelQueryOptionsByProvider.cursor);
@@ -235,6 +242,12 @@ export function useProviderModelCatalog(input: {
     providerAgentsQueryOptions({
       provider: "claudeAgent",
       enabled: shouldDiscoverProvider("claudeAgent", agentDiscoveryPolicy === "eager-core"),
+    }),
+  );
+  const claudeOpenRouterDynamicAgentsQuery = useQuery(
+    providerAgentsQueryOptions({
+      provider: "claudeOpenRouter",
+      enabled: shouldDiscoverProvider("claudeOpenRouter", agentDiscoveryPolicy === "eager-core"),
     }),
   );
   const codexDynamicAgentsQuery = useQuery(
@@ -319,6 +332,11 @@ export function useProviderModelCatalog(input: {
         customModelsByProvider.claudeAgent,
         modelHintByProvider?.claudeAgent,
       ),
+      claudeOpenRouter: getAppModelOptions(
+        "claudeOpenRouter",
+        customModelsByProvider.claudeOpenRouter,
+        modelHintByProvider?.claudeOpenRouter,
+      ),
       cursor: getAppModelOptions(
         "cursor",
         customModelsByProvider.cursor,
@@ -345,6 +363,7 @@ export function useProviderModelCatalog(input: {
     > = { ...staticOptions };
     const dynamicSources: Record<ProviderKind, typeof claudeDynamicModelsQuery.data> = {
       claudeAgent: claudeDynamicModelsQuery.data,
+      claudeOpenRouter: claudeOpenRouterDynamicModelsQuery.data,
       codex: codexDynamicModelsQuery.data,
       codexSecondary: codexSecondaryDynamicModelsQuery.data,
       cursor:
@@ -360,6 +379,7 @@ export function useProviderModelCatalog(input: {
     };
     for (const provider of [
       "claudeAgent",
+      "claudeOpenRouter",
       "codex",
       "codexSecondary",
       "cursor",
@@ -388,6 +408,7 @@ export function useProviderModelCatalog(input: {
   }, [
     antigravityModelsQuery.data,
     claudeDynamicModelsQuery.data,
+    claudeOpenRouterDynamicModelsQuery.data,
     codexDynamicModelsQuery.data,
     codexSecondaryDynamicModelsQuery.data,
     cursorDynamicModelsQuery.data,
@@ -425,6 +446,7 @@ export function useProviderModelCatalog(input: {
   >(
     () => ({
       claudeAgent: claudeDynamicModelsQuery.data?.models ?? [],
+      claudeOpenRouter: claudeOpenRouterDynamicModelsQuery.data?.models ?? [],
       codex: codexDynamicModelsQuery.data?.models ?? [],
       codexSecondary: codexSecondaryDynamicModelsQuery.data?.models ?? [],
       cursor: cursorRuntimeModels,
@@ -438,6 +460,7 @@ export function useProviderModelCatalog(input: {
     [
       antigravityModelsQuery.data?.models,
       claudeDynamicModelsQuery.data?.models,
+      claudeOpenRouterDynamicModelsQuery.data?.models,
       codexDynamicModelsQuery.data?.models,
       codexSecondaryDynamicModelsQuery.data?.models,
       cursorRuntimeModels,
@@ -462,9 +485,11 @@ export function useProviderModelCatalog(input: {
   const selectedDynamicAgents =
     selectedProvider === "claudeAgent"
       ? (claudeDynamicAgentsQuery.data?.agents ?? EMPTY_PROVIDER_AGENTS)
-      : selectedProvider === "opencode"
-        ? (openCodeDynamicAgentsQuery.data?.agents ?? EMPTY_PROVIDER_AGENTS)
-        : (codexDynamicAgentsQuery.data?.agents ?? EMPTY_PROVIDER_AGENTS);
+      : selectedProvider === "claudeOpenRouter"
+        ? (claudeOpenRouterDynamicAgentsQuery.data?.agents ?? EMPTY_PROVIDER_AGENTS)
+        : selectedProvider === "opencode"
+          ? (openCodeDynamicAgentsQuery.data?.agents ?? EMPTY_PROVIDER_AGENTS)
+          : (codexDynamicAgentsQuery.data?.agents ?? EMPTY_PROVIDER_AGENTS);
   const selectedRuntimeAgents = useMemo<ReadonlyArray<ProviderAgentDescriptor>>(
     () =>
       selectedDynamicAgents.map((agent) =>
@@ -480,6 +505,10 @@ export function useProviderModelCatalog(input: {
   const discoveryErrorsByProvider = useMemo(
     () => ({
       claudeAgent: claudeDynamicModelsQuery.data?.error,
+      claudeOpenRouter: modelDiscoveryError(
+        claudeOpenRouterDynamicModelsQuery.data?.error,
+        claudeOpenRouterDynamicModelsQuery.error,
+      ),
       codex: codexDynamicModelsQuery.data?.error,
       codexSecondary: codexSecondaryDynamicModelsQuery.data?.error,
       cursor: modelDiscoveryError(
@@ -509,6 +538,8 @@ export function useProviderModelCatalog(input: {
       antigravityModelsQuery.data?.error,
       antigravityModelsQuery.error,
       claudeDynamicModelsQuery.data?.error,
+      claudeOpenRouterDynamicModelsQuery.data?.error,
+      claudeOpenRouterDynamicModelsQuery.error,
       codexDynamicModelsQuery.data?.error,
       codexSecondaryDynamicModelsQuery.data?.error,
       cursorDynamicModelsQuery.data?.error,
@@ -531,23 +562,25 @@ export function useProviderModelCatalog(input: {
   const selectedProviderModelsQuery =
     selectedProvider === "claudeAgent"
       ? claudeDynamicModelsQuery
-      : selectedProvider === "codex"
-        ? codexDynamicModelsQuery
-        : selectedProvider === "codexSecondary"
-          ? codexSecondaryDynamicModelsQuery
-          : selectedProvider === "cursor"
-            ? cursorDynamicModelsQuery
-            : selectedProvider === "antigravity"
-              ? antigravityModelsQuery
-              : selectedProvider === "grok"
-                ? grokDynamicModelsQuery
-                : selectedProvider === "droid"
-                  ? droidDynamicModelsQuery
-                  : selectedProvider === "opencode"
-                    ? openCodeDynamicModelsQuery
-                    : selectedProvider === "pi"
-                      ? piDynamicModelsQuery
-                      : devinDynamicModelsQuery;
+      : selectedProvider === "claudeOpenRouter"
+        ? claudeOpenRouterDynamicModelsQuery
+        : selectedProvider === "codex"
+          ? codexDynamicModelsQuery
+          : selectedProvider === "codexSecondary"
+            ? codexSecondaryDynamicModelsQuery
+            : selectedProvider === "cursor"
+              ? cursorDynamicModelsQuery
+              : selectedProvider === "antigravity"
+                ? antigravityModelsQuery
+                : selectedProvider === "grok"
+                  ? grokDynamicModelsQuery
+                  : selectedProvider === "droid"
+                    ? droidDynamicModelsQuery
+                    : selectedProvider === "opencode"
+                      ? openCodeDynamicModelsQuery
+                      : selectedProvider === "pi"
+                        ? piDynamicModelsQuery
+                        : devinDynamicModelsQuery;
   const selectedProviderModelsLoading =
     selectedProviderRuntimeModelDiscoveryPending ||
     (loadingModelProviders[selectedProvider] === undefined &&

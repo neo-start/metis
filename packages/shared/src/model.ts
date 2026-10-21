@@ -6,6 +6,7 @@ import {
   type AntigravityModelOptions,
   type ClaudeApiEffort,
   type ClaudeModelOptions,
+  type ClaudeOpenRouterModelOptions,
   type ClaudeCodeEffort,
   type CursorModelOptions,
   type GrokModelOptions,
@@ -26,6 +27,9 @@ import {
 
 const MODEL_SLUG_SET_BY_PROVIDER: Record<ProviderKind, ReadonlySet<ModelSlug>> = {
   claudeAgent: new Set(MODEL_OPTIONS_BY_PROVIDER.claudeAgent.map((option) => option.slug)),
+  claudeOpenRouter: new Set(
+    MODEL_OPTIONS_BY_PROVIDER.claudeOpenRouter.map((option) => option.slug),
+  ),
   codex: new Set(MODEL_OPTIONS_BY_PROVIDER.codex.map((option) => option.slug)),
   codexSecondary: new Set(MODEL_OPTIONS_BY_PROVIDER.codexSecondary.map((option) => option.slug)),
   cursor: new Set(MODEL_OPTIONS_BY_PROVIDER.cursor.map((option) => option.slug)),
@@ -471,7 +475,7 @@ function withProviderOptionCurrentValue(
 }
 
 function reasoningDescriptorId(provider: ProviderKind): string {
-  if (provider === "claudeAgent") {
+  if (provider === "claudeAgent" || provider === "claudeOpenRouter") {
     return "effort";
   }
   if (provider === "opencode") {
@@ -863,6 +867,18 @@ export function resolveApiModelId(modelSelection: ModelSelection): string {
   return modelSelection.model;
 }
 
+/** GLM on the Claude SDK uses only the OpenRouter-supported effort values. */
+export function normalizeClaudeOpenRouterModelOptions(
+  model: string | null | undefined,
+  modelOptions: ClaudeOpenRouterModelOptions | null | undefined,
+): ClaudeOpenRouterModelOptions | undefined {
+  const caps = getModelCapabilities("claudeOpenRouter", model);
+  const effort = modelOptions?.effort;
+  return effort && hasEffortLevel(caps, effort) && effort !== getDefaultEffort(caps)
+    ? { effort }
+    : undefined;
+}
+
 /**
  * Map a requested Claude Code effort to the API effort passed at session spawn.
  * `ultrathink` is prompt-injected (no API effort); `ultracode` runs as xhigh plus
@@ -900,6 +916,15 @@ export function claudeSelectionRequiresRestart(
   previous: ModelSelection | undefined,
   next: ModelSelection,
 ): boolean {
+  if (next.provider === "claudeOpenRouter") {
+    if (previous === undefined) return false;
+    if (previous.provider !== "claudeOpenRouter") return true;
+    // OpenRouter's child-model aliases and Claude SDK max effort are fixed at spawn.
+    return (
+      previous.model !== next.model ||
+      (previous.options?.effort === "max") !== (next.options?.effort === "max")
+    );
+  }
   if (next.provider !== "claudeAgent") {
     return false;
   }

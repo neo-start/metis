@@ -7,6 +7,22 @@ import { assert, it } from "@effect/vitest";
 
 import { normalizePersistedModelSelection } from "./modelSelectionCompatibility.ts";
 
+it("preserves Claude SDK OpenRouter identity and effort across persistence", () => {
+  const selection = {
+    provider: "claudeOpenRouter",
+    model: "z-ai/glm-5.3",
+    options: { effort: "high" },
+  };
+  assert.deepEqual(normalizePersistedModelSelection(selection), selection);
+  assert.deepEqual(
+    normalizePersistedModelSelection({
+      instanceId: "claudeOpenRouter",
+      model: "z-ai/glm-5.3",
+    }),
+    { provider: "claudeOpenRouter", model: "z-ai/glm-5.3" },
+  );
+});
+
 it("preserves canonical Pi model selections", () => {
   assert.deepEqual(normalizePersistedModelSelection({ provider: "pi", model: "openai/gpt-5.5" }), {
     provider: "pi",

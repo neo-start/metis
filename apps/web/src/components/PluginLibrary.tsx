@@ -389,6 +389,9 @@ export function PluginLibrary() {
     providerComposerCapabilitiesQueryOptions("codexSecondary"),
   );
   const claudeCapabilitiesQuery = useQuery(providerComposerCapabilitiesQueryOptions("claudeAgent"));
+  const claudeOpenRouterCapabilitiesQuery = useQuery(
+    providerComposerCapabilitiesQueryOptions("claudeOpenRouter"),
+  );
   const cursorCapabilitiesQuery = useQuery(providerComposerCapabilitiesQueryOptions("cursor"));
   const antigravityCapabilitiesQuery = useQuery(
     providerComposerCapabilitiesQueryOptions("antigravity"),
@@ -411,6 +414,10 @@ export function PluginLibrary() {
     claudeAgent: {
       plugins: supportsPluginDiscovery(claudeCapabilitiesQuery.data),
       skills: supportsSkillDiscovery(claudeCapabilitiesQuery.data),
+    },
+    claudeOpenRouter: {
+      plugins: supportsPluginDiscovery(claudeOpenRouterCapabilitiesQuery.data),
+      skills: supportsSkillDiscovery(claudeOpenRouterCapabilitiesQuery.data),
     },
     cursor: {
       plugins: supportsPluginDiscovery(cursorCapabilitiesQuery.data),

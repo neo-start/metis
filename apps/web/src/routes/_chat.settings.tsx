@@ -388,6 +388,7 @@ function SettingsRouteView() {
     ...(isGitTextGenerationModelDirty ? ["Git writing model"] : []),
     ...(settings.customCodexModels.length > 0 ||
     settings.customClaudeModels.length > 0 ||
+    settings.customClaudeOpenRouterModels.length > 0 ||
     settings.customCursorModels.length > 0 ||
     settings.customAntigravityModels.length > 0 ||
     settings.customGrokModels.length > 0 ||

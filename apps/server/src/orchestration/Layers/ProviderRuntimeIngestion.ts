@@ -23,6 +23,7 @@ import {
   type ProviderRuntimeEvent,
   type RuntimeMode,
   isCodexProviderKind,
+  isClaudeSdkProviderKind,
 } from "@synara/contracts";
 import {
   Cache,
@@ -2406,7 +2407,7 @@ const make = Effect.gen(function* () {
       // Claude emits request-specific settlements from its callback owner. A
       // foreground terminal event cannot prove a live background callback ended.
       if (
-        event.provider !== "claudeAgent" &&
+        !isClaudeSdkProviderKind(event.provider) &&
         !event.providerRefs?.providerParentThreadId &&
         isTerminalTurnEvent &&
         eventTurnId !== undefined

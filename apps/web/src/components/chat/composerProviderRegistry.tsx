@@ -18,6 +18,7 @@ import {
   isClaudeUltrathinkPrompt,
   normalizeAntigravityModelOptions,
   normalizeClaudeModelOptions,
+  normalizeClaudeOpenRouterModelOptions,
   normalizeCursorModelOptions,
   normalizeOpenCodeModelOptions,
   normalizePiModelOptions,
@@ -83,6 +84,12 @@ export function getComposerProviderState(input: ComposerProviderStateInput): Com
       const providerOptions = modelOptions?.claudeAgent;
       rawEffort = trimOrNull(providerOptions?.effort);
       normalizedOptions = normalizeClaudeModelOptions(model, providerOptions);
+      break;
+    }
+    case "claudeOpenRouter": {
+      const providerOptions = modelOptions?.claudeOpenRouter;
+      rawEffort = trimOrNull(providerOptions?.effort);
+      normalizedOptions = normalizeClaudeOpenRouterModelOptions(model, providerOptions);
       break;
     }
     case "cursor": {

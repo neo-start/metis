@@ -60,6 +60,13 @@ export const ClaudeServerProviderSettings = Schema.Struct({
 });
 export type ClaudeServerProviderSettings = typeof ClaudeServerProviderSettings.Type;
 
+export const ClaudeOpenRouterServerProviderSettings = Schema.Struct({
+  ...ProviderSettingsBase,
+  binaryPath: StringSetting.pipe(Schema.withDecodingDefault(() => "claude")),
+});
+export type ClaudeOpenRouterServerProviderSettings =
+  typeof ClaudeOpenRouterServerProviderSettings.Type;
+
 export const AntigravityServerProviderSettings = Schema.Struct({
   ...ProviderSettingsBase,
   binaryPath: StringSetting.pipe(Schema.withDecodingDefault(() => "agy")),
@@ -140,6 +147,9 @@ export const ServerSettings = Schema.Struct({
       Schema.withDecodingDefault(() => ({})),
     ),
     claudeAgent: ClaudeServerProviderSettings.pipe(Schema.withDecodingDefault(() => ({}))),
+    claudeOpenRouter: ClaudeOpenRouterServerProviderSettings.pipe(
+      Schema.withDecodingDefault(() => ({})),
+    ),
     cursor: CursorServerProviderSettings.pipe(Schema.withDecodingDefault(() => ({}))),
     devin: DevinServerProviderSettings.pipe(Schema.withDecodingDefault(() => ({}))),
     antigravity: AntigravityServerProviderSettings.pipe(Schema.withDecodingDefault(() => ({}))),
@@ -206,6 +216,14 @@ export const ServerSettingsPatch = Schema.Struct({
           launchArgs: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(4096))),
           enableArtifacts: Schema.optionalKey(Schema.Boolean),
           cacheReviewDecision: Schema.optionalKey(ClaudeCacheReviewDefault),
+        }),
+      ),
+      claudeOpenRouter: Schema.optionalKey(
+        Schema.Struct({
+          ...ProviderSettingsBasePatch,
+          customModels: Schema.optionalKey(
+            Schema.Array(Schema.String.check(Schema.isMaxLength(256))),
+          ),
         }),
       ),
       cursor: Schema.optionalKey(

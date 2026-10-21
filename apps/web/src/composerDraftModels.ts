@@ -6,6 +6,7 @@ import {
   GROK_REASONING_EFFORT_OPTIONS,
   ProviderKind,
   type ClaudeCodeEffort,
+  type ClaudeOpenRouterModelOptions,
   type CodexReasoningEffort,
   type CursorModelOptions,
   type DevinModelOptions,
@@ -33,6 +34,7 @@ export const COMPOSER_PROVIDER_KINDS = [
   "codex",
   "codexSecondary",
   "claudeAgent",
+  "claudeOpenRouter",
   "cursor",
   "devin",
   "antigravity",
@@ -172,6 +174,12 @@ export function makeModelSelection(
           : {}),
         ...(typeof supportsAutoMode === "boolean" ? { supportsAutoMode } : {}),
       };
+    case "claudeOpenRouter":
+      return {
+        provider,
+        model,
+        ...(options ? { options: options as ClaudeOpenRouterModelOptions } : {}),
+      };
     case "cursor":
       return {
         provider,
@@ -240,6 +248,10 @@ export function normalizeProviderModelOptions(
   const claudeCandidate =
     candidate?.claudeAgent && typeof candidate.claudeAgent === "object"
       ? (candidate.claudeAgent as Record<string, unknown>)
+      : null;
+  const claudeOpenRouterCandidate =
+    candidate?.claudeOpenRouter && typeof candidate.claudeOpenRouter === "object"
+      ? (candidate.claudeOpenRouter as Record<string, unknown>)
       : null;
   const cursorCandidate =
     candidate?.cursor && typeof candidate.cursor === "object"
@@ -334,6 +346,14 @@ export function normalizeProviderModelOptions(
         }
       : undefined;
 
+  const claudeOpenRouterEffort = claudeOpenRouterCandidate?.effort;
+  const claudeOpenRouter: ClaudeOpenRouterModelOptions | undefined =
+    claudeOpenRouterEffort === "low" ||
+    claudeOpenRouterEffort === "high" ||
+    claudeOpenRouterEffort === "max"
+      ? { effort: claudeOpenRouterEffort }
+      : undefined;
+
   const cursorReasoningEffort = trimStringOrUndefined(cursorCandidate?.reasoningEffort);
   const cursorFastMode = booleanOrUndefined(cursorCandidate?.fastMode);
   const cursorThinking = booleanOrUndefined(cursorCandidate?.thinking);
@@ -413,6 +433,7 @@ export function normalizeProviderModelOptions(
     !codex &&
     !codexSecondary &&
     !claude &&
+    !claudeOpenRouter &&
     !cursor &&
     !devin &&
     !antigravity &&
@@ -427,6 +448,7 @@ export function normalizeProviderModelOptions(
     ...(codex ? { codex } : {}),
     ...(codexSecondary ? { codexSecondary } : {}),
     ...(claude ? { claudeAgent: claude } : {}),
+    ...(claudeOpenRouter ? { claudeOpenRouter } : {}),
     ...(cursor ? { cursor } : {}),
     ...(devin ? { devin } : {}),
     ...(antigravity ? { antigravity } : {}),
@@ -487,21 +509,23 @@ export function normalizeModelSelection(
         ? modelOptions?.codexSecondary
         : provider === "claudeAgent"
           ? modelOptions?.claudeAgent
-          : provider === "antigravity"
-            ? modelOptions?.antigravity
-            : provider === "grok"
-              ? normalizeGrokModelOptions(model, modelOptions?.grok)
-              : provider === "droid"
-                ? modelOptions?.droid
-                : provider === "cursor"
-                  ? modelOptions?.cursor
-                  : provider === "opencode"
-                    ? modelOptions?.opencode
-                    : provider === "pi"
-                      ? modelOptions?.pi
-                      : provider === "devin"
-                        ? modelOptions?.devin
-                        : undefined;
+          : provider === "claudeOpenRouter"
+            ? modelOptions?.claudeOpenRouter
+            : provider === "antigravity"
+              ? modelOptions?.antigravity
+              : provider === "grok"
+                ? normalizeGrokModelOptions(model, modelOptions?.grok)
+                : provider === "droid"
+                  ? modelOptions?.droid
+                  : provider === "cursor"
+                    ? modelOptions?.cursor
+                    : provider === "opencode"
+                      ? modelOptions?.opencode
+                      : provider === "pi"
+                        ? modelOptions?.pi
+                        : provider === "devin"
+                          ? modelOptions?.devin
+                          : undefined;
   const normalizedOptions =
     provider === "antigravity" && hasLegacyAntigravityEffort
       ? {

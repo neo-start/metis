@@ -250,7 +250,7 @@ export function hasVisibleComposerTraitControls(
 function fallbackEffortOptionId(provider: ProviderKind): string {
   if (provider === "opencode") return "variant";
   if (provider === "pi") return "thinkingLevel";
-  if (provider === "claudeAgent") return "effort";
+  if (provider === "claudeAgent" || provider === "claudeOpenRouter") return "effort";
   return "reasoningEffort";
 }
 

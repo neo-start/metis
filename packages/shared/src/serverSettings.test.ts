@@ -29,6 +29,10 @@ describe("providerStartOptionsFromServerSettings", () => {
           ...DEFAULT_SERVER_SETTINGS.providers.claudeAgent,
           binaryPath: "",
         },
+        claudeOpenRouter: {
+          ...DEFAULT_SERVER_SETTINGS.providers.claudeOpenRouter,
+          binaryPath: "",
+        },
         cursor: {
           ...DEFAULT_SERVER_SETTINGS.providers.cursor,
           binaryPath: "",

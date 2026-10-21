@@ -31,6 +31,7 @@ export type ProviderModelPrefetchSettings = Pick<
   AppSettings,
   | "defaultProvider"
   | "claudeBinaryPath"
+  | "claudeOpenRouterBinaryPath"
   | "cursorBinaryPath"
   | "cursorApiEndpoint"
   | "devinBinaryPath"
@@ -52,6 +53,7 @@ export const NEW_THREAD_MODEL_PREFETCH_PROVIDERS: ReadonlyArray<Exclude<Provider
   "codex",
   "codexSecondary",
   "claudeAgent",
+  "claudeOpenRouter",
   "cursor",
   "antigravity",
   "grok",
@@ -135,6 +137,12 @@ export function providerModelsPrefetchQueryOptions(input: {
         binaryPath: settings.claudeBinaryPath || null,
         priority,
       });
+    case "claudeOpenRouter":
+      return providerModelsQueryOptions({
+        provider,
+        binaryPath: settings.claudeOpenRouterBinaryPath || null,
+        priority,
+      });
     case "codex":
       return providerModelsQueryOptions({ provider: "codex", priority });
     case "codexSecondary":
@@ -201,7 +209,8 @@ function providerAgentsPrefetchQueryOptions(input: {
 
   switch (provider) {
     case "claudeAgent":
-      return providerAgentsQueryOptions({ provider: "claudeAgent" });
+    case "claudeOpenRouter":
+      return providerAgentsQueryOptions({ provider });
     case "codex":
       return providerAgentsQueryOptions({ provider: "codex" });
     case "opencode":
@@ -239,7 +248,9 @@ export function prefetchProviderModelsForNewThread(
     void queryClient.prefetchQuery({
       ...modelsOptions,
       retry:
-        isCodexProviderKind(provider) || provider === "claudeAgent"
+        isCodexProviderKind(provider) ||
+        provider === "claudeAgent" ||
+        provider === "claudeOpenRouter"
           ? 0
           : providerModelDiscoveryRetry(provider),
       staleTime:

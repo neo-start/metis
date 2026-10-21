@@ -8,6 +8,7 @@ import {
 import {
   AntigravityModelOptions,
   ClaudeModelOptions,
+  ClaudeOpenRouterModelOptions,
   CodexModelOptions,
   CursorModelOptions,
   DevinModelOptions,
@@ -71,6 +72,7 @@ export const ProviderKind = Schema.Literals([
   // can run side by side. Shares Codex models, options and runtime.
   "codexSecondary",
   "claudeAgent",
+  "claudeOpenRouter",
   "cursor",
   "antigravity",
   "grok",
@@ -89,6 +91,16 @@ export function isCodexProviderKind(
   provider: string | null | undefined,
 ): provider is CodexProviderKind {
   return provider === "codex" || provider === "codexSecondary";
+}
+
+/** Claude SDK runtimes with separate authentication and model catalogs. */
+export const CLAUDE_SDK_PROVIDER_KINDS = ["claudeAgent", "claudeOpenRouter"] as const;
+export type ClaudeSdkProviderKind = (typeof CLAUDE_SDK_PROVIDER_KINDS)[number];
+
+export function isClaudeSdkProviderKind(
+  provider: string | null | undefined,
+): provider is ClaudeSdkProviderKind {
+  return provider === "claudeAgent" || provider === "claudeOpenRouter";
 }
 
 /**
@@ -153,6 +165,13 @@ export const ClaudeModelSelection = Schema.Struct({
 });
 export type ClaudeModelSelection = typeof ClaudeModelSelection.Type;
 
+export const ClaudeOpenRouterModelSelection = Schema.Struct({
+  provider: Schema.Literal("claudeOpenRouter"),
+  model: TrimmedNonEmptyString,
+  options: Schema.optional(ClaudeOpenRouterModelOptions),
+});
+export type ClaudeOpenRouterModelSelection = typeof ClaudeOpenRouterModelSelection.Type;
+
 export const CursorModelSelection = Schema.Struct({
   provider: Schema.Literal("cursor"),
   model: TrimmedNonEmptyString,
@@ -206,6 +225,7 @@ export const ModelSelection = Schema.Union([
   CodexModelSelection,
   CodexSecondaryModelSelection,
   ClaudeModelSelection,
+  ClaudeOpenRouterModelSelection,
   CursorModelSelection,
   DevinModelSelection,
   AntigravityModelSelection,
@@ -236,6 +256,10 @@ export const ClaudeProviderStartOptions = Schema.Struct({
   permissionMode: Schema.optional(TrimmedNonEmptyString),
   maxThinkingTokens: Schema.optional(NonNegativeInt),
   enableArtifacts: Schema.optional(Schema.Boolean),
+});
+
+export const ClaudeOpenRouterProviderStartOptions = Schema.Struct({
+  binaryPath: Schema.optional(TrimmedNonEmptyString),
 });
 
 export const AntigravityProviderStartOptions = Schema.Struct({
@@ -274,6 +298,7 @@ export const ProviderStartOptions = Schema.Struct({
   codex: Schema.optional(CodexProviderStartOptions),
   codexSecondary: Schema.optional(CodexSecondaryProviderStartOptions),
   claudeAgent: Schema.optional(ClaudeProviderStartOptions),
+  claudeOpenRouter: Schema.optional(ClaudeOpenRouterProviderStartOptions),
   cursor: Schema.optional(CursorProviderStartOptions),
   devin: Schema.optional(DevinProviderStartOptions),
   antigravity: Schema.optional(AntigravityProviderStartOptions),

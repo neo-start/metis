@@ -46,6 +46,8 @@ function getProviderStartOptionsCustomBinaryPath(
       return normalizeCustomBinaryPath(providerOptions?.codexSecondary?.binaryPath);
     case "claudeAgent":
       return normalizeCustomBinaryPath(providerOptions?.claudeAgent?.binaryPath);
+    case "claudeOpenRouter":
+      return normalizeCustomBinaryPath(providerOptions?.claudeOpenRouter?.binaryPath);
     case "antigravity":
       return normalizeCustomBinaryPath(providerOptions?.antigravity?.binaryPath);
     case "grok":

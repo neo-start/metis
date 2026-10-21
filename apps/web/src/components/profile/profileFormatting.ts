@@ -81,6 +81,8 @@ export function formatProviderLabel(provider: ProviderKind): string {
     case "codex":
     case "codexSecondary":
       return PROVIDER_DISPLAY_NAMES[provider];
+    case "claudeOpenRouter":
+      return PROVIDER_DISPLAY_NAMES[provider];
     case "claudeAgent":
       return "Claude";
     case "cursor":

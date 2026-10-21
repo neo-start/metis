@@ -216,6 +216,10 @@ const PROVIDER_TARGET_OPTION_RULES = {
     primaryOptionKey: "thinkingLevel",
     options: { thinkingLevel: providerOptionRule("string", PI_THINKING_LEVEL_OPTIONS) },
   }),
+  claudeOpenRouter: defineProviderOptionConfig<"claudeOpenRouter">({
+    primaryOptionKey: "effort",
+    options: { effort: providerOptionRule("string", ["low", "high", "max"]) },
+  }),
   antigravity: defineProviderOptionConfig<"antigravity">({
     primaryOptionKey: "reasoningEffort",
     options: { reasoningEffort: providerOptionRule("string", [], "model-discovery") },

@@ -74,6 +74,7 @@ import { SettingsListRow, SettingsRow, SettingsSection } from "./SettingsPanelPr
 
 type ProviderInstallTextKey =
   | "claudeBinaryPath"
+  | "claudeOpenRouterBinaryPath"
   | "codexBinaryPath"
   | "codexHomePath"
   | "codexSecondaryBinaryPath"
@@ -233,6 +234,31 @@ const PROVIDER_INSTALL_SETTINGS: readonly ProviderInstallSettings[] = [
             Claude Code keeps Artifacts off in embedded sessions. Turn this on so{" "}
             <code>/design</code> and <code>/slides</code> publish to claude.ai. Needs a claude.ai
             login on a Pro, Max, Team or Enterprise plan, and applies to new sessions.
+          </>
+        ),
+      },
+    ],
+  },
+  {
+    provider: "claudeOpenRouter",
+    docs: [
+      { label: "Claude SDK", href: "https://platform.claude.com/docs/en/agent-sdk/overview" },
+      {
+        label: "OpenRouter",
+        href: "https://openrouter.ai/docs/cookbook/coding-agents/claude-code-integration",
+      },
+    ],
+    fields: [
+      {
+        kind: "text",
+        settingsKey: "claudeOpenRouterBinaryPath",
+        label: "Claude binary path",
+        placeholder: "Claude binary path",
+        description: (
+          <>
+            Experimental: runs GLM through the Claude SDK and OpenRouter, using Pi's saved
+            OpenRouter credential and configured Pi agent directory. Leave blank to use{" "}
+            <code>claude</code> from your PATH.
           </>
         ),
       },

@@ -12,7 +12,11 @@ import type {
   ServerListProviderUsageResult,
   ServerProviderUsageSnapshot,
 } from "@synara/contracts";
-import { isCodexProviderKind, type CodexProviderKind } from "@synara/contracts";
+import {
+  isClaudeSdkProviderKind,
+  isCodexProviderKind,
+  type CodexProviderKind,
+} from "@synara/contracts";
 import { Effect } from "effect";
 
 import { PROVIDER_USAGE_PROVIDERS } from "@synara/shared/providerUsage";
@@ -35,7 +39,7 @@ const LOCAL_ARCHIVE_PROVIDERS: ReadonlySet<ProviderKind> = new Set([
 ]);
 
 const providerChildKind = (provider: ProviderKind): ProviderChildKind =>
-  provider === "claudeAgent" ? "claude" : provider === "codexSecondary" ? "codex" : provider;
+  isClaudeSdkProviderKind(provider) ? "claude" : provider === "codexSecondary" ? "codex" : provider;
 
 function buildContext(): ProviderUsageContext {
   return {

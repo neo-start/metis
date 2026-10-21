@@ -18,7 +18,11 @@ import type {
   ServerProviderStatusState,
   ServerProviderUpdateState,
 } from "@synara/contracts";
-import { CODEX_SECONDARY_DEFAULT_HOME_PATH, ServerProviderUpdateError } from "@synara/contracts";
+import {
+  CODEX_SECONDARY_DEFAULT_HOME_PATH,
+  isClaudeSdkProviderKind,
+  ServerProviderUpdateError,
+} from "@synara/contracts";
 import { parseCodexConfigModelProvider } from "@synara/shared/codexConfig";
 import { decodeJsonResult } from "@synara/shared/schemaJson";
 import { expandHomePath } from "@synara/shared/synaraHome";
@@ -81,6 +85,7 @@ import {
 import { acquireClaudeAuthStatusLock } from "../claudeAuthStatusLock";
 import { loadClaudeAgentSdk } from "../claudeAgentSdk.ts";
 import { buildClaudeProcessEnv, readClaudeCliCredentialsSummary } from "../claudeProcessEnv";
+import { hasClaudeOpenRouterCredentials } from "../claudeOpenRouter.ts";
 import {
   detailFromResult,
   extractAuthBoolean,
@@ -123,6 +128,7 @@ const CODEX_AUTH_STATUS_ARGS = ["-c", "mcp_servers={}", "login", "status"] as co
 const CODEX_PROVIDER = "codex" as const;
 const CODEX_SECONDARY_PROVIDER = "codexSecondary" as const;
 const CLAUDE_AGENT_PROVIDER = "claudeAgent" as const;
+const CLAUDE_OPENROUTER_PROVIDER = "claudeOpenRouter" as const;
 const CURSOR_PROVIDER = "cursor" as const;
 const ANTIGRAVITY_PROVIDER = "antigravity" as const;
 const GROK_PROVIDER = "grok" as const;
@@ -138,6 +144,7 @@ const PROVIDERS = [
   CODEX_PROVIDER,
   CODEX_SECONDARY_PROVIDER,
   CLAUDE_AGENT_PROVIDER,
+  CLAUDE_OPENROUTER_PROVIDER,
   CURSOR_PROVIDER,
   ANTIGRAVITY_PROVIDER,
   GROK_PROVIDER,
@@ -148,7 +155,7 @@ const PROVIDERS = [
 ] as const satisfies ReadonlyArray<ProviderKind>;
 
 const providerChildKind = (provider: ProviderKind): ProviderChildKind =>
-  provider === CLAUDE_AGENT_PROVIDER
+  isClaudeSdkProviderKind(provider)
     ? "claude"
     : provider === CODEX_SECONDARY_PROVIDER
       ? "codex"
@@ -1023,6 +1030,59 @@ export const makeCheckCodexProviderStatus = (
 };
 
 export const checkCodexProviderStatus = makeCheckCodexProviderStatus();
+
+// OpenRouter uses the Claude executable, but never its OAuth/subscription probe.
+export const makeCheckClaudeOpenRouterProviderStatus = (
+  binaryPath?: string,
+  agentDir?: string,
+  hasCredentials: (agentDir?: string) => Promise<boolean> = hasClaudeOpenRouterCredentials,
+): Effect.Effect<ServerProviderStatus, never, ChildProcessSpawner.ChildProcessSpawner> =>
+  Effect.gen(function* () {
+    const checkedAt = new Date().toISOString();
+    const executable = nonEmptyTrimmed(binaryPath) ?? "claude";
+    const probe = yield* probeProviderCliVersion(
+      runClaudeCommand(["--version"], executable, providerCommandEnv(CLAUDE_OPENROUTER_PROVIDER)),
+      CLAUDE_HEALTH_TIMEOUT_MS,
+    );
+    if (probe.outcome !== "success") {
+      return {
+        provider: CLAUDE_OPENROUTER_PROVIDER,
+        status: "error",
+        available: false,
+        authStatus: "unknown",
+        supportsAutoRuntimeMode: false,
+        checkedAt,
+        message:
+          probe.outcome === "missing"
+            ? "Claude Code CLI (`claude`) is required for Claude SDK · OpenRouter."
+            : "Claude Code CLI could not complete its version check for Claude SDK · OpenRouter.",
+      } satisfies ServerProviderStatus;
+    }
+    const credentialProbe = yield* Effect.tryPromise({
+      try: () => hasCredentials(agentDir),
+      catch: () => "credential_read_failed" as const,
+    }).pipe(Effect.result);
+    const authenticated = Result.isSuccess(credentialProbe) && credentialProbe.success;
+    return {
+      provider: CLAUDE_OPENROUTER_PROVIDER,
+      status: authenticated ? "ready" : "warning",
+      available: true,
+      authStatus: authenticated
+        ? "authenticated"
+        : Result.isFailure(credentialProbe)
+          ? "unknown"
+          : "unauthenticated",
+      version: parseGenericCliVersion(`${probe.result.stdout}\n${probe.result.stderr}`),
+      supportsAutoRuntimeMode: false,
+      ...(authenticated ? { authType: "apiKey" as const, authLabel: "OpenRouter API Key" } : {}),
+      checkedAt,
+      message: authenticated
+        ? "Claude Code CLI and OpenRouter credentials are configured."
+        : Result.isFailure(credentialProbe)
+          ? "Could not read the OpenRouter credentials used by Pi."
+          : "Configure an OpenRouter API key in Pi to use Claude SDK · OpenRouter.",
+    } satisfies ServerProviderStatus;
+  });
 
 // ── Claude Agent health check ───────────────────────────────────────
 
@@ -2088,7 +2148,10 @@ export function projectProviderStatusesForSettings(
 
 // ── Layer ───────────────────────────────────────────────────────────
 
-export function makeProviderHealthLive(options?: { readonly providerUpdateTimeoutMs?: number }) {
+export function makeProviderHealthLive(options?: {
+  readonly providerUpdateTimeoutMs?: number;
+  readonly hasClaudeOpenRouterCredentials?: (agentDir?: string) => Promise<boolean>;
+}) {
   const providerUpdateTimeoutMs = options?.providerUpdateTimeoutMs ?? PROVIDER_UPDATE_TIMEOUT_MS;
   return Layer.effect(
     ProviderHealth,
@@ -2171,6 +2234,8 @@ export function makeProviderHealthLive(options?: { readonly providerUpdateTimeou
             return settings.providers.codexSecondary.binaryPath;
           case "claudeAgent":
             return settings.providers.claudeAgent.binaryPath;
+          case "claudeOpenRouter":
+            return settings.providers.claudeOpenRouter.binaryPath;
           case "cursor":
             return settings.providers.cursor.binaryPath;
           case "antigravity":
@@ -2372,6 +2437,15 @@ export function makeProviderHealthLive(options?: { readonly providerUpdateTimeou
                 ),
                 checkProviderWhenEnabled(
                   settings,
+                  CLAUDE_OPENROUTER_PROVIDER,
+                  makeCheckClaudeOpenRouterProviderStatus(
+                    settings.providers.claudeOpenRouter.binaryPath,
+                    settings.providers.pi.agentDir,
+                    options?.hasClaudeOpenRouterCredentials,
+                  ),
+                ),
+                checkProviderWhenEnabled(
+                  settings,
                   CURSOR_PROVIDER,
                   makeCheckCursorProviderStatus(settings.providers.cursor.binaryPath),
                 ),
@@ -2539,8 +2613,30 @@ export function makeProviderHealthLive(options?: { readonly providerUpdateTimeou
         });
       }
 
+      const piAgentDirRef = yield* Ref.make(
+        yield* serverSettings.getSettings.pipe(
+          Effect.map((settings) => settings.providers.pi.agentDir),
+          Effect.orElseSucceed(() => undefined),
+        ),
+      );
       yield* serverSettings.streamChanges.pipe(
-        Stream.runForEach(() => publishProjectedStatuses().pipe(Effect.asVoid)),
+        Stream.runForEach((settings) =>
+          Effect.gen(function* () {
+            const previousAgentDir = yield* Ref.getAndSet(
+              piAgentDirRef,
+              settings.providers.pi.agentDir,
+            );
+            yield* publishProjectedStatuses();
+            // Both runtimes read Pi's credential directory. A settings-only
+            // projection cannot verify the GLM credential at its new location.
+            if (
+              previousAgentDir !== settings.providers.pi.agentDir &&
+              settings.providers.claudeOpenRouter.enabled
+            ) {
+              yield* ensureRefreshFiber();
+            }
+          }),
+        ),
         Effect.forkIn(refreshScope),
       );
 

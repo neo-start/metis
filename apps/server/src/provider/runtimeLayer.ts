@@ -10,6 +10,7 @@ import {
 import { ServerSettingsService } from "../serverSettings";
 import { ProviderValidationError } from "./Errors";
 import { makeClaudeAdapterLive } from "./Layers/ClaudeAdapter";
+import { makeClaudeOpenRouterAdapterLive } from "./Layers/ClaudeOpenRouterAdapter";
 import { makeCodexAdapterLive, makeCodexSecondaryAdapterLive } from "./Layers/CodexAdapter";
 import { makeCursorAdapterLive } from "./Layers/CursorAdapter";
 import { makeDevinAdapterLive } from "./Layers/DevinAdapter";
@@ -74,6 +75,20 @@ export function makeServerProviderLayer(
     const claudeAdapterLayer = makeClaudeAdapterLive(
       nativeEventLogger ? { nativeEventLogger } : undefined,
     ).pipe(Layer.provide(agentGatewayCredentialsLayer));
+    const claudeOpenRouterAdapterLayer = makeClaudeOpenRouterAdapterLive({
+      ...(nativeEventLogger ? { nativeEventLogger } : {}),
+      resolveConnectionOptions: () =>
+        Effect.runPromise(
+          serverSettings.getSettings.pipe(
+            Effect.map(({ providers }) => ({
+              ...(providers.claudeOpenRouter.binaryPath
+                ? { binaryPath: providers.claudeOpenRouter.binaryPath }
+                : {}),
+              ...(providers.pi.agentDir ? { agentDir: providers.pi.agentDir } : {}),
+            })),
+          ),
+        ),
+    }).pipe(Layer.provide(agentGatewayCredentialsLayer));
     const openCodeAdapterLayer = makeOpenCodeAdapterLive({
       ...(nativeEventLogger ? { nativeEventLogger } : {}),
       resolveServerPassword: resolveProviderServerPassword,
@@ -104,6 +119,7 @@ export function makeServerProviderLayer(
       Layer.provide(codexAdapterLayer),
       Layer.provide(codexSecondaryAdapterLayer),
       Layer.provide(claudeAdapterLayer),
+      Layer.provide(claudeOpenRouterAdapterLayer),
       Layer.provide(cursorAdapterLayer),
       Layer.provide(devinAdapterLayer),
       Layer.provide(antigravityAdapterLayer),

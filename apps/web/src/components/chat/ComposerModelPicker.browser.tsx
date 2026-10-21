@@ -33,6 +33,7 @@ const SONNET = "claude-sonnet-4-6" as ModelSlug;
 
 const EMPTY_BY_PROVIDER: Record<ProviderKind, never[]> = {
   claudeAgent: [],
+  claudeOpenRouter: [],
   codex: [],
   codexSecondary: [],
   cursor: [],

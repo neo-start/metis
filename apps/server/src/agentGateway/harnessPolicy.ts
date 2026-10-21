@@ -90,6 +90,7 @@ const PROVIDERS_WITH_THREAD_SCOPED_SYNARA_MCP = new Set<ProviderKind>([
   "codex",
   "codexSecondary",
   "claudeAgent",
+  "claudeOpenRouter",
   "antigravity",
   "cursor",
   "grok",
