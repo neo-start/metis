@@ -748,6 +748,25 @@ export function resolveActiveTurnLiveDiffState(input: {
   };
 }
 
+// Match the live totals' authority: a completed diff (including an empty one)
+// wins over provisional file-edit metadata. Never include another turn's files.
+export function resolveActiveTurnLiveDiffFilePaths(
+  input: Parameters<typeof resolveActiveTurnLiveDiffState>[0],
+): string[] {
+  if (!input.latestTurnId) return [];
+  const summary = input.turnDiffSummaries.find((entry) => entry.turnId === input.latestTurnId);
+  if (summary) return [...new Set(summary.files.map((file) => file.path))];
+  return [
+    ...new Set(
+      (input.workLogEntries ?? [])
+        .filter(
+          (entry) => entry.turnId === input.latestTurnId && isProviderFileEditWorkLogEntry(entry),
+        )
+        .flatMap((entry) => entry.changedFiles ?? []),
+    ),
+  ];
+}
+
 export type ThreadDetailHydration = "ready" | "loading" | "failed";
 
 /**

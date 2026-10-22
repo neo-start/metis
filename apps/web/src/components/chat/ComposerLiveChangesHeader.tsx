@@ -8,6 +8,7 @@
 
 import { pluralize } from "@synara/shared/text";
 
+import { FileEntryIcon } from "./FileEntryIcon";
 import { ChangesIcon } from "~/lib/icons";
 import {
   ComposerStackedPanelRow,
@@ -20,16 +21,18 @@ import { DiffStatLabel } from "./DiffStatLabel";
 import { ReviewChangesButton } from "./ReviewChangesButton";
 
 interface ComposerLiveChangesHeaderProps {
+  filePaths: readonly string[];
   fileCount: number | null;
   additions: number;
   deletions: number;
   // Explicit `| undefined` (not just `?`) so callers can pass a conditionally-absent
   // handler under exactOptionalPropertyTypes; the Review button is hidden when omitted.
-  onReview?: (() => void) | undefined;
+  onReview?: ((filePath?: string) => void) | undefined;
   attachedToPrevious?: boolean;
 }
 
 export function ComposerLiveChangesHeader({
+  filePaths,
   fileCount,
   additions,
   deletions,
@@ -55,8 +58,43 @@ export function ComposerLiveChangesHeader({
             </span>
           ) : null}
         </ComposerStackedPanelRowMain>
-        {onReview ? <ReviewChangesButton onClick={onReview} /> : null}
+        {onReview ? <ReviewChangesButton onClick={() => onReview()} /> : null}
       </ComposerStackedPanelRow>
+      {filePaths.length > 0 ? (
+        <ul
+          aria-label="Changed files"
+          className="max-h-40 overflow-y-auto overscroll-contain px-2.5 pb-2"
+        >
+          {filePaths.map((filePath) => (
+            <li key={filePath}>
+              {onReview ? (
+                <button
+                  type="button"
+                  onClick={() => onReview(filePath)}
+                  title={filePath}
+                  className="flex w-full min-w-0 items-start gap-2 rounded-md px-1.5 py-1 text-left text-ui-sm text-foreground/85 transition-colors duration-150 hover:bg-muted active:bg-muted/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
+                >
+                  <FileEntryIcon
+                    pathValue={filePath}
+                    kind="file"
+                    className="mt-0.5 size-3.5 shrink-0"
+                  />
+                  <span className="min-w-0 break-all">{filePath}</span>
+                </button>
+              ) : (
+                <div className="flex min-w-0 items-start gap-2 px-1.5 py-1 text-ui-sm text-foreground/85">
+                  <FileEntryIcon
+                    pathValue={filePath}
+                    kind="file"
+                    className="mt-0.5 size-3.5 shrink-0"
+                  />
+                  <span className="min-w-0 break-all">{filePath}</span>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </ComposerStackedPanel>
   );
 }
