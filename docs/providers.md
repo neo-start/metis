@@ -32,6 +32,21 @@ When stopping a parent conversation, Metis resolves the current runtime-owned tu
 durable routing cache has lost its turn ID. Child stops keep their explicit target and all stops
 still enforce the provider lifecycle generation boundary.
 
+## Codex conversation rollback compatibility
+
+Editing and resending a tail message selects the rollback protocol from the
+thread's persisted `historyMode`. Legacy histories use `thread/rollback`;
+paginated histories load all turns with full items, then call `thread/revert`
+with the first removed turn's ID. The latter returns metadata with empty turns,
+so Metis retains the already loaded prefix after the provider acknowledges the
+change. Conversation rollback and workspace checkpoint restoration remain
+separate operations.
+
+A timeout or transport failure during either mutation is not automatically
+retried. Existing provider-delivery quarantine and reconciliation still apply.
+An already blocked thread needs reconciliation after installing this fix;
+updating the adapter alone does not clear its earlier failure record.
+
 ## What Synara manages
 
 Synara provides the shared operating surface around each provider:

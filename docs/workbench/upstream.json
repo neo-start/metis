@@ -185,5 +185,28 @@
       ],
       "changes": "Reuse Synara CodexAppServerManager, shared process and JSONL boundaries and durable provider event pipeline. Local private authenticated host, explicit controller detach versus stop, retained protocol responders and event acknowledgements. Primary Codex native-only opt-in; no claim of ACP or Windows support."
     }
+  },
+  "codexHistoryRollbackAdaptation": {
+    "date": "2026-10-22",
+    "synara": {
+      "commit": "eaa61eded31b6755d4f30ba8eabc5d905cf817cb",
+      "sourcePaths": ["apps/server/src/codexAppServerManager.ts"]
+    },
+    "t3code": {
+      "commit": "f5ef0ddb90a8c36584e181b1913e7b8a5df30ffc",
+      "sourcePaths": [
+        "apps/server/src/provider/Layers/CodexSessionRuntime.ts",
+        "apps/server/src/provider/Layers/CodexAdapter.ts"
+      ]
+    },
+    "targetPaths": [
+      "apps/server/src/codexAppServerManager.ts",
+      "apps/server/src/codexAppServerManager.test.ts"
+    ],
+    "adaptations": [
+      "Reuse T3 rollbackCodexThread historyMode selection and retained-prefix mapping for thread/revert; preserve legacy thread/rollback and Synara session ownership.",
+      "Reuse local full-history pagination; reject missing native turn IDs, incomplete items, repeated cursors, mismatched thread IDs and unknown history modes before mutation.",
+      "Return the previously hydrated prefix only after acknowledged revert; never retry uncertain mutations or interpret metadata-only revert results as empty history."
+    ]
   }
 }

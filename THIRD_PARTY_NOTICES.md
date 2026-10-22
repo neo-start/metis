@@ -72,3 +72,12 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+Codex history rollback compatibility (2026-10-22) adapts `readCodexHistoryMode` and
+`rollbackCodexThread` from T3 `apps/server/src/provider/Layers/CodexSessionRuntime.ts`
+at `f5ef0ddb90a8c36584e181b1913e7b8a5df30ffc`; its `CodexAdapter.ts` was also reviewed.
+The Synara manager at `eaa61eded31b6755d4f30ba8eabc5d905cf817cb` remains the runtime
+baseline. The port reuses Metis full-history pagination and session ownership,
+validates native turn IDs before mutation, and returns the hydrated retained
+prefix after an acknowledged paginated `thread/revert`. Legacy histories retain
+`thread/rollback`; uncertain mutations are not retried.

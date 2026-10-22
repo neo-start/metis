@@ -3805,6 +3805,10 @@ describe("thread checkpoint control", () => {
       threadId: "thread_1",
       numTurns: 2,
     });
+    expect(sendRequest).toHaveBeenNthCalledWith(1, context, "thread/read", {
+      threadId: "thread_1",
+      includeTurns: false,
+    });
     expect(updateSession).toHaveBeenCalledWith(context, {
       status: "ready",
       activeTurnId: undefined,
@@ -3815,6 +3819,123 @@ describe("thread checkpoint control", () => {
       turns: [],
     });
   });
+
+  it("reverts paginated history at the exact boundary and retains full preceding turns", async () => {
+    const { manager, context, sendRequest, updateSession } = createThreadControlHarness();
+    const retained = {
+      id: "turn_1",
+      status: "completed",
+      startedAt: 1700000000,
+      items: [{ type: "agentMessage", text: "keep this answer" }],
+    };
+    sendRequest
+      .mockResolvedValueOnce({
+        thread: { id: "thread_1", historyMode: "paginated", cwd: "/repo", turns: [] },
+      })
+      .mockResolvedValueOnce({ data: [retained], nextCursor: "page-2" })
+      .mockResolvedValueOnce({
+        data: [
+          { id: "turn_2", items: [{ type: "userMessage" }] },
+          { id: "turn_3", items: [{ type: "agentMessage" }] },
+        ],
+        nextCursor: null,
+      })
+      .mockResolvedValueOnce({ thread: { id: "thread_1", turns: [] } });
+
+    const snapshot = await manager.rollbackThread(asThreadId("thread_1"), 2);
+
+    expect(sendRequest).toHaveBeenNthCalledWith(3, context, "thread/turns/list", {
+      threadId: "thread_1",
+      itemsView: "full",
+      sortDirection: "asc",
+      limit: 100,
+      cursor: "page-2",
+    });
+    expect(sendRequest).toHaveBeenNthCalledWith(4, context, "thread/revert", {
+      threadId: "thread_1",
+      beforeTurnId: "turn_2",
+    });
+    expect(sendRequest).toHaveBeenCalledTimes(4);
+    expect(snapshot).toEqual({ threadId: "thread_1", cwd: "/repo", turns: [retained] });
+    expect(updateSession).toHaveBeenCalledWith(context, {
+      status: "ready",
+      activeTurnId: undefined,
+    });
+  });
+
+  it.each([1, 5])("reverts all available turns when asked to remove %i", async (numTurns) => {
+    const { manager, context, sendRequest } = createThreadControlHarness();
+    sendRequest
+      .mockResolvedValueOnce({ thread: { id: "thread_1", historyMode: "paginated" } })
+      .mockResolvedValueOnce({ data: [{ id: "first", items: [] }], nextCursor: null })
+      .mockResolvedValueOnce({ thread: { id: "thread_1", turns: [] } });
+    expect((await manager.rollbackThread(asThreadId("thread_1"), numTurns)).turns).toEqual([]);
+    expect(sendRequest).toHaveBeenLastCalledWith(context, "thread/revert", {
+      threadId: "thread_1",
+      beforeTurnId: "first",
+    });
+  });
+
+  it("does not send a revert for empty paginated history", async () => {
+    const { manager, sendRequest } = createThreadControlHarness();
+    sendRequest
+      .mockResolvedValueOnce({ thread: { id: "thread_1", historyMode: "paginated" } })
+      .mockResolvedValueOnce({ data: [], nextCursor: null });
+    expect((await manager.rollbackThread(asThreadId("thread_1"), 1)).turns).toEqual([]);
+    expect(sendRequest).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    { data: [{ items: [] }], nextCursor: null },
+    { data: [{ id: "turn_1", itemsView: "summary", items: [] }], nextCursor: null },
+    { data: [], nextCursor: "repeated" },
+    {},
+  ])("refuses to revert incomplete or malformed history: %j", async (page) => {
+    const { manager, sendRequest, updateSession } = createThreadControlHarness();
+    sendRequest
+      .mockResolvedValueOnce({ thread: { id: "thread_1", historyMode: "paginated" } })
+      .mockResolvedValue(page);
+    await expect(manager.rollbackThread(asThreadId("thread_1"), 1)).rejects.toThrow();
+    expect(sendRequest.mock.calls.every(([, method]) => method !== "thread/revert")).toBe(true);
+    expect(updateSession).not.toHaveBeenCalled();
+  });
+
+  it.each(["paginated", "legacy"])(
+    "does not retry an ambiguous %s mutation or report it as ready",
+    async (historyMode) => {
+      const { manager, sendRequest, updateSession } = createThreadControlHarness();
+      sendRequest.mockResolvedValueOnce({ thread: { id: "thread_1", historyMode } });
+      if (historyMode === "paginated") {
+        sendRequest.mockResolvedValueOnce({ data: [{ id: "turn_1", items: [] }] });
+      }
+      sendRequest.mockRejectedValueOnce(new Error("Timed out waiting for provider response."));
+      await expect(manager.rollbackThread(asThreadId("thread_1"), 1)).rejects.toThrow("Timed out");
+      expect(sendRequest).toHaveBeenCalledTimes(historyMode === "paginated" ? 3 : 2);
+      expect(updateSession).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    { id: "different", historyMode: "paginated" },
+    { id: "thread_1", historyMode: "unknown-future-mode" },
+  ])("refuses to mutate an unexpected history contract: %j", async (thread) => {
+    const { manager, sendRequest, updateSession } = createThreadControlHarness();
+    sendRequest.mockResolvedValueOnce({ thread });
+    await expect(manager.rollbackThread(asThreadId("thread_1"), 1)).rejects.toThrow();
+    expect(sendRequest).toHaveBeenCalledTimes(1);
+    expect(updateSession).not.toHaveBeenCalled();
+  });
+
+  it.each([0, -1, 1.5, Number.NaN])(
+    "rejects invalid rollback count %s before I/O",
+    async (count) => {
+      const { manager, sendRequest } = createThreadControlHarness();
+      await expect(manager.rollbackThread(asThreadId("thread_1"), count)).rejects.toThrow(
+        "numTurns",
+      );
+      expect(sendRequest).not.toHaveBeenCalled();
+    },
+  );
 
   it("retries review interrupt with the latest review turn from thread/read after timeout", async () => {
     const { manager, context, sendRequest, updateSession } = createThreadControlHarness();

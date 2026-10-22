@@ -2039,12 +2039,19 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
       includeTurns: false,
     });
     const snapshot = this.parseThreadSnapshot("thread/read", metadata);
+    return this.readPaginatedThreadSnapshot(context, snapshot);
+  }
+
+  private async readPaginatedThreadSnapshot(
+    context: CodexSessionContext,
+    snapshot: CodexThreadSnapshot,
+  ): Promise<CodexThreadSnapshot> {
     const turns: CodexThreadTurnSnapshot[] = [];
     const seenCursors = new Set<string>();
     let cursor: string | undefined;
     for (let page = 0; page < 1_000; page += 1) {
       const response = await this.sendRequest(context, "thread/turns/list", {
-        threadId: providerThreadId,
+        threadId: snapshot.threadId,
         itemsView: "full",
         sortDirection: "asc",
         limit: 100,
@@ -2053,6 +2060,9 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
       const record = this.readObject(response);
       const data = this.readArray(record, "data");
       if (!data) throw new Error("thread/turns/list response did not include turns.");
+      if (data.some((turn) => !this.readString(this.readObject(turn), "id"))) {
+        throw new Error("thread/turns/list response included a turn without an id.");
+      }
       if (
         data.some((turn) => {
           const view = this.readString(this.readObject(turn), "itemsView");
@@ -2291,15 +2301,52 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
       throw new Error("numTurns must be an integer >= 1.");
     }
 
-    const response = await this.sendRequest(context, "thread/rollback", {
+    // Adapted from T3's rollbackCodexThread: the persisted history mode, not
+    // the CLI version, determines the rollback protocol for this thread.
+    const metadata = await this.sendRequest(context, "thread/read", {
       threadId: providerThreadId,
-      numTurns,
+      includeTurns: false,
     });
+    const metadataSnapshot = this.parseThreadSnapshot("thread/read", metadata);
+    if (metadataSnapshot.threadId !== providerThreadId) {
+      throw new Error("thread/read returned a different thread for rollback.");
+    }
+    const historyMode = this.readString(
+      this.readObject(this.readObject(metadata), "thread"),
+      "historyMode",
+    );
+    let snapshot: CodexThreadSnapshot;
+    if (historyMode === "paginated") {
+      const history = await this.readPaginatedThreadSnapshot(context, metadataSnapshot);
+      const retainedCount = Math.max(0, history.turns.length - numTurns);
+      const firstRemoved = history.turns[retainedCount];
+      if (firstRemoved) {
+        const response = await this.sendRequest(context, "thread/revert", {
+          threadId: providerThreadId,
+          beforeTurnId: firstRemoved.id,
+        });
+        if (this.readThreadIdFromResponse("thread/revert", response) !== providerThreadId) {
+          throw new Error("thread/revert returned a different thread for rollback.");
+        }
+      }
+      // Revert returns metadata with empty turns, not the retained history.
+      // Use the full prefix read before the acknowledged mutation; a second
+      // history read could fail after the provider has already committed it.
+      snapshot = { ...history, turns: history.turns.slice(0, retainedCount) };
+    } else if (historyMode === undefined || historyMode === "legacy") {
+      const response = await this.sendRequest(context, "thread/rollback", {
+        threadId: providerThreadId,
+        numTurns,
+      });
+      snapshot = this.parseThreadSnapshot("thread/rollback", response);
+    } else {
+      throw new Error(`Cannot roll back unsupported Codex history mode: ${historyMode}.`);
+    }
     this.updateSession(context, {
       status: "ready",
       activeTurnId: undefined,
     });
-    return this.parseThreadSnapshot("thread/rollback", response);
+    return snapshot;
   }
 
   async compactThread(threadId: ThreadId): Promise<void> {
