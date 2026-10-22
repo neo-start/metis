@@ -8,6 +8,9 @@ import {
 } from "@synara/shared/jsonrpc-stdio";
 
 export const CODEX_APP_SERVER_MAX_FRAME_BYTES = JSONRPC_STDIO_MAX_FRAME_BYTES;
+// plugin/list returns the entire catalog in one JSONL response (observed >16 MiB).
+// Give inbound catalogs room to grow without raising stdin or helper budgets.
+export const CODEX_APP_SERVER_MAX_INCOMING_FRAME_BYTES = 64 * 1024 * 1024;
 export const CODEX_APP_SERVER_MAX_QUEUED_STDIN_BYTES = JSONRPC_STDIO_MAX_QUEUED_STDIN_BYTES;
 
 export type CodexAppServerTransportErrorReason = JsonRpcStdioTransportErrorReason;
@@ -28,7 +31,7 @@ export class CodexAppServerTransportError extends JsonRpcStdioTransportError {
 
 /** Codex-compatible name for the shared raw-byte JSONL framer. */
 export class CodexJsonlFramer extends JsonRpcStdioFramer {
-  constructor(maxFrameBytes = CODEX_APP_SERVER_MAX_FRAME_BYTES) {
+  constructor(maxFrameBytes = CODEX_APP_SERVER_MAX_INCOMING_FRAME_BYTES) {
     super(maxFrameBytes);
   }
 

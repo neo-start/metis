@@ -51,6 +51,7 @@ import {
   formatMissingCodexWorkingDirectoryError,
 } from "./codexWorkingDirectory";
 import {
+  CODEX_APP_SERVER_MAX_INCOMING_FRAME_BYTES,
   CodexAppServerTransportError,
   CodexJsonlFramer,
   CodexJsonlWriter,
@@ -79,7 +80,13 @@ type SyntheticCodexRequest = {
   readonly params?: Record<string, unknown>;
 };
 
-function createSyntheticCodexAppServer(options?: { readonly forceFullHistoryResponse?: boolean }) {
+const OVERSIZED_HISTORY_FRAME_BYTES = CODEX_APP_SERVER_MAX_INCOMING_FRAME_BYTES + 64 * 1024;
+const OVERSIZED_HISTORY_ERROR = `Codex app-server JSONL frame exceeded its byte limit (${OVERSIZED_HISTORY_FRAME_BYTES}/${CODEX_APP_SERVER_MAX_INCOMING_FRAME_BYTES}).`;
+
+function createSyntheticCodexAppServer(options?: {
+  readonly forceFullHistoryResponse?: boolean;
+  readonly historyFrameBytes?: number;
+}) {
   const historySentinel = "SYNTHETIC_PRIVATE_HISTORY_SENTINEL";
   const persistedTranscript = Object.freeze([
     Object.freeze({ role: "user", text: historySentinel }),
@@ -95,7 +102,7 @@ function createSyntheticCodexAppServer(options?: { readonly forceFullHistoryResp
   let nextTurn = 1;
 
   const buildFullHistoryFrame = (id: string | number, providerThreadId: string): Buffer => {
-    const targetFrameBytes = 16_842_743;
+    const targetFrameBytes = options?.historyFrameBytes ?? 16_842_743;
     const prefix = Buffer.from(
       `{"id":${JSON.stringify(id)},"result":{"thread":{"id":${JSON.stringify(providerThreadId)},"turns":[{"payload":"${historySentinel}`,
       "utf8",
@@ -1855,7 +1862,8 @@ describe("startSession", () => {
     try {
       const fullHistoryFrame = fake.buildFullHistoryFrame(99, "provider-thread");
       expect(fullHistoryFrame).toHaveLength(16_842_744);
-      expect(() => new CodexJsonlFramer().push(fullHistoryFrame)).toThrowError(
+      // Reproduce the former transport limit; excludeTurns must still omit history.
+      expect(() => new CodexJsonlFramer(16 * 1024 * 1024).push(fullHistoryFrame)).toThrowError(
         expect.objectContaining({
           reason: "frame-too-large",
           observedBytes: 16_842_743,
@@ -1967,7 +1975,10 @@ describe("startSession", () => {
   });
 
   it("keeps the oversized resume error primary through start failure, exit, and repeated stop", async () => {
-    const fake = createSyntheticCodexAppServer({ forceFullHistoryResponse: true });
+    const fake = createSyntheticCodexAppServer({
+      forceFullHistoryResponse: true,
+      historyFrameBytes: OVERSIZED_HISTORY_FRAME_BYTES,
+    });
     const cwd = mkdtempSync(path.join(os.tmpdir(), "synara-codex-root-cause-"));
     const { manager, teardownProcessTree } = createSyntheticCodexManager(fake);
     const events: Array<{ kind: string; method: string; message?: string }> = [];
@@ -1978,8 +1989,7 @@ describe("startSession", () => {
         ...(event.message ? { message: event.message } : {}),
       });
     });
-    const expectedMessage =
-      "Codex app-server JSONL frame exceeded its byte limit (16842743/16777216). Operation: thread/resume.";
+    const expectedMessage = `${OVERSIZED_HISTORY_ERROR} Operation: thread/resume.`;
 
     try {
       const startError = await manager
@@ -1996,7 +2006,7 @@ describe("startSession", () => {
       expect(startError).toMatchObject({
         message: expectedMessage,
         cause: expect.objectContaining({
-          message: "Codex app-server JSONL frame exceeded its byte limit (16842743/16777216).",
+          message: OVERSIZED_HISTORY_ERROR,
         }),
       });
 
@@ -2034,7 +2044,10 @@ describe("startSession", () => {
   });
 
   it("keeps failed fork cleanup visible after an oversized historical response", async () => {
-    const fake = createSyntheticCodexAppServer({ forceFullHistoryResponse: true });
+    const fake = createSyntheticCodexAppServer({
+      forceFullHistoryResponse: true,
+      historyFrameBytes: OVERSIZED_HISTORY_FRAME_BYTES,
+    });
     const cwd = mkdtempSync(path.join(os.tmpdir(), "synara-codex-fork-cleanup-"));
     const { manager, teardownProcessTree } = createSyntheticCodexManager(fake);
     const threadId = asThreadId("thread-synthetic-fork-cleanup");
@@ -2068,9 +2081,7 @@ describe("startSession", () => {
             sessions: Map<ThreadId, { terminalFailure?: { message: string } }>;
           }
         ).sessions.get(threadId)?.terminalFailure?.message,
-      ).toBe(
-        "Codex app-server JSONL frame exceeded its byte limit (16842743/16777216). Operation: thread/fork.",
-      );
+      ).toBe(`${OVERSIZED_HISTORY_ERROR} Operation: thread/fork.`);
     } finally {
       await manager.stopAll();
       rmSync(cwd, { recursive: true, force: true });

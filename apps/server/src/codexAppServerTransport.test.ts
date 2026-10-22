@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   CODEX_APP_SERVER_MAX_FRAME_BYTES,
+  CODEX_APP_SERVER_MAX_INCOMING_FRAME_BYTES,
   CodexAppServerTransportError,
   CodexJsonlFramer,
   CodexJsonlWriter,
@@ -52,24 +53,26 @@ describe("Codex app-server transport", () => {
 
   it("accepts the frame limit, rejects larger frames, and releases retained input", () => {
     const atLimit = new CodexJsonlFramer();
-    const frames = atLimit.push(buildCompleteJsonlFrame(CODEX_APP_SERVER_MAX_FRAME_BYTES));
+    const frames = atLimit.push(buildCompleteJsonlFrame(CODEX_APP_SERVER_MAX_INCOMING_FRAME_BYTES));
     expect(frames).toHaveLength(1);
-    expect(Buffer.byteLength(frames[0] ?? "", "utf8")).toBe(CODEX_APP_SERVER_MAX_FRAME_BYTES);
+    expect(Buffer.byteLength(frames[0] ?? "", "utf8")).toBe(
+      CODEX_APP_SERVER_MAX_INCOMING_FRAME_BYTES,
+    );
     expect(atLimit.bufferedBytes).toBe(0);
 
     const oneByteOver = new CodexJsonlFramer();
     expect(() =>
-      oneByteOver.push(buildCompleteJsonlFrame(CODEX_APP_SERVER_MAX_FRAME_BYTES + 1)),
+      oneByteOver.push(buildCompleteJsonlFrame(CODEX_APP_SERVER_MAX_INCOMING_FRAME_BYTES + 1)),
     ).toThrowError(
       expect.objectContaining({
         reason: "frame-too-large",
-        observedBytes: CODEX_APP_SERVER_MAX_FRAME_BYTES + 1,
-        maxBytes: CODEX_APP_SERVER_MAX_FRAME_BYTES,
+        observedBytes: CODEX_APP_SERVER_MAX_INCOMING_FRAME_BYTES + 1,
+        maxBytes: CODEX_APP_SERVER_MAX_INCOMING_FRAME_BYTES,
       }),
     );
     expect(oneByteOver.bufferedBytes).toBe(0);
 
-    const observedFailure = new CodexJsonlFramer();
+    const observedFailure = new CodexJsonlFramer(CODEX_APP_SERVER_MAX_FRAME_BYTES);
     expect(observedFailure.push(Buffer.alloc(1_024, 0x78))).toEqual([]);
     expect(() => observedFailure.push(Buffer.alloc(16_842_743 - 1_024, 0x78))).toThrowError(
       expect.objectContaining({
@@ -79,6 +82,46 @@ describe("Codex app-server transport", () => {
       }),
     );
     expect(observedFailure.bufferedBytes).toBe(0);
+  });
+
+  it("receives a plugin catalog larger than 16 MiB across stdout chunks", () => {
+    const response = {
+      id: 2,
+      result: {
+        marketplaces: [
+          { name: "catalog", plugins: [{ description: "x".repeat(17 * 1024 * 1024) }] },
+        ],
+      },
+    };
+    const bytes = Buffer.from(`${JSON.stringify(response)}\n{"id":3,"result":{}}\n`);
+    const framer = new CodexJsonlFramer();
+    const frames: string[] = [];
+    for (let offset = 0; offset < bytes.length; offset += 64 * 1024) {
+      frames.push(...framer.push(bytes.subarray(offset, offset + 64 * 1024)));
+    }
+    framer.finish();
+    expect(frames).toHaveLength(2);
+    expect(JSON.parse(frames[0]!)).toEqual(response);
+    expect(JSON.parse(frames[1]!)).toEqual({ id: 3, result: {} });
+    expect(framer.bufferedBytes).toBe(0);
+  });
+
+  it("keeps the default stdin frame and queue budgets bounded independently", async () => {
+    const stream = new EventEmitter() as EventEmitter & {
+      writable: boolean;
+      write: Writable["write"];
+    };
+    stream.writable = true;
+    stream.write = (() => {
+      throw new Error("oversize input must not reach stdin");
+    }) as Writable["write"];
+    const writer = new CodexJsonlWriter(stream as unknown as Writable);
+    await expect(writer.write({ payload: "x".repeat(16 * 1024 * 1024) })).rejects.toMatchObject({
+      reason: "frame-too-large",
+      maxBytes: 16 * 1024 * 1024,
+    });
+    expect(writer.maxQueuedBytes).toBe(32 * 1024 * 1024);
+    expect(writer.bufferedBytes).toBe(0);
   });
 
   it("serializes slow stdin writes within one retained-byte budget", async () => {

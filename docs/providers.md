@@ -292,6 +292,14 @@ request settles. For OpenCode, cancellation uses its `question.reject` operation
 submitting completed answers uses `question.reply`. Both requests are scoped to
 the task's OpenCode working directory.
 
+## Codex plugin catalog response size
+
+Codex `plugin/list` returns the catalog in a single JSONL response. Large catalogs can exceed
+16 MiB even when no plugin is faulty. Metis accepts Codex stdout frames up to 64 MiB while
+keeping stdin frames at 16 MiB and queued stdin at 32 MiB. Other providers and native helpers
+retain their existing limits. Oversized or malformed frames still fail the transport and use
+the existing session recovery path; the byte limit is not a model context or subscription limit.
+
 ## Codex asynchronous questions
 
 On Codex versions and models that expose `request_user_input_async`, Synara shows
