@@ -49,6 +49,16 @@ revokes those native hosts safely; background work that needs them will receive
 the existing unavailable-host behavior until a desktop reconnects. This does not
 provide unattended native computer access after Electron exits.
 
+A new detached backend is refused when its inherited trust bundle identifies an
+OpenClaw run-scoped secret egress proxy. That proxy revokes authorization and
+existing tunnels when the owning run ends; detaching a process does not extend
+its lifetime. This startup diagnostic leaves existing services attachable and
+stoppable and does not modify proxy settings, credentials, sessions or queues.
+It is not a general credential-lifetime validator. An operator must supply a
+host-managed service identity with equivalent destination/secret policy before
+unattended service startup; copying a task identity, removing proxy variables,
+or routing around the protected proxy is not a supported repair.
+
 This is a detached process lifecycle, not an OS boot/login service or a guarantee
 of automatic recovery from a backend crash or machine reboot. Reopen Metis to
 start it again after a clean stop or recoverable stale owner. Windows retains the

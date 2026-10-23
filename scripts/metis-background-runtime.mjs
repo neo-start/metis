@@ -147,6 +147,18 @@ export async function ensureMetisBackground({
   };
   const existing = await readReady();
   if (existing) return existing;
+  // OpenClaw revokes this proxy's authorization when the owning agent run ends,
+  // including tunnels owned by detached children. Never turn that lease into a
+  // supposedly durable backend. Attachment and authenticated stop remain usable.
+  const launchEnvironment = env ?? process.env;
+  const trustBundle = launchEnvironment.NODE_EXTRA_CA_CERTS ?? "";
+  if (trustBundle.split(/[\\/]/).includes("secret-egress-proxy")) {
+    throw new Error(
+      "Cannot start a durable Metis backend with a run-scoped OpenClaw egress identity. " +
+        "Use a host-managed service identity with equivalent egress policy; " +
+        "do not copy task proxy credentials or remove proxy settings. No backend was started.",
+    );
+  }
   const log = fs.openSync(
     join(home, "metis-background.log"),
     fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_APPEND | fs.constants.O_NOFOLLOW,

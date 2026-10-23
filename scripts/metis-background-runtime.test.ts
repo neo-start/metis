@@ -17,6 +17,13 @@ import {
 const homes: string[] = [];
 const fixture = join(import.meta.dirname, "metis-background-fixture.mjs");
 const runtime = resolveExecutable("bun")!;
+// These local-only fake backends never load providers or make external requests.
+// Do not copy the test runner's credentials or run-scoped network identity.
+const fixtureEnvironment = {
+  PATH: process.env.PATH,
+  HOME: process.env.HOME,
+  TMPDIR: process.env.TMPDIR,
+};
 function home() {
   const value = fs.mkdtempSync(join(tmpdir(), "mbg-"));
   fs.chmodSync(value, 0o700);
@@ -29,7 +36,7 @@ function options(value: string) {
     command: runtime,
     args: [fixture, value],
     cwd: import.meta.dirname,
-    env: process.env,
+    env: fixtureEnvironment,
     timeoutMs: 8000,
   };
 }
@@ -45,7 +52,10 @@ describe.skipIf(process.platform === "win32")(
   () => {
     it("survives launcher exit, attaches without duplicates, then drains on authenticated stop", async () => {
       const value = home();
-      const client = spawnProcess(runtime, [fixture, value, "--client"], { stdio: "pipe" });
+      const client = spawnProcess(runtime, [fixture, value, "--client"], {
+        stdio: "pipe",
+        env: fixtureEnvironment,
+      });
       let output = "";
       let errors = "";
       client.stdout.on("data", (chunk) => {
@@ -59,13 +69,38 @@ describe.skipIf(process.platform === "win32")(
       const service = JSON.parse(output) as { launcherPid: number; serverPid: number };
       expect(process.kill(service.launcherPid, 0)).toBe(true);
       expect(process.kill(service.serverPid, 0)).toBe(true);
-      expect((await ensureMetisBackground(options(value))).launcherPid).toBe(service.launcherPid);
+      expect(
+        (
+          await ensureMetisBackground({
+            ...options(value),
+            env: {
+              ...fixtureEnvironment,
+              NODE_EXTRA_CA_CERTS: "/private/secret-egress-proxy/gateway-test/trust-bundle.pem",
+            },
+          })
+        ).launcherPid,
+      ).toBe(service.launcherPid);
       expect(fs.readFileSync(join(value, "starts"), "utf8")).toBe("start\n");
       expect(await requestMetisBackground(value, "stop")).toEqual({ ready: false, stopped: true });
       expect(fs.readFileSync(join(value, "drained"), "utf8")).toBe("drained");
       expect(() => process.kill(service.serverPid, 0)).toThrow();
       expect(await requestMetisBackground(value, "status")).toBeNull();
     }, 15_000);
+
+    it("refuses to detach a backend with a run-scoped egress identity before spawning", async () => {
+      const value = home();
+      await expect(
+        ensureMetisBackground({
+          ...options(value),
+          env: {
+            ...fixtureEnvironment,
+            NODE_EXTRA_CA_CERTS: "/private/secret-egress-proxy/gateway-test/trust-bundle.pem",
+          },
+        }),
+      ).rejects.toThrow(/run-scoped OpenClaw egress identity/);
+      expect(fs.existsSync(join(value, "starts"))).toBe(false);
+      expect(fs.existsSync(join(value, "metis-background.log"))).toBe(false);
+    });
 
     it("serializes simultaneous starts and recovers a proven-dead launcher admission owner", async () => {
       const value = home();
