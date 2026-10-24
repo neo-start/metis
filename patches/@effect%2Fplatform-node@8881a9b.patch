@@ -1,0 +1,108 @@
+diff --git a/dist/NodeHttpServer.js b/dist/NodeHttpServer.js
+index f19638dc8cbe7e869f1ca7e45b92b4e9027b70bd..5815f2323e1e5bacd5be573e547db6b6c060c93f 100644
+--- a/dist/NodeHttpServer.js
++++ b/dist/NodeHttpServer.js
+@@ -134,9 +134,44 @@ export const makeUpgradeHandler = (lazyWss, httpEffect, options) => {
+         }
+         return nodeResponse_;
+       };
+-      const upgradeEffect = Socket.fromWebSocket(Effect.flatMap(lazyWss, wss => Effect.acquireRelease(Effect.callback(resume => wss.handleUpgrade(nodeRequest, socket, head, ws => {
+-        resume(Effect.succeed(ws));
+-      })), ws => Effect.sync(() => ws.close()))));
++      const upgradeEffect = Socket.fromWebSocket(Effect.flatMap(lazyWss, wss => Effect.acquireRelease(Effect.callback(resume => {
++        // Settle failed/aborted handshakes even while acquisition is uninterruptible.
++        let settled = false;
++        const cleanup = () => {
++          socket.off("close", abort);
++          socket.off("error", abort);
++        };
++        const abort = () => {
++          if (settled) return;
++          settled = true;
++          cleanup();
++          resume(Effect.interrupt);
++        };
++        socket.once("close", abort);
++        socket.once("error", abort);
++        if (socket.destroyed || !socket.readable || !socket.writable) {
++          abort();
++        } else {
++          try {
++            wss.handleUpgrade(nodeRequest, socket, head, ws => {
++              if (settled) {
++                ws.terminate();
++                return;
++              }
++              settled = true;
++              cleanup();
++              resume(Effect.succeed(ws));
++            });
++          } catch (cause) {
++            if (!settled) {
++              settled = true;
++              cleanup();
++              resume(Effect.die(cause));
++            }
++          }
++        }
++        return Effect.sync(cleanup);
++      }), ws => Effect.sync(() => ws.close()))));
+       const map = new Map(services.mapUnsafe);
+       map.set(HttpServerRequest.key, new ServerRequestImpl(nodeRequest, nodeResponse, upgradeEffect));
+       const fiber = Fiber.runIn(Effect.runForkWith(ServiceMap.makeUnsafe(map))(handledApp), options.scope);
+diff --git a/src/NodeHttpServer.ts b/src/NodeHttpServer.ts
+index c993694d7e7bc0cbaa46daf6c2ca64d3d0214e18..9f1e60b41f472828c666614ade5b828266374cc7 100644
+--- a/src/NodeHttpServer.ts
++++ b/src/NodeHttpServer.ts
+@@ -213,11 +213,46 @@ export const makeUpgradeHandler = <
+         lazyWss,
+         (wss) =>
+           Effect.acquireRelease(
+-            Effect.callback<globalThis.WebSocket>((resume) =>
+-              wss.handleUpgrade(nodeRequest, socket, head, (ws) => {
+-                resume(Effect.succeed(ws as any))
+-              })
+-            ),
++            Effect.callback<globalThis.WebSocket>((resume) => {
++              // ws does not call back when it rejects a handshake or the peer
++              // has already gone away. Acquisition is uninterruptible, so the
++              // socket must settle it explicitly to release the session lease.
++              let settled = false
++              const cleanup = () => {
++                socket.off("close", abort)
++                socket.off("error", abort)
++              }
++              const abort = () => {
++                if (settled) return
++                settled = true
++                cleanup()
++                resume(Effect.interrupt)
++              }
++              socket.once("close", abort)
++              socket.once("error", abort)
++              if (socket.destroyed || !socket.readable || !socket.writable) {
++                abort()
++              } else {
++                try {
++                  wss.handleUpgrade(nodeRequest, socket, head, (ws) => {
++                    if (settled) {
++                      ws.terminate()
++                      return
++                    }
++                    settled = true
++                    cleanup()
++                    resume(Effect.succeed(ws as any))
++                  })
++                } catch (cause) {
++                  if (!settled) {
++                    settled = true
++                    cleanup()
++                    resume(Effect.die(cause))
++                  }
++                }
++              }
++              return Effect.sync(cleanup)
++            }),
+             (ws) => Effect.sync(() => ws.close())
+           )
+       ))

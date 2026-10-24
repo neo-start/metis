@@ -85,6 +85,13 @@ those descendants. When updating Effect, keep these behaviors and run
 `apps/server/src/platform/effectProcessSignals.test.ts` against the installed
 runtime, including its Windows cases.
 
+The pinned `@effect/platform-node` patch settles WebSocket acquisition when a
+handshake is rejected or the transport closes before upgrade completes. Without
+it, an uninterruptible acquisition retains authenticated connection capacity
+indefinitely. Keep both the source and distributed JavaScript patch when updating
+Effect, and run `apps/server/src/wsRpc.connectionLifecycle.test.ts` and
+`apps/server/src/nodeHttpServer.test.ts` against the installed runtime.
+
 Process-tree teardown captures POSIX start times and Windows creation times for
 checking descendants during delayed cleanup and exit verification. Start times
 add evidence to the existing command-line comparison. POSIX start times have

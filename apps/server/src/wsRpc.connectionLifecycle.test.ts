@@ -1,4 +1,5 @@
 import http from "node:http";
+import net from "node:net";
 
 import {
   WS_BOOTSTRAP_METHOD,
@@ -17,8 +18,8 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Duration, Effect, Exit, Layer, Schema, Scope } from "effect";
 import { HttpRouter, HttpServerRequest } from "effect/unstable/http";
 import { Rpc, RpcGroup, RpcSerialization, RpcServer } from "effect/unstable/rpc";
-import { afterEach, describe, expect, it } from "vitest";
-import WebSocket, { type RawData } from "ws";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import WebSocket, { WebSocketServer, type RawData } from "ws";
 
 import { ServerAuth, AuthError, type ServerAuthShape } from "./auth/Services/ServerAuth";
 import { ServerSecretStoreLive } from "./auth/Layers/ServerSecretStore";
@@ -808,6 +809,82 @@ describe("websocket permessage-deflate negotiation", () => {
 });
 
 describe("websocketRpcRouteLayer connection lifecycle", () => {
+  it("releases authenticated capacity when the WebSocket handshake is rejected", async () => {
+    const server = await startTestServer();
+    try {
+      const issued = await Effect.runPromise(server.sessions.issue());
+      for (let index = 0; index <= MAX_AUTHENTICATED_CONNECTIONS_PER_SESSION; index += 1) {
+        const ticket = await Effect.runPromise(
+          server.sessions.issueWebSocketToken(issued.sessionId),
+        );
+        const url = new URL(featureSocketUrl(server, ticket.token));
+        const response = await new Promise<string>((resolve, reject) => {
+          const socket = net.createConnection({ host: url.hostname, port: Number(url.port) });
+          let received = "";
+          socket.setTimeout(2_000, () => socket.destroy(new Error("Handshake timed out")));
+          socket.on("error", reject);
+          socket.on("data", (chunk) => {
+            received += chunk.toString();
+          });
+          socket.on("close", () => resolve(received));
+          socket.on("connect", () =>
+            socket.write(
+              [
+                `GET ${url.pathname}${url.search} HTTP/1.1`,
+                `Host: ${url.host}`,
+                "Connection: Upgrade",
+                "Upgrade: websocket",
+                "Sec-WebSocket-Version: 13",
+                "Sec-WebSocket-Key: invalid-key",
+                "",
+                "",
+              ].join("\r\n"),
+            ),
+          );
+        });
+        expect(response).toContain("HTTP/1.1 400");
+        await waitForObserved(() => server.transportFinalizers.count === index + 1);
+        const active = await Effect.runPromise(server.sessions.listActive());
+        expect(active.find((session) => session.sessionId === issued.sessionId)?.connected).toBe(
+          false,
+        );
+      }
+      const replacement = await connectExistingSession(server, issued.sessionId);
+      await expect(ping(replacement.socket)).resolves.toBeUndefined();
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("releases authenticated capacity when the transport disappears during upgrade", async () => {
+    const server = await startTestServer();
+    const originalUpgrade = WebSocketServer.prototype.handleUpgrade;
+    const upgrade = vi.spyOn(WebSocketServer.prototype, "handleUpgrade");
+    try {
+      const issued = await Effect.runPromise(server.sessions.issue());
+      for (let index = 0; index <= MAX_AUTHENTICATED_CONNECTIONS_PER_SESSION; index += 1) {
+        upgrade.mockImplementationOnce(
+          function (this: WebSocketServer, request, socket, head, callback) {
+            socket.destroy();
+            originalUpgrade.call(this, request, socket, head, callback);
+          },
+        );
+        await expect(connectExistingSession(server, issued.sessionId)).rejects.toThrow();
+        await waitForObserved(() => server.transportFinalizers.count === index + 1);
+        const active = await Effect.runPromise(server.sessions.listActive());
+        expect(active.find((session) => session.sessionId === issued.sessionId)?.connected).toBe(
+          false,
+        );
+      }
+      upgrade.mockRestore();
+      const replacement = await connectExistingSession(server, issued.sessionId);
+      await expect(ping(replacement.socket)).resolves.toBeUndefined();
+    } finally {
+      upgrade.mockRestore();
+      await server.close();
+    }
+  });
+
   it("exposes the authenticated session to RPC handlers for the connection lifetime", async () => {
     const server = await startTestServer();
     try {

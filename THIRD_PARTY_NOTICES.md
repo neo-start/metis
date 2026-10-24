@@ -81,3 +81,16 @@ baseline. The port reuses Metis full-history pagination and session ownership,
 validates native turn IDs before mutation, and returns the hydrated retained
 prefix after an acknowledged paginated `thread/revert`. Legacy histories retain
 `thread/rollback`; uncertain mutations are not retried.
+
+## WebSocket upgrade cancellation (2026-10-24)
+
+The pinned `@effect/platform-node` patch adapts Effect-TS/effect-smol
+`packages/platform-node/src/NodeHttpServer.ts` and its distributed JavaScript
+at `8881a9b606d84a6f5eb6615279138322984f5368` (MIT). It settles rejected or
+aborted WebSocket acquisition, removes temporary listeners, and closes any
+late successful upgrade so authenticated session leases cannot remain occupied.
+Synara `SessionCredentialService.ts` / `wsRpc.ts` at
+`ec3b1f6ef9c2f656f26dd9711339fe1265d8cb5c` and T3 server sources at
+`f5ef0ddb90a8c36584e181b1913e7b8a5df30ffc` were reviewed; no replacement
+authentication or admission implementation was introduced. Upstream licenses
+remain unchanged.

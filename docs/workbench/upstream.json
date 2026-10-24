@@ -1,4 +1,13 @@
 {
+  "webSocketUpgradeCancellation": {
+    "date": "2026-10-24",
+    "effectCommit": "8881a9b606d84a6f5eb6615279138322984f5368",
+    "source": "packages/platform-node/src/NodeHttpServer.ts",
+    "patch": "patches/@effect%2Fplatform-node@8881a9b.patch",
+    "reviewedSynaraCommit": "ec3b1f6ef9c2f656f26dd9711339fe1265d8cb5c",
+    "reviewedT3Commit": "f5ef0ddb90a8c36584e181b1913e7b8a5df30ffc",
+    "changes": "Settle interrupted or rejected upgrade acquisition; release authentication leases through existing finalizers. Preserve connection caps, authentication, compression and payload limits. Patch source and distributed JavaScript."
+  },
   "synara": {
     "url": "https://github.com/Emanuele-web04/synara",
     "commit": "eaa61eded31b6755d4f30ba8eabc5d905cf817cb",
