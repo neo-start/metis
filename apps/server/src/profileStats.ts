@@ -28,6 +28,7 @@ const SKILL_RESULT_LIMIT = 12;
 const PROVIDER_KINDS = new Set<ProviderKind>([
   "codex",
   "codexSecondary",
+  "codexTertiary",
   "claudeAgent",
   "claudeOpenRouter",
   "cursor",

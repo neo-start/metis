@@ -52,6 +52,7 @@ export type ProviderModelPrefetchSettings = Pick<
 export const NEW_THREAD_MODEL_PREFETCH_PROVIDERS: ReadonlyArray<Exclude<ProviderKind, "droid">> = [
   "codex",
   "codexSecondary",
+  "codexTertiary",
   "claudeAgent",
   "claudeOpenRouter",
   "cursor",
@@ -147,6 +148,8 @@ export function providerModelsPrefetchQueryOptions(input: {
       return providerModelsQueryOptions({ provider: "codex", priority });
     case "codexSecondary":
       return providerModelsQueryOptions({ provider: "codexSecondary", priority });
+    case "codexTertiary":
+      return providerModelsQueryOptions({ provider: "codexTertiary", priority });
     case "cursor":
       return providerModelsQueryOptions({
         provider: "cursor",

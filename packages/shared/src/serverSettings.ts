@@ -63,6 +63,13 @@ export function providerStartOptionsFromServerSettings(
       ...(providers.codexSecondary.homePath ? { homePath: providers.codexSecondary.homePath } : {}),
       runtimeHost: "backend",
     },
+    codexTertiary: {
+      ...(providers.codexTertiary.binaryPath
+        ? { binaryPath: providers.codexTertiary.binaryPath }
+        : {}),
+      ...(providers.codexTertiary.homePath ? { homePath: providers.codexTertiary.homePath } : {}),
+      runtimeHost: "backend",
+    },
     claudeAgent: {
       ...(providers.claudeAgent.binaryPath ? { binaryPath: providers.claudeAgent.binaryPath } : {}),
       enableArtifacts: providers.claudeAgent.enableArtifacts,

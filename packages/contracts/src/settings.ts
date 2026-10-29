@@ -34,13 +34,20 @@ export type CodexServerProviderSettings = typeof CodexServerProviderSettings.Typ
 // The second Codex account defaults to its own home so it never silently
 // falls back to the primary account's ~/.codex credentials.
 export const CODEX_SECONDARY_DEFAULT_HOME_PATH = "~/.codex-secondary";
+export const CODEX_TERTIARY_DEFAULT_HOME_PATH = "~/.codex-tertiary";
 
 export const CodexSecondaryServerProviderSettings = Schema.Struct({
   ...CodexServerProviderSettingsBase,
   enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(() => false)),
   homePath: StringSetting.pipe(Schema.withDecodingDefault(() => CODEX_SECONDARY_DEFAULT_HOME_PATH)),
 });
+export const CodexTertiaryServerProviderSettings = Schema.Struct({
+  ...CodexServerProviderSettingsBase,
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(() => false)),
+  homePath: StringSetting.pipe(Schema.withDecodingDefault(() => CODEX_TERTIARY_DEFAULT_HOME_PATH)),
+});
 export type CodexSecondaryServerProviderSettings = typeof CodexSecondaryServerProviderSettings.Type;
+export type CodexTertiaryServerProviderSettings = typeof CodexTertiaryServerProviderSettings.Type;
 
 export const ClaudeCacheReviewDefault = Schema.Literals(["ask", "continue", "compact"]);
 export type ClaudeCacheReviewDefault = typeof ClaudeCacheReviewDefault.Type;
@@ -146,6 +153,7 @@ export const ServerSettings = Schema.Struct({
     codexSecondary: CodexSecondaryServerProviderSettings.pipe(
       Schema.withDecodingDefault(() => ({})),
     ),
+    codexTertiary: CodexTertiaryServerProviderSettings.pipe(Schema.withDecodingDefault(() => ({}))),
     claudeAgent: ClaudeServerProviderSettings.pipe(Schema.withDecodingDefault(() => ({}))),
     claudeOpenRouter: ClaudeOpenRouterServerProviderSettings.pipe(
       Schema.withDecodingDefault(() => ({})),
@@ -205,6 +213,12 @@ export const ServerSettingsPatch = Schema.Struct({
         }),
       ),
       codexSecondary: Schema.optionalKey(
+        Schema.Struct({
+          ...ProviderSettingsBasePatch,
+          homePath: Schema.optionalKey(StringSetting),
+        }),
+      ),
+      codexTertiary: Schema.optionalKey(
         Schema.Struct({
           ...ProviderSettingsBasePatch,
           homePath: Schema.optionalKey(StringSetting),

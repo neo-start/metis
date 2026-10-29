@@ -159,6 +159,7 @@ const allProvidersDisabledSettings = {
   providers: {
     codex: { enabled: false },
     codexSecondary: { enabled: false },
+    codexTertiary: { enabled: false },
     claudeAgent: { enabled: false },
     claudeOpenRouter: { enabled: false },
     cursor: { enabled: false },
@@ -176,6 +177,7 @@ const allProvidersDisabledServerSettings = {
   providers: {
     codex: { ...DEFAULT_SERVER_SETTINGS.providers.codex, enabled: false },
     codexSecondary: { ...DEFAULT_SERVER_SETTINGS.providers.codexSecondary, enabled: false },
+    codexTertiary: { ...DEFAULT_SERVER_SETTINGS.providers.codexTertiary, enabled: false },
     claudeAgent: { ...DEFAULT_SERVER_SETTINGS.providers.claudeAgent, enabled: false },
     claudeOpenRouter: { ...DEFAULT_SERVER_SETTINGS.providers.claudeOpenRouter, enabled: false },
     cursor: { ...DEFAULT_SERVER_SETTINGS.providers.cursor, enabled: false },
@@ -806,7 +808,11 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
           return yield* providerHealth.getStatuses;
         }).pipe(Effect.provide(layer));
 
-        assert.strictEqual(statuses.length, 1);
+        assert.deepEqual(
+          statuses.map((status) => status.provider),
+          ["codexSecondary", "codexTertiary"],
+        );
+        assert.strictEqual(statuses[1]?.available, false);
         assert.strictEqual(statuses[0]?.provider, "codexSecondary");
         assert.strictEqual(statuses[0]?.available, false);
         assert.strictEqual(statuses[0]?.message, "Provider is disabled in Metis settings.");

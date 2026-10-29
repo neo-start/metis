@@ -35,11 +35,16 @@ import type { ProviderUsageContext } from "./types";
 const LOCAL_ARCHIVE_PROVIDERS: ReadonlySet<ProviderKind> = new Set([
   "codex",
   "codexSecondary",
+  "codexTertiary",
   "claudeAgent",
 ]);
 
 const providerChildKind = (provider: ProviderKind): ProviderChildKind =>
-  isClaudeSdkProviderKind(provider) ? "claude" : provider === "codexSecondary" ? "codex" : provider;
+  isClaudeSdkProviderKind(provider)
+    ? "claude"
+    : provider === "codexSecondary" || provider === "codexTertiary"
+      ? "codex"
+      : provider;
 
 function buildContext(): ProviderUsageContext {
   return {
@@ -298,6 +303,7 @@ export const listProviderUsage = Effect.fn(function* (input: ServerListProviderU
           codexAccounts: {
             codex: settings.providers.codex,
             codexSecondary: settings.providers.codexSecondary,
+            codexTertiary: settings.providers.codexTertiary,
           },
         },
         {

@@ -27,6 +27,7 @@ describe("provider usage metadata", () => {
     expect([...PROVIDER_USAGE_PROVIDERS]).toEqual([
       "codex",
       "codexSecondary",
+      "codexTertiary",
       "claudeAgent",
       "cursor",
       "antigravity",

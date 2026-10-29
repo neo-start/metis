@@ -237,6 +237,7 @@ import {
   resolveActiveThreadTitle,
   type TurnDispatchSettings,
   resolveActiveTurnLiveDiffState,
+  resolveActiveTurnLiveDiffFilePaths,
   resolveCommittedProviderModel,
   resolveDefaultEnvironmentPanelOpen,
   resolveDraftFallbackModelSelection,
@@ -2365,6 +2366,15 @@ export default function ChatView({
   const activeTurnLiveDiffState = useMemo(
     () =>
       resolveActiveTurnLiveDiffState({
+        latestTurnId: activeLatestTurn?.turnId ?? null,
+        turnDiffSummaries,
+        workLogEntries,
+      }),
+    [activeLatestTurn?.turnId, turnDiffSummaries, workLogEntries],
+  );
+  const activeTurnLiveDiffFilePaths = useMemo(
+    () =>
+      resolveActiveTurnLiveDiffFilePaths({
         latestTurnId: activeLatestTurn?.turnId ?? null,
         turnDiffSummaries,
         workLogEntries,
@@ -4795,12 +4805,15 @@ export default function ChatView({
     },
     [diffEnvironmentPending, navigate, onOpenTurnDiffPanel, threadId],
   );
-  const onReviewComposerLiveChanges = useCallback(() => {
-    if (!activeTurnLiveDiffState.turnId) {
-      return;
-    }
-    onOpenTurnDiff(activeTurnLiveDiffState.turnId);
-  }, [activeTurnLiveDiffState.turnId, onOpenTurnDiff]);
+  const onReviewComposerLiveChanges = useCallback(
+    (filePath?: string) => {
+      if (!activeTurnLiveDiffState.turnId) {
+        return;
+      }
+      onOpenTurnDiff(activeTurnLiveDiffState.turnId, filePath);
+    },
+    [activeTurnLiveDiffState.turnId, onOpenTurnDiff],
+  );
   const onNavigateToThread = useCallback(
     (nextThreadId: ThreadId) => {
       void navigate({
@@ -5476,6 +5489,7 @@ export default function ChatView({
               ) : null}
               {showComposerLiveChangesHeader ? (
                 <ComposerLiveChangesHeader
+                  filePaths={activeTurnLiveDiffFilePaths}
                   fileCount={activeTurnLiveDiffState.fileCount}
                   additions={activeTurnLiveDiffState.additions}
                   deletions={activeTurnLiveDiffState.deletions}

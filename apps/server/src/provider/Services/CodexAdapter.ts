@@ -36,8 +36,15 @@ export class CodexAdapter extends ServiceMap.Service<CodexAdapter, CodexAdapterS
 export interface CodexSecondaryAdapterShape extends ProviderAdapterShape<ProviderAdapterError> {
   readonly provider: "codexSecondary";
 }
+export interface CodexTertiaryAdapterShape extends ProviderAdapterShape<ProviderAdapterError> {
+  readonly provider: "codexTertiary";
+}
 
 export class CodexSecondaryAdapter extends ServiceMap.Service<
   CodexSecondaryAdapter,
   CodexSecondaryAdapterShape
 >()("synara/provider/Services/CodexSecondaryAdapter") {}
+export class CodexTertiaryAdapter extends ServiceMap.Service<
+  CodexTertiaryAdapter,
+  CodexTertiaryAdapterShape
+>()("synara/provider/Services/CodexTertiaryAdapter") {}

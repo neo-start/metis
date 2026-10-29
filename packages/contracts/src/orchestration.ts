@@ -68,9 +68,10 @@ export const ORCHESTRATION_WS_CHANNELS = {
 
 export const ProviderKind = Schema.Literals([
   "codex",
-  // A second Codex instance with its own CODEX_HOME, so two ChatGPT accounts
-  // can run side by side. Shares Codex models, options and runtime.
+  // Additional Codex accounts have independent CODEX_HOME directories.
+  // They share Codex models, options and runtime behavior.
   "codexSecondary",
+  "codexTertiary",
   "claudeAgent",
   "claudeOpenRouter",
   "cursor",
@@ -84,13 +85,13 @@ export const ProviderKind = Schema.Literals([
 export type ProviderKind = typeof ProviderKind.Type;
 
 /** Provider kinds backed by the Codex app-server runtime (one per ChatGPT account). */
-export const CODEX_PROVIDER_KINDS = ["codex", "codexSecondary"] as const;
+export const CODEX_PROVIDER_KINDS = ["codex", "codexSecondary", "codexTertiary"] as const;
 export type CodexProviderKind = (typeof CODEX_PROVIDER_KINDS)[number];
 
 export function isCodexProviderKind(
   provider: string | null | undefined,
 ): provider is CodexProviderKind {
-  return provider === "codex" || provider === "codexSecondary";
+  return provider === "codex" || provider === "codexSecondary" || provider === "codexTertiary";
 }
 
 /** Claude SDK runtimes with separate authentication and model catalogs. */
@@ -155,7 +156,13 @@ export const CodexSecondaryModelSelection = Schema.Struct({
   model: TrimmedNonEmptyString,
   options: Schema.optional(CodexModelOptions),
 });
+export const CodexTertiaryModelSelection = Schema.Struct({
+  provider: Schema.Literal("codexTertiary"),
+  model: TrimmedNonEmptyString,
+  options: Schema.optional(CodexModelOptions),
+});
 export type CodexSecondaryModelSelection = typeof CodexSecondaryModelSelection.Type;
+export type CodexTertiaryModelSelection = typeof CodexTertiaryModelSelection.Type;
 
 export const ClaudeModelSelection = Schema.Struct({
   provider: Schema.Literal("claudeAgent"),
@@ -224,6 +231,7 @@ export type DevinModelSelection = typeof DevinModelSelection.Type;
 export const ModelSelection = Schema.Union([
   CodexModelSelection,
   CodexSecondaryModelSelection,
+  CodexTertiaryModelSelection,
   ClaudeModelSelection,
   ClaudeOpenRouterModelSelection,
   CursorModelSelection,
@@ -247,6 +255,10 @@ export const CodexProviderStartOptions = Schema.Struct({
 
 // Independent hosting currently supports the primary Codex account only.
 export const CodexSecondaryProviderStartOptions = Schema.Struct({
+  ...CodexProviderStartOptions.fields,
+  runtimeHost: Schema.optional(Schema.Literal("backend")),
+});
+export const CodexTertiaryProviderStartOptions = Schema.Struct({
   ...CodexProviderStartOptions.fields,
   runtimeHost: Schema.optional(Schema.Literal("backend")),
 });
@@ -297,6 +309,7 @@ export const DevinProviderStartOptions = Schema.Struct({
 export const ProviderStartOptions = Schema.Struct({
   codex: Schema.optional(CodexProviderStartOptions),
   codexSecondary: Schema.optional(CodexSecondaryProviderStartOptions),
+  codexTertiary: Schema.optional(CodexTertiaryProviderStartOptions),
   claudeAgent: Schema.optional(ClaudeProviderStartOptions),
   claudeOpenRouter: Schema.optional(ClaudeOpenRouterProviderStartOptions),
   cursor: Schema.optional(CursorProviderStartOptions),

@@ -154,6 +154,7 @@ describe("server-backed provider enablement", () => {
 
     expect(patch.providers).toEqual({
       codexSecondary: { enabled: true },
+      codexTertiary: { enabled: true },
       pi: { enabled: false },
     });
   });
@@ -167,7 +168,10 @@ describe("server-backed provider enablement", () => {
       DEFAULT_SERVER_SETTINGS_VIEW,
     );
 
-    expect(patch.providers).toEqual({ codexSecondary: { enabled: true } });
+    expect(patch.providers).toEqual({
+      codexSecondary: { enabled: true },
+      codexTertiary: { enabled: true },
+    });
   });
 
   it("invalidates discovery for initial and changed streamed provider settings", () => {
@@ -487,6 +491,7 @@ describe("resolveAppModelSelection", () => {
         {
           codex: ["galapagos-alpha"],
           codexSecondary: [],
+          codexTertiary: [],
           claudeAgent: [],
           claudeOpenRouter: [],
           cursor: [],
@@ -509,6 +514,7 @@ describe("resolveAppModelSelection", () => {
         {
           codex: [],
           codexSecondary: [],
+          codexTertiary: [],
           claudeAgent: [],
           claudeOpenRouter: [],
           cursor: [],
@@ -531,6 +537,7 @@ describe("resolveAppModelSelection", () => {
         {
           codex: [],
           codexSecondary: [],
+          codexTertiary: [],
           claudeAgent: [],
           claudeOpenRouter: [],
           cursor: [],
@@ -553,6 +560,7 @@ describe("resolveAppModelSelection", () => {
         {
           codex: [],
           codexSecondary: [],
+          codexTertiary: [],
           claudeAgent: [],
           claudeOpenRouter: [],
           cursor: [],
@@ -575,6 +583,7 @@ describe("resolveAppModelSelection", () => {
         {
           codex: [],
           codexSecondary: [],
+          codexTertiary: [],
           claudeAgent: [],
           claudeOpenRouter: [],
           cursor: [],
@@ -734,7 +743,9 @@ describe("getProviderStartOptions", () => {
         codexBinaryPath: "",
         codexHomePath: "/Users/you/.codex",
         codexSecondaryBinaryPath: "",
+        codexTertiaryBinaryPath: "",
         codexSecondaryHomePath: "",
+        codexTertiaryHomePath: "",
         cursorApiEndpoint: "http://localhost:3000",
         cursorBinaryPath: "/usr/local/bin/agent",
         antigravityBinaryPath: "/usr/local/bin/agy",
@@ -778,7 +789,9 @@ describe("getProviderStartOptions", () => {
         codexBinaryPath: "",
         codexHomePath: "",
         codexSecondaryBinaryPath: "",
+        codexTertiaryBinaryPath: "",
         codexSecondaryHomePath: "",
+        codexTertiaryHomePath: "",
         cursorApiEndpoint: "",
         cursorBinaryPath: "",
         antigravityBinaryPath: "",
@@ -802,7 +815,9 @@ describe("getProviderStartOptions", () => {
         codexBinaryPath: "codex",
         codexHomePath: "",
         codexSecondaryBinaryPath: "",
+        codexTertiaryBinaryPath: "",
         codexSecondaryHomePath: "",
+        codexTertiaryHomePath: "",
         cursorApiEndpoint: "",
         cursorBinaryPath: "cursor-agent",
         antigravityBinaryPath: "agy",
@@ -823,6 +838,7 @@ describe("provider-indexed custom model settings", () => {
   const settings = {
     customCodexModels: ["custom/codex-model"],
     customCodexSecondaryModels: [],
+    customCodexTertiaryModels: [],
     customClaudeOpenRouterModels: [],
     customClaudeModels: ["claude/custom-opus"],
     customCursorModels: ["cursor/custom-model"],
@@ -871,6 +887,7 @@ describe("provider-indexed custom model settings", () => {
     const defaults = {
       customCodexModels: ["default/codex-model"],
       customCodexSecondaryModels: [],
+      customCodexTertiaryModels: [],
       customClaudeOpenRouterModels: [],
       customClaudeModels: ["claude/default-opus"],
       customCursorModels: ["cursor/default-model"],
@@ -955,6 +972,7 @@ describe("provider-indexed custom model settings", () => {
     expect(getCustomModelsByProvider(settings)).toEqual({
       codex: ["custom/codex-model"],
       codexSecondary: [],
+      codexTertiary: [],
       claudeAgent: ["claude/custom-opus"],
       claudeOpenRouter: [],
       cursor: ["cursor/custom-model"],
@@ -1002,6 +1020,7 @@ describe("provider-indexed custom model settings", () => {
     const modelOptionsByProvider = getCustomModelOptionsByProvider({
       customCodexModels: ["  custom/codex-model ", "gpt-5.4", "custom/codex-model"],
       customCodexSecondaryModels: [],
+      customCodexTertiaryModels: [],
       customClaudeOpenRouterModels: [],
       customClaudeModels: [" sonnet ", "claude/custom-opus", "claude/custom-opus"],
       customCursorModels: [" composer-2 ", "cursor/custom-model", "cursor/custom-model"],
@@ -1170,7 +1189,9 @@ describe("AppSettingsSchema", () => {
       codexBinaryPath: "/usr/local/bin/codex",
       codexHomePath: "",
       codexSecondaryBinaryPath: "",
+      codexTertiaryBinaryPath: "",
       codexSecondaryHomePath: "~/.codex-secondary",
+      codexTertiaryHomePath: "~/.codex-secondary",
       grokBinaryPath: "",
       defaultThreadEnvMode: "local",
       confirmThreadDelete: false,

@@ -213,6 +213,7 @@ export const AGENT_MENTION_ALIASES_BY_PROVIDER: Record<
 > = {
   codex: CODEX_AGENT_MENTION_ALIASES,
   codexSecondary: CODEX_AGENT_MENTION_ALIASES,
+  codexTertiary: CODEX_AGENT_MENTION_ALIASES,
   claudeAgent: CLAUDE_AGENT_MENTION_ALIASES,
   // Claude model aliases pin Anthropic models; the OpenRouter runtime inherits GLM instead.
   claudeOpenRouter: {},
@@ -234,6 +235,7 @@ export const AGENT_MENTION_ALIASES: Record<string, AgentAliasDefinition> = Objec
 const AGENT_MENTION_AUTOCOMPLETE_ALIASES_BY_PROVIDER: Record<ProviderKind, readonly string[]> = {
   codex: ["5.5", "5.4", "mini", "5.3-codex", "spark", "5.2", "5.2-codex"],
   codexSecondary: ["5.5", "5.4", "mini", "5.3-codex", "spark", "5.2", "5.2-codex"],
+  codexTertiary: ["5.5", "5.4", "mini", "5.3-codex", "spark", "5.2", "5.2-codex"],
   claudeAgent: ["explore", "review", "build", "plan"],
   claudeOpenRouter: [],
   cursor: [],

@@ -225,6 +225,8 @@ export function resolvePromptEffortFromModelSelection(
       return null;
     case "codex":
     case "codexSecondary":
+
+    case "codexTertiary":
       return modelSelection.options?.reasoningEffort ?? null;
     case "claudeAgent":
     case "claudeOpenRouter":

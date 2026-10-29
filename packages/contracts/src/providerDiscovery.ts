@@ -10,6 +10,7 @@ import { ProviderOptionDescriptor } from "./model";
 const ProviderDiscoveryKind = Schema.Literals([
   "codex",
   "codexSecondary",
+  "codexTertiary",
   "claudeAgent",
   "claudeOpenRouter",
   "cursor",

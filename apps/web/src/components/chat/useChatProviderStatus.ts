@@ -44,6 +44,8 @@ function getProviderStartOptionsCustomBinaryPath(
       return normalizeCustomBinaryPath(providerOptions?.codex?.binaryPath);
     case "codexSecondary":
       return normalizeCustomBinaryPath(providerOptions?.codexSecondary?.binaryPath);
+    case "codexTertiary":
+      return normalizeCustomBinaryPath(providerOptions?.codexTertiary?.binaryPath);
     case "claudeAgent":
       return normalizeCustomBinaryPath(providerOptions?.claudeAgent?.binaryPath);
     case "claudeOpenRouter":

@@ -67,6 +67,7 @@ const OpenCodeProviderIcon = ({
 export const PROVIDER_ICON_COMPONENT_BY_PROVIDER: Record<ProviderKind, Icon> = {
   codex: OpenAI,
   codexSecondary: OpenAI,
+  codexTertiary: OpenAI,
   claudeAgent: ClaudeAI,
   claudeOpenRouter: ClaudeAI,
   cursor: CursorIcon,

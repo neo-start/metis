@@ -162,3 +162,7 @@ The inherited radius base is 0.625rem. Controls use the large radius; small badg
 - **Don't** turn the home page's column arrangement or large heading into a rule for every application screen.
 - **Don't** claim rendered contrast, responsive fit, or live provider success from this source-only record.
 - **Don't** equate a generated pairing link or remote-URL field with a deployed cloud service, working tunnel, QR flow, or native phone app.
+
+## Live changed files above the composer
+
+The active-turn change strip shows file paths below its summary by default. Reuse the stacked panel chrome and shared file icons, UI typography, and existing turn-diff navigation. Keep the file list bounded and scrollable, wrap long paths, and make each file reviewable only when its turn diff is available. Provisional paths come only from the current turn’s file-edit activity; a completed diff is authoritative, including an empty diff.

@@ -42,6 +42,7 @@ function ClaudeTraitsPickerHarness(props: {
     customModelsByProvider: {
       codex: [],
       codexSecondary: [],
+      codexTertiary: [],
       claudeAgent: [],
       claudeOpenRouter: [],
       cursor: [],
@@ -674,6 +675,7 @@ function OpenCodeTraitsPickerHarness(props: {
     customModelsByProvider: {
       codex: [],
       codexSecondary: [],
+      codexTertiary: [],
       claudeAgent: [],
       claudeOpenRouter: [],
       cursor: [],

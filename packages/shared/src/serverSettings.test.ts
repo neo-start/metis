@@ -20,6 +20,7 @@ describe("providerStartOptionsFromServerSettings", () => {
           binaryPath: "",
           homePath: "",
         },
+        codexTertiary: DEFAULT_SERVER_SETTINGS.providers.codexTertiary,
         codexSecondary: {
           ...DEFAULT_SERVER_SETTINGS.providers.codexSecondary,
           binaryPath: "",

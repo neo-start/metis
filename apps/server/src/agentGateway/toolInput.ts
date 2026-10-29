@@ -12,6 +12,7 @@ import { AGENT_GATEWAY_TARGET_OPTIONS_DESCRIPTION } from "./targetResolver.ts";
 export const PROVIDER_KINDS: ReadonlyArray<ProviderKind> = [
   "codex",
   "codexSecondary",
+  "codexTertiary",
   "claudeAgent",
   "claudeOpenRouter",
   "cursor",
