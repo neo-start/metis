@@ -170,6 +170,7 @@ export type DevinModelOptions = typeof DevinModelOptions.Type;
 export const ProviderModelOptions = Schema.Struct({
   codex: Schema.optional(CodexModelOptions),
   codexSecondary: Schema.optional(CodexModelOptions),
+  codexTertiary: Schema.optional(CodexModelOptions),
   claudeAgent: Schema.optional(ClaudeModelOptions),
   claudeOpenRouter: Schema.optional(ClaudeOpenRouterModelOptions),
   cursor: Schema.optional(CursorModelOptions),
@@ -650,6 +651,7 @@ const CODEX_MODEL_OPTIONS = [
 export const MODEL_OPTIONS_BY_PROVIDER = {
   codex: CODEX_MODEL_OPTIONS,
   codexSecondary: CODEX_MODEL_OPTIONS,
+  codexTertiary: CODEX_MODEL_OPTIONS,
   claudeOpenRouter: [
     {
       slug: "z-ai/glm-5.3",
@@ -1196,6 +1198,7 @@ export type ProviderWithDefaultModel = Exclude<ProviderKind, "pi">;
 export const DEFAULT_MODEL_BY_PROVIDER: Record<ProviderWithDefaultModel, ModelSlug> = {
   codex: "gpt-6-astra",
   codexSecondary: "gpt-6-astra",
+  codexTertiary: "gpt-6-astra",
   claudeAgent: "claude-sonnet-5",
   claudeOpenRouter: "z-ai/glm-5.3",
   cursor: "auto",
@@ -1243,6 +1246,7 @@ const CODEX_MODEL_SLUG_ALIASES: Record<string, ModelSlug> = {
 export const MODEL_SLUG_ALIASES_BY_PROVIDER: Record<ProviderKind, Record<string, ModelSlug>> = {
   codex: CODEX_MODEL_SLUG_ALIASES,
   codexSecondary: CODEX_MODEL_SLUG_ALIASES,
+  codexTertiary: CODEX_MODEL_SLUG_ALIASES,
   claudeOpenRouter: { "glm-5.3": "z-ai/glm-5.3" },
   claudeAgent: {
     fable: "claude-fable-5-1",
@@ -1426,6 +1430,7 @@ Object.assign(MODEL_CAPABILITIES_INDEX.grok, {
 export const PROVIDER_DISPLAY_NAMES: Record<ProviderKind, string> = {
   codex: "Codex",
   codexSecondary: "codex-personal",
+  codexTertiary: "codex-third",
   claudeAgent: "Claude",
   claudeOpenRouter: "GLM (Claude SDK)",
   cursor: "Cursor",

@@ -63,6 +63,7 @@ function serverSettings(overrides: Partial<ServerSettings["providers"]> = {}): S
     providers: {
       codex: { ...provider, binaryPath: "codex", homePath: "", runtimeHost: "backend" },
       codexSecondary: { ...provider, binaryPath: "codex", homePath: "" },
+      codexTertiary: { ...provider, binaryPath: "codex", homePath: "" },
       claudeAgent: {
         ...provider,
         binaryPath: "claude",

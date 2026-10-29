@@ -89,6 +89,7 @@ export interface SynaraHarnessPolicyDeliveryState {
 const PROVIDERS_WITH_THREAD_SCOPED_SYNARA_MCP = new Set<ProviderKind>([
   "codex",
   "codexSecondary",
+  "codexTertiary",
   "claudeAgent",
   "claudeOpenRouter",
   "antigravity",

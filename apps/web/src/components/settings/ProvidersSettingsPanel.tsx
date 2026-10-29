@@ -78,7 +78,9 @@ type ProviderInstallTextKey =
   | "codexBinaryPath"
   | "codexHomePath"
   | "codexSecondaryBinaryPath"
+  | "codexTertiaryBinaryPath"
   | "codexSecondaryHomePath"
+  | "codexTertiaryHomePath"
   | "cursorBinaryPath"
   | "cursorApiEndpoint"
   | "devinBinaryPath"
@@ -196,6 +198,39 @@ const PROVIDER_INSTALL_SETTINGS: readonly ProviderInstallSettings[] = [
       {
         kind: "text",
         settingsKey: "codexSecondaryBinaryPath",
+        label: "Codex binary path",
+        placeholder: "Codex binary path",
+        description: (
+          <>
+            Leave blank to use <code>codex</code> from your PATH.
+          </>
+        ),
+      },
+    ],
+  },
+  {
+    provider: "codexTertiary",
+    docs: [
+      { label: "Install", href: "https://help.openai.com/en/articles/11096431" },
+      { label: "Config", href: "https://github.com/openai/codex/blob/main/docs/config.md" },
+    ],
+    fields: [
+      {
+        kind: "text",
+        settingsKey: "codexTertiaryHomePath",
+        label: "CODEX_HOME path",
+        placeholder: "~/.codex-tertiary",
+        description: (
+          <>
+            A separate Codex home for a third ChatGPT account. Sign in once with{" "}
+            <code>CODEX_HOME=~/.codex-tertiary codex login</code>; it never falls back to{" "}
+            <code>~/.codex</code>.
+          </>
+        ),
+      },
+      {
+        kind: "text",
+        settingsKey: "codexTertiaryBinaryPath",
         label: "Codex binary path",
         placeholder: "Codex binary path",
         description: (

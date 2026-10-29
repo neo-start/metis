@@ -1,11 +1,12 @@
 // FILE: codexSecondaryAlias.ts
-// Purpose: Presents a Codex adapter instance as the `codexSecondary` provider (the second
-//          ChatGPT account). Inputs are translated to the Codex shape with the account's own
+// Purpose: Presents independent Codex accounts through the shared Codex adapter.
+//          Inputs are translated to the Codex shape with the account's own
 //          CODEX_HOME; sessions, events and discovery results are relabelled on the way out.
 // Layer: Server provider adapter composition
 
 import {
   CODEX_SECONDARY_DEFAULT_HOME_PATH,
+  CODEX_TERTIARY_DEFAULT_HOME_PATH,
   type ProviderSession,
   type ProviderSessionStartInput,
   type ProviderStartOptions,
@@ -17,48 +18,66 @@ import { Effect, Stream } from "effect";
 import { expandCodexHomePath } from "../codexHomePaths.ts";
 import type { CodexAdapterShape, CodexSecondaryAdapterShape } from "./Services/CodexAdapter.ts";
 
-type CodexProviderStartOptions = NonNullable<ProviderStartOptions["codex"]>;
+type AccountProvider = "codexSecondary" | "codexTertiary";
+type AccountAdapter<P extends AccountProvider> = Omit<CodexAdapterShape, "provider"> & {
+  readonly provider: P;
+};
 
-const SECONDARY = "codexSecondary" as const;
+type CodexProviderStartOptions = NonNullable<ProviderStartOptions["codex"]>;
 
 /** The second account must never fall back to the primary's default ~/.codex home. */
 export function resolveCodexSecondaryAccountOptions(
   options: CodexProviderStartOptions | undefined,
 ): CodexProviderStartOptions {
-  const homePath = options?.homePath?.trim() || CODEX_SECONDARY_DEFAULT_HOME_PATH;
+  return resolveCodexAccountOptions(options, "codexSecondary");
+}
+
+export function resolveCodexAccountOptions(
+  options: CodexProviderStartOptions | undefined,
+  provider: AccountProvider,
+): CodexProviderStartOptions {
+  const homePath =
+    options?.homePath?.trim() ||
+    (provider === "codexTertiary"
+      ? CODEX_TERTIARY_DEFAULT_HOME_PATH
+      : CODEX_SECONDARY_DEFAULT_HOME_PATH);
   return {
     ...(options?.binaryPath ? { binaryPath: options.binaryPath } : {}),
     homePath: expandCodexHomePath(homePath),
   };
 }
 
-function toCodexInput<T>(input: T, account: CodexProviderStartOptions): T {
+function toCodexInput<T>(
+  input: T,
+  account: CodexProviderStartOptions,
+  provider: AccountProvider,
+): T {
   if (input === null || typeof input !== "object") {
     return input;
   }
   const record = input as Record<string, unknown>;
   const next: Record<string, unknown> = { ...record };
-  if (record.provider === SECONDARY) {
+  if (record.provider === provider) {
     next.provider = "codex";
   }
   const selection = record.modelSelection as { readonly provider?: string } | undefined;
-  if (selection?.provider === SECONDARY) {
+  if (selection?.provider === provider) {
     next.modelSelection = { ...selection, provider: "codex" };
   }
   const providerOptions = record.providerOptions as ProviderStartOptions | undefined;
   next.providerOptions = {
     ...providerOptions,
-    codex: resolveCodexSecondaryAccountOptions(providerOptions?.codexSecondary ?? account),
+    codex: resolveCodexAccountOptions(providerOptions?.[provider] ?? account, provider),
   };
   return next as T;
 }
 
-function toSecondaryOutput<T>(value: T): T {
+function toAccountOutput<T>(value: T, provider: AccountProvider): T {
   if (value === null || typeof value !== "object") {
     return value;
   }
   const record = value as Record<string, unknown>;
-  return record.provider === "codex" ? ({ ...record, provider: SECONDARY } as T) : value;
+  return record.provider === "codex" ? ({ ...record, provider } as T) : value;
 }
 
 type AnyFn = (...args: never[]) => unknown;
@@ -67,11 +86,20 @@ export function aliasCodexAdapterAsSecondary(
   base: CodexAdapterShape,
   resolveAccountOptions: () => Promise<CodexProviderStartOptions>,
 ): CodexSecondaryAdapterShape {
+  return aliasCodexAdapterAsAccount(base, resolveAccountOptions, "codexSecondary");
+}
+
+export function aliasCodexAdapterAsAccount<P extends AccountProvider>(
+  base: CodexAdapterShape,
+  resolveAccountOptions: () => Promise<CodexProviderStartOptions>,
+  provider: P,
+): AccountAdapter<P> {
+  const relabelAccountOutput = <T>(value: T): T => toAccountOutput(value, provider);
   // Codex refuses to start when CODEX_HOME is missing, so create the second
   // account's home on first use instead of surfacing a confusing startup error.
   const account = Effect.promise(async () => {
     const options = await resolveAccountOptions();
-    const { homePath } = resolveCodexSecondaryAccountOptions(options);
+    const { homePath } = resolveCodexAccountOptions(options, provider);
     if (homePath) {
       await mkdir(homePath, { recursive: true, mode: 0o700 }).catch(() => undefined);
     }
@@ -84,23 +112,23 @@ export function aliasCodexAdapterAsSecondary(
     <A, R, E>(call: (input: A) => Effect.Effect<R, E>) =>
     (input: A): Effect.Effect<R, E> =>
       account.pipe(
-        Effect.flatMap((options) => call(toCodexInput(input, options))),
-        Effect.map(toSecondaryOutput),
+        Effect.flatMap((options) => call(toCodexInput(input, options, provider))),
+        Effect.map(relabelAccountOutput),
       );
 
   const optional = <F extends AnyFn | undefined>(fn: F, wrap: (fn: NonNullable<F>) => F): F =>
     (fn === undefined ? undefined : wrap(fn as NonNullable<F>)) as F;
 
-  const shape: CodexSecondaryAdapterShape = {
+  const shape: AccountAdapter<P> = {
     ...base,
-    provider: SECONDARY,
+    provider,
     startSession: wrapInput(base.startSession),
     sendTurn: wrapInput(base.sendTurn),
-    listSessions: () => base.listSessions().pipe(Effect.map((s) => s.map(toSecondaryOutput))),
-    streamEvents: base.streamEvents.pipe(Stream.map(toSecondaryOutput)),
+    listSessions: () => base.listSessions().pipe(Effect.map((s) => s.map(relabelAccountOutput))),
+    streamEvents: base.streamEvents.pipe(Stream.map(relabelAccountOutput)),
   };
 
-  const optionalMethods: { readonly [K in keyof CodexSecondaryAdapterShape]?: unknown } = {
+  const optionalMethods: { readonly [K in keyof AccountAdapter<P>]?: unknown } = {
     ...(base.didResumeSession
       ? {
           didResumeSession: (input: ProviderSessionStartInput, session: ProviderSession) =>
@@ -121,18 +149,18 @@ export function aliasCodexAdapterAsSecondary(
     transcribeVoice: optional(base.transcribeVoice, wrapInput),
     getComposerCapabilities: optional(
       base.getComposerCapabilities,
-      (fn) => () => fn().pipe(Effect.map(toSecondaryOutput)),
+      (fn) => () => fn().pipe(Effect.map(relabelAccountOutput)),
     ),
     prepareSessionReplacement: optional(
       base.prepareSessionReplacement,
       (fn) => (input) =>
         account.pipe(
-          Effect.flatMap((options) => fn(toCodexInput(input, options))),
+          Effect.flatMap((options) => fn(toCodexInput(input, options, provider))),
           Effect.map((replacement) =>
             replacement === undefined
               ? undefined
               : {
-                  previousSession: toSecondaryOutput(replacement.previousSession),
+                  previousSession: relabelAccountOutput(replacement.previousSession),
                   startSession: wrapInput(replacement.startSession),
                 },
           ),
@@ -142,6 +170,6 @@ export function aliasCodexAdapterAsSecondary(
   // Omit methods the Codex adapter does not implement (exactOptionalPropertyTypes).
   const definedMethods = Object.fromEntries(
     Object.entries(optionalMethods).filter(([, method]) => method !== undefined),
-  ) as Partial<CodexSecondaryAdapterShape>;
+  ) as Partial<AccountAdapter<P>>;
   return { ...shape, ...definedMethods };
 }

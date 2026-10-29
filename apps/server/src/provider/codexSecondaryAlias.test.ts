@@ -6,10 +6,7 @@ import type { ProviderRuntimeEvent, ProviderSession } from "@synara/contracts";
 import { Effect, Stream } from "effect";
 import { describe, it } from "vitest";
 
-import {
-  aliasCodexAdapterAsSecondary,
-  resolveCodexSecondaryAccountOptions,
-} from "./codexSecondaryAlias.ts";
+import { aliasCodexAdapterAsAccount, resolveCodexAccountOptions } from "./codexSecondaryAlias.ts";
 import type { CodexAdapterShape } from "./Services/CodexAdapter.ts";
 
 const session = (provider: string) =>
@@ -49,13 +46,24 @@ function makeBase(calls: unknown[]): CodexAdapterShape {
   } as CodexAdapterShape;
 }
 
-describe("codexSecondaryAlias", () => {
-  it("never lets the second account fall back to ~/.codex", () => {
+describe.each([
+  ["codexSecondary", ".codex-secondary"],
+  ["codexTertiary", ".codex-tertiary"],
+] as const)("Codex account alias %s", (provider, defaultHome) => {
+  const aliasCodexAdapterAsSecondary = (
+    base: CodexAdapterShape,
+    options: () => Promise<{ homePath?: string }>,
+  ) => aliasCodexAdapterAsAccount(base, options, provider);
+  const resolveCodexSecondaryAccountOptions = (options?: {
+    homePath?: string;
+    binaryPath?: string;
+  }) => resolveCodexAccountOptions(options, provider);
+  it("never lets the independent account fall back to ~/.codex", () => {
     assert.deepEqual(resolveCodexSecondaryAccountOptions(undefined), {
-      homePath: path.join(homedir(), ".codex-secondary"),
+      homePath: path.join(homedir(), defaultHome),
     });
     assert.deepEqual(resolveCodexSecondaryAccountOptions({ homePath: "  " }), {
-      homePath: path.join(homedir(), ".codex-secondary"),
+      homePath: path.join(homedir(), defaultHome),
     });
     assert.deepEqual(
       resolveCodexSecondaryAccountOptions({ binaryPath: "/bin/codex", homePath: "/h/two" }),
@@ -72,18 +80,18 @@ describe("codexSecondaryAlias", () => {
     const started = await Effect.runPromise(
       adapter.startSession({
         threadId: "thread-1" as never,
-        provider: "codexSecondary",
-        modelSelection: { provider: "codexSecondary", model: "gpt-6-astra" },
+        provider: provider,
+        modelSelection: { provider: provider, model: "gpt-6-astra" },
         providerOptions: {
           codex: { homePath: "/primary/home" },
-          codexSecondary: { homePath: "/secondary/home" },
+          [provider]: { homePath: "/secondary/home" },
         },
         runtimeMode: "full-access",
       }),
     );
 
-    assert.equal(adapter.provider, "codexSecondary");
-    assert.equal(started.provider, "codexSecondary");
+    assert.equal(adapter.provider, provider);
+    assert.equal(started.provider, provider);
     const forwarded = calls[0] as Record<string, any>;
     assert.equal(forwarded.provider, "codex");
     assert.equal(forwarded.modelSelection.provider, "codex");
@@ -103,7 +111,7 @@ describe("codexSecondaryAlias", () => {
         runtimeMode: "full-access",
       }),
     );
-    await Effect.runPromise(adapter.listModels!({ provider: "codexSecondary" } as never));
+    await Effect.runPromise(adapter.listModels!({ provider: provider } as never));
 
     for (const call of calls as Array<Record<string, any>>) {
       assert.deepEqual(call.providerOptions.codex, { homePath: "/settings/home" });
@@ -117,11 +125,11 @@ describe("codexSecondaryAlias", () => {
     const events = await Effect.runPromise(Stream.runCollect(adapter.streamEvents));
     assert.deepEqual(
       sessions.map((entry) => entry.provider),
-      ["codexSecondary"],
+      [provider],
     );
     assert.deepEqual(
       Array.from(events).map((event) => event.provider),
-      ["codexSecondary"],
+      [provider],
     );
     assert.equal(adapter.steerTurn, undefined);
   });

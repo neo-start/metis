@@ -160,6 +160,7 @@ const CODEX_TARGET_OPTION_RULES = defineProviderOptionConfig<"codex">({
 const PROVIDER_TARGET_OPTION_RULES = {
   codex: CODEX_TARGET_OPTION_RULES,
   codexSecondary: CODEX_TARGET_OPTION_RULES,
+  codexTertiary: CODEX_TARGET_OPTION_RULES,
   cursor: defineProviderOptionConfig<"cursor">({
     primaryOptionKey: "reasoningEffort",
     options: {

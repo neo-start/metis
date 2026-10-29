@@ -80,6 +80,8 @@ export function formatProviderLabel(provider: ProviderKind): string {
   switch (provider) {
     case "codex":
     case "codexSecondary":
+
+    case "codexTertiary":
       return PROVIDER_DISPLAY_NAMES[provider];
     case "claudeOpenRouter":
       return PROVIDER_DISPLAY_NAMES[provider];

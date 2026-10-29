@@ -507,6 +507,8 @@ export function buildModelSelection(
         : { provider, model };
     case "codex":
     case "codexSecondary":
+
+    case "codexTertiary":
       return options
         ? {
             provider,

@@ -15,6 +15,7 @@ import {
   CodexAdapter,
   CodexAdapterShape,
   CodexSecondaryAdapter,
+  CodexTertiaryAdapter,
   CodexSecondaryAdapterShape,
 } from "../Services/CodexAdapter.ts";
 import { CursorAdapter, CursorAdapterShape } from "../Services/CursorAdapter.ts";
@@ -214,6 +215,10 @@ const registryLayer = (codexAdapter = fakeCodexAdapter) =>
       Layer.mergeAll(
         Layer.succeed(CodexAdapter, codexAdapter),
         Layer.succeed(CodexSecondaryAdapter, fakeCodexSecondaryAdapter),
+        Layer.succeed(CodexTertiaryAdapter, {
+          ...fakeCodexSecondaryAdapter,
+          provider: "codexTertiary",
+        }),
         Layer.succeed(ClaudeAdapter, fakeClaudeAdapter),
         Layer.succeed(ClaudeOpenRouterAdapter, fakeClaudeOpenRouterAdapter),
         Layer.succeed(CursorAdapter, fakeCursorAdapter),
@@ -261,6 +266,7 @@ layer("ProviderAdapterRegistryLive", (it) => {
       assert.deepEqual(providers, [
         "codex",
         "codexSecondary",
+        "codexTertiary",
         "claudeAgent",
         "claudeOpenRouter",
         "cursor",
@@ -298,5 +304,5 @@ it("rejects duplicate provider identities while constructing the registry", asyn
 
   await expect(
     Effect.runPromise(Effect.provide(Effect.void, registryLayer(duplicate))),
-  ).rejects.toThrow("Duplicate provider adapter registrations: claudeAgent at index 2.");
+  ).rejects.toThrow("Duplicate provider adapter registrations: claudeAgent at index 3.");
 });

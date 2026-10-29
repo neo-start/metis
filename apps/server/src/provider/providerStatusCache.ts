@@ -13,6 +13,7 @@ import { writeFileStringAtomically } from "../atomicWrite";
 const PROVIDER_STATUS_CACHE_IDS = [
   "codex",
   "codexSecondary",
+  "codexTertiary",
   "claudeAgent",
   "claudeOpenRouter",
   "cursor",

@@ -29,6 +29,7 @@ const CODEX_HIGH_FAST: StarredModel = {
 const EMPTY_MODEL_OPTIONS: Record<ProviderKind, ReadonlyArray<ProviderModelOption>> = {
   codex: [],
   codexSecondary: [],
+  codexTertiary: [],
   claudeAgent: [],
   claudeOpenRouter: [],
   cursor: [],

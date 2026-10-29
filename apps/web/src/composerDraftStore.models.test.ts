@@ -413,6 +413,7 @@ describe("composerDraftStore modelSelection", () => {
       customModelsByProvider: {
         codex: [],
         codexSecondary: [],
+        codexTertiary: [],
         claudeAgent: [],
         claudeOpenRouter: [],
         cursor: [],
@@ -443,6 +444,7 @@ describe("composerDraftStore modelSelection", () => {
       customModelsByProvider: {
         codex: [],
         codexSecondary: [],
+        codexTertiary: [],
         claudeAgent: [],
         claudeOpenRouter: [],
         cursor: [],
@@ -478,6 +480,7 @@ describe("composerDraftStore modelSelection", () => {
       customModelsByProvider: {
         codex: [],
         codexSecondary: [],
+        codexTertiary: [],
         claudeAgent: [],
         claudeOpenRouter: [],
         cursor: [],
@@ -513,6 +516,7 @@ describe("composerDraftStore modelSelection", () => {
       customModelsByProvider: {
         codex: [],
         codexSecondary: [],
+        codexTertiary: [],
         claudeAgent: [],
         claudeOpenRouter: [],
         cursor: [],

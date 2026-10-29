@@ -730,6 +730,9 @@ async function loadProviderUsageSnapshot(input: {
 }): Promise<ServerGetProviderUsageSnapshotResult> {
   switch (input.provider) {
     case "codexSecondary":
+    // The second account never falls back to the default ~/.codex archive.
+
+    case "codexTertiary":
       // The second account never falls back to the default ~/.codex archive.
       return input.homePath
         ? loadCodexUsageSnapshot({ homeDir: input.homeDir, homePath: input.homePath })

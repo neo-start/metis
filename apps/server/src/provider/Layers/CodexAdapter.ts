@@ -47,9 +47,13 @@ import {
 import {
   CodexAdapter,
   CodexSecondaryAdapter,
+  CodexTertiaryAdapter,
   type CodexAdapterShape,
 } from "../Services/CodexAdapter.ts";
-import { aliasCodexAdapterAsSecondary } from "../codexSecondaryAlias.ts";
+import {
+  aliasCodexAdapterAsSecondary,
+  aliasCodexAdapterAsAccount,
+} from "../codexSecondaryAlias.ts";
 import { PROVIDER_ADAPTER_RUNTIME_EVENT_BUFFER_CAPACITY } from "../Services/ProviderAdapter.ts";
 import {
   CodexAppServerManager,
@@ -110,6 +114,7 @@ import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogg
 
 const PROVIDER = "codex" as const;
 const CODEX_SECONDARY_PROVIDER = "codexSecondary" as const;
+const CODEX_TERTIARY_PROVIDER = "codexTertiary" as const;
 type CodexProviderStartOptions = NonNullable<ProviderStartOptions["codex"]>;
 
 // Backstop for an alive-but-silent codex app-server: if a turn produces no
@@ -1988,7 +1993,8 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
                 }
               : {}),
           });
-        return options?.gatewayProvider === CODEX_SECONDARY_PROVIDER
+        return options?.gatewayProvider === CODEX_SECONDARY_PROVIDER ||
+          options?.gatewayProvider === CODEX_TERTIARY_PROVIDER
           ? local
           : makePersistentCodexManager(local, { stateDir: serverConfig.stateDir });
       }),
@@ -2686,5 +2692,24 @@ export function makeCodexSecondaryAdapterLive(
       gatewayProvider: CODEX_SECONDARY_PROVIDER,
       resolveDefaultProviderOptions: async () => ({ codex: await resolveAccountOptions() }),
     }).pipe(Effect.map((base) => aliasCodexAdapterAsSecondary(base, resolveAccountOptions))),
+  );
+}
+export function makeCodexTertiaryAdapterLive(
+  options: Omit<CodexAdapterLiveOptions, "gatewayProvider" | "resolveDefaultProviderOptions"> & {
+    readonly resolveAccountOptions: () => Promise<CodexProviderStartOptions>;
+  },
+) {
+  const { resolveAccountOptions, ...adapterOptions } = options;
+  return Layer.effect(
+    CodexTertiaryAdapter,
+    makeCodexAdapter({
+      ...adapterOptions,
+      gatewayProvider: CODEX_TERTIARY_PROVIDER,
+      resolveDefaultProviderOptions: async () => ({ codex: await resolveAccountOptions() }),
+    }).pipe(
+      Effect.map((base) =>
+        aliasCodexAdapterAsAccount(base, resolveAccountOptions, "codexTertiary"),
+      ),
+    ),
   );
 }

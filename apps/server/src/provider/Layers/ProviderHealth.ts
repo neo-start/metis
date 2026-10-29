@@ -20,6 +20,7 @@ import type {
 } from "@synara/contracts";
 import {
   CODEX_SECONDARY_DEFAULT_HOME_PATH,
+  CODEX_TERTIARY_DEFAULT_HOME_PATH,
   isClaudeSdkProviderKind,
   ServerProviderUpdateError,
 } from "@synara/contracts";
@@ -127,6 +128,7 @@ const OPENCODE_HEALTH_TIMEOUT_MS = 20_000;
 const CODEX_AUTH_STATUS_ARGS = ["-c", "mcp_servers={}", "login", "status"] as const;
 const CODEX_PROVIDER = "codex" as const;
 const CODEX_SECONDARY_PROVIDER = "codexSecondary" as const;
+const CODEX_TERTIARY_PROVIDER = "codexTertiary" as const;
 const CLAUDE_AGENT_PROVIDER = "claudeAgent" as const;
 const CLAUDE_OPENROUTER_PROVIDER = "claudeOpenRouter" as const;
 const CURSOR_PROVIDER = "cursor" as const;
@@ -143,6 +145,7 @@ const MINIMUM_ANTIGRAVITY_CLI_VERSION = "1.0.12";
 const PROVIDERS = [
   CODEX_PROVIDER,
   CODEX_SECONDARY_PROVIDER,
+  CODEX_TERTIARY_PROVIDER,
   CLAUDE_AGENT_PROVIDER,
   CLAUDE_OPENROUTER_PROVIDER,
   CURSOR_PROVIDER,
@@ -157,7 +160,7 @@ const PROVIDERS = [
 const providerChildKind = (provider: ProviderKind): ProviderChildKind =>
   isClaudeSdkProviderKind(provider)
     ? "claude"
-    : provider === CODEX_SECONDARY_PROVIDER
+    : provider === CODEX_SECONDARY_PROVIDER || provider === CODEX_TERTIARY_PROVIDER
       ? "codex"
       : provider;
 
@@ -2232,6 +2235,8 @@ export function makeProviderHealthLive(options?: {
             return settings.providers.codex.binaryPath;
           case "codexSecondary":
             return settings.providers.codexSecondary.binaryPath;
+          case "codexTertiary":
+            return settings.providers.codexTertiary.binaryPath;
           case "claudeAgent":
             return settings.providers.claudeAgent.binaryPath;
           case "claudeOpenRouter":
@@ -2424,6 +2429,16 @@ export function makeProviderHealthLive(options?: {
                     // Like the adapter, never probe the primary ~/.codex for this account.
                     settings.providers.codexSecondary.homePath || CODEX_SECONDARY_DEFAULT_HOME_PATH,
                     CODEX_SECONDARY_PROVIDER,
+                  ),
+                ),
+                checkProviderWhenEnabled(
+                  settings,
+                  CODEX_TERTIARY_PROVIDER,
+                  makeCheckCodexProviderStatus(
+                    settings.providers.codexTertiary.binaryPath,
+                    // Like the adapter, never probe the primary ~/.codex for this account.
+                    settings.providers.codexTertiary.homePath || CODEX_TERTIARY_DEFAULT_HOME_PATH,
+                    CODEX_TERTIARY_PROVIDER,
                   ),
                 ),
                 checkProviderWhenEnabled(

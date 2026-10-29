@@ -8,6 +8,7 @@ import { MODEL_OPTIONS_BY_PROVIDER } from "@synara/contracts";
 type ModelProviderKind =
   | "codex"
   | "codexSecondary"
+  | "codexTertiary"
   | "claudeAgent"
   | "claudeOpenRouter"
   | "cursor"
@@ -102,6 +103,7 @@ function inferLegacyModelProvider(provider: unknown, model: string): ModelProvid
   if (
     provider === "codex" ||
     provider === "codexSecondary" ||
+    provider === "codexTertiary" ||
     provider === "claudeAgent" ||
     provider === "claudeOpenRouter" ||
     provider === "cursor" ||

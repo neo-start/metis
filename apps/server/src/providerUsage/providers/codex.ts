@@ -440,21 +440,26 @@ export function __resetCodexUsageRateLimitState(): void {
   codexRateLimit.reset();
 }
 
-/** The second Codex account: same endpoint, read strictly from its own CODEX_HOME. */
-export const codexSecondaryUsageFetcher: ProviderUsageFetcher = {
-  provider: "codexSecondary",
-  async cacheKey(ctx) {
-    if (!ctx.codexHomePath) return null;
-    return codexAuthCacheKey(ctx, await resolveCodexAuth(ctx));
-  },
-  async fetch(ctx) {
-    if (!ctx.codexHomePath) {
-      return needsAuthSnapshot("codexSecondary", ctx.nowMs, SOURCE);
-    }
-    const snapshot = await codexUsageFetcher.fetch(ctx);
-    return { ...snapshot, provider: "codexSecondary" };
-  },
-};
+/** Additional accounts read strictly from their own CODEX_HOME. */
+function makeCodexAccountUsageFetcher(
+  provider: "codexSecondary" | "codexTertiary",
+): ProviderUsageFetcher {
+  return {
+    provider,
+    async cacheKey(ctx) {
+      if (!ctx.codexHomePath) return null;
+      return codexAuthCacheKey(ctx, await resolveCodexAuth(ctx));
+    },
+    async fetch(ctx) {
+      if (!ctx.codexHomePath) return needsAuthSnapshot(provider, ctx.nowMs, SOURCE);
+      const snapshot = await codexUsageFetcher.fetch(ctx);
+      return { ...snapshot, provider };
+    },
+  };
+}
+
+export const codexSecondaryUsageFetcher = makeCodexAccountUsageFetcher("codexSecondary");
+export const codexTertiaryUsageFetcher = makeCodexAccountUsageFetcher("codexTertiary");
 
 export const codexUsageFetcher: ProviderUsageFetcher = {
   provider: "codex",

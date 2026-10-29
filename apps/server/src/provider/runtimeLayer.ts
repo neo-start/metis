@@ -11,7 +11,11 @@ import { ServerSettingsService } from "../serverSettings";
 import { ProviderValidationError } from "./Errors";
 import { makeClaudeAdapterLive } from "./Layers/ClaudeAdapter";
 import { makeClaudeOpenRouterAdapterLive } from "./Layers/ClaudeOpenRouterAdapter";
-import { makeCodexAdapterLive, makeCodexSecondaryAdapterLive } from "./Layers/CodexAdapter";
+import {
+  makeCodexAdapterLive,
+  makeCodexSecondaryAdapterLive,
+  makeCodexTertiaryAdapterLive,
+} from "./Layers/CodexAdapter";
 import { makeCursorAdapterLive } from "./Layers/CursorAdapter";
 import { makeDevinAdapterLive } from "./Layers/DevinAdapter";
 import { makeEventNdjsonLogger } from "./Layers/EventNdjsonLogger";
@@ -72,6 +76,20 @@ export function makeServerProviderLayer(
           ),
         ),
     }).pipe(Layer.provide(agentGatewayCredentialsLayer));
+    const codexTertiaryAdapterLayer = makeCodexTertiaryAdapterLive({
+      ...(nativeEventLogger ? { nativeEventLogger } : {}),
+      // Read at use time so a changed CODEX_HOME applies to the next session.
+      resolveAccountOptions: () =>
+        Effect.runPromise(
+          serverSettings.getSettings.pipe(
+            Effect.map(({ providers: { codexTertiary } }) => ({
+              ...(codexTertiary.binaryPath ? { binaryPath: codexTertiary.binaryPath } : {}),
+              ...(codexTertiary.homePath ? { homePath: codexTertiary.homePath } : {}),
+            })),
+            Effect.orElseSucceed(() => ({})),
+          ),
+        ),
+    }).pipe(Layer.provide(agentGatewayCredentialsLayer));
     const claudeAdapterLayer = makeClaudeAdapterLive(
       nativeEventLogger ? { nativeEventLogger } : undefined,
     ).pipe(Layer.provide(agentGatewayCredentialsLayer));
@@ -118,6 +136,7 @@ export function makeServerProviderLayer(
     const adapterRegistryLayer = ProviderAdapterRegistryLive.pipe(
       Layer.provide(codexAdapterLayer),
       Layer.provide(codexSecondaryAdapterLayer),
+      Layer.provide(codexTertiaryAdapterLayer),
       Layer.provide(claudeAdapterLayer),
       Layer.provide(claudeOpenRouterAdapterLayer),
       Layer.provide(cursorAdapterLayer),

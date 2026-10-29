@@ -11,6 +11,7 @@ import {
   ClaudeCacheReviewDefault,
   CodexRuntimeHost,
   CODEX_SECONDARY_DEFAULT_HOME_PATH,
+  CODEX_TERTIARY_DEFAULT_HOME_PATH,
   DesktopAppIcon,
   DEFAULT_GIT_TEXT_GENERATION_MODEL,
   DEFAULT_SERVER_SETTINGS,
@@ -142,6 +143,7 @@ export function getDefaultNativeFontSmoothing(platform = globalThis.navigator?.p
 type CustomModelSettingsKey =
   | "customCodexModels"
   | "customCodexSecondaryModels"
+  | "customCodexTertiaryModels"
   | "customClaudeModels"
   | "customClaudeOpenRouterModels"
   | "customCursorModels"
@@ -164,6 +166,7 @@ export type ProviderCustomModelConfig = {
 const BUILT_IN_MODEL_SLUGS_BY_PROVIDER: Record<ProviderKind, ReadonlySet<string>> = {
   codex: new Set(getModelOptions("codex").map((option) => option.slug)),
   codexSecondary: new Set(getModelOptions("codexSecondary").map((option) => option.slug)),
+  codexTertiary: new Set(getModelOptions("codexTertiary").map((option) => option.slug)),
   claudeAgent: new Set(getModelOptions("claudeAgent").map((option) => option.slug)),
   claudeOpenRouter: new Set(getModelOptions("claudeOpenRouter").map((option) => option.slug)),
   cursor: new Set(getModelOptions("cursor").map((option) => option.slug)),
@@ -191,6 +194,7 @@ const withDefaults =
 const PersistedProviderKind = Schema.Literals([
   "codex",
   "codexSecondary",
+  "codexTertiary",
   "claudeAgent",
   "claudeOpenRouter",
   "cursor",
@@ -290,8 +294,14 @@ export const AppSettingsSchema = Schema.Struct({
   codexSecondaryBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(
     withDefaults(() => ""),
   ),
+  codexTertiaryBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(
+    withDefaults(() => ""),
+  ),
   codexSecondaryHomePath: Schema.String.check(Schema.isMaxLength(4096)).pipe(
     withDefaults(() => CODEX_SECONDARY_DEFAULT_HOME_PATH),
+  ),
+  codexTertiaryHomePath: Schema.String.check(Schema.isMaxLength(4096)).pipe(
+    withDefaults(() => CODEX_TERTIARY_DEFAULT_HOME_PATH),
   ),
   cursorBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
   cursorApiEndpoint: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
@@ -407,6 +417,7 @@ export const AppSettingsSchema = Schema.Struct({
   timestampFormat: TimestampFormat.pipe(withDefaults(() => DEFAULT_TIMESTAMP_FORMAT)),
   customCodexModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
   customCodexSecondaryModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
+  customCodexTertiaryModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
   customClaudeModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
   customClaudeOpenRouterModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
   customCursorModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
@@ -483,6 +494,15 @@ const PROVIDER_CUSTOM_MODEL_CONFIG: Record<ProviderKind, ProviderCustomModelConf
     settingsKey: "customCodexSecondaryModels",
     defaultSettingsKey: "customCodexSecondaryModels",
     title: "codex-personal",
+    description: "Save additional model slugs for the second Codex account.",
+    placeholder: "your-codex-model-slug",
+    example: "gpt-6.7-codex-ultra-preview",
+  },
+  codexTertiary: {
+    provider: "codexTertiary",
+    settingsKey: "customCodexTertiaryModels",
+    defaultSettingsKey: "customCodexTertiaryModels",
+    title: "codex-third",
     description: "Save additional model slugs for the second Codex account.",
     placeholder: "your-codex-model-slug",
     example: "gpt-6.7-codex-ultra-preview",
@@ -723,6 +743,10 @@ function normalizeAppSettings(settings: AppSettings): AppSettings {
       "codexSecondary",
       settings.codexSecondaryBinaryPath,
     ),
+    codexTertiaryBinaryPath: normalizeProviderBinaryPathOverride(
+      "codexTertiary",
+      settings.codexTertiaryBinaryPath,
+    ),
     cursorBinaryPath: normalizeProviderBinaryPathOverride("cursor", settings.cursorBinaryPath),
     devinBinaryPath: normalizeProviderBinaryPathOverride("devin", settings.devinBinaryPath),
     antigravityBinaryPath: normalizeProviderBinaryPathOverride(
@@ -747,6 +771,10 @@ function normalizeAppSettings(settings: AppSettings): AppSettings {
     customCodexSecondaryModels: normalizeCustomModelSlugs(
       settings.customCodexSecondaryModels,
       "codexSecondary",
+    ),
+    customCodexTertiaryModels: normalizeCustomModelSlugs(
+      settings.customCodexTertiaryModels,
+      "codexTertiary",
     ),
     customClaudeModels: normalizeCustomModelSlugs(settings.customClaudeModels, "claudeAgent"),
     customClaudeOpenRouterModels: normalizeCustomModelSlugs(
@@ -823,7 +851,9 @@ function serverSettingsToAppSettings(settings: ServerSettingsView): Partial<AppS
     codexHomePath: settings.providers.codex.homePath,
     codexRuntimeHost: settings.providers.codex.runtimeHost,
     codexSecondaryBinaryPath: settings.providers.codexSecondary.binaryPath,
+    codexTertiaryBinaryPath: settings.providers.codexTertiary.binaryPath,
     codexSecondaryHomePath: settings.providers.codexSecondary.homePath,
+    codexTertiaryHomePath: settings.providers.codexTertiary.homePath,
     cursorApiEndpoint: settings.providers.cursor.apiEndpoint,
     cursorBinaryPath: settings.providers.cursor.binaryPath,
     devinBinaryPath: settings.providers.devin.binaryPath,
@@ -842,6 +872,7 @@ function serverSettingsToAppSettings(settings: ServerSettingsView): Partial<AppS
     piBinaryPath: settings.providers.pi.binaryPath,
     customCodexModels: settings.providers.codex.customModels,
     customCodexSecondaryModels: settings.providers.codexSecondary.customModels,
+    customCodexTertiaryModels: settings.providers.codexTertiary.customModels,
     customClaudeModels: settings.providers.claudeAgent.customModels,
     customClaudeOpenRouterModels: settings.providers.claudeOpenRouter.customModels,
     customCursorModels: settings.providers.cursor.customModels,
@@ -985,6 +1016,23 @@ export function appSettingsPatchToServerSettingsPatch(
         : {}),
       ...(hasOwn(patch, "customCodexSecondaryModels")
         ? { customModels: patch.customCodexSecondaryModels ?? [] }
+        : {}),
+    };
+  }
+  if (
+    hasOwn(patch, "codexTertiaryBinaryPath") ||
+    hasOwn(patch, "codexTertiaryHomePath") ||
+    hasOwn(patch, "customCodexTertiaryModels")
+  ) {
+    providers.codexTertiary = {
+      ...(hasOwn(patch, "codexTertiaryBinaryPath")
+        ? { binaryPath: patch.codexTertiaryBinaryPath ?? "" }
+        : {}),
+      ...(hasOwn(patch, "codexTertiaryHomePath")
+        ? { homePath: patch.codexTertiaryHomePath ?? "" }
+        : {}),
+      ...(hasOwn(patch, "customCodexTertiaryModels")
+        ? { customModels: patch.customCodexTertiaryModels ?? [] }
         : {}),
     };
   }
@@ -1141,7 +1189,9 @@ function buildInitialServerSettingsMigrationPatch(settings: AppSettings): Server
     "codexHomePath",
     "codexRuntimeHost",
     "codexSecondaryBinaryPath",
+    "codexTertiaryBinaryPath",
     "codexSecondaryHomePath",
+    "codexTertiaryHomePath",
     "cursorApiEndpoint",
     "cursorBinaryPath",
     "defaultThreadEnvMode",
@@ -1174,6 +1224,7 @@ function buildInitialServerSettingsMigrationPatch(settings: AppSettings): Server
   for (const key of [
     "customCodexModels",
     "customCodexSecondaryModels",
+    "customCodexTertiaryModels",
     "customClaudeModels",
     "customClaudeOpenRouterModels",
     "customCursorModels",
@@ -1244,6 +1295,7 @@ export function getCustomModelsByProvider(
   return {
     codex: getCustomModelsForProvider(settings, "codex"),
     codexSecondary: getCustomModelsForProvider(settings, "codexSecondary"),
+    codexTertiary: getCustomModelsForProvider(settings, "codexTertiary"),
     claudeAgent: getCustomModelsForProvider(settings, "claudeAgent"),
     claudeOpenRouter: getCustomModelsForProvider(settings, "claudeOpenRouter"),
     cursor: getCustomModelsForProvider(settings, "cursor"),
@@ -1380,6 +1432,7 @@ export function getCustomModelOptionsByProvider(
   return {
     codex: getAppModelOptions("codex", customModelsByProvider.codex),
     codexSecondary: getAppModelOptions("codexSecondary", customModelsByProvider.codexSecondary),
+    codexTertiary: getAppModelOptions("codexTertiary", customModelsByProvider.codexTertiary),
     claudeAgent: getAppModelOptions("claudeAgent", customModelsByProvider.claudeAgent),
     claudeOpenRouter: getAppModelOptions(
       "claudeOpenRouter",
@@ -1403,7 +1456,9 @@ export function getProviderStartOptions(
     | "codexBinaryPath"
     | "codexHomePath"
     | "codexSecondaryBinaryPath"
+    | "codexTertiaryBinaryPath"
     | "codexSecondaryHomePath"
+    | "codexTertiaryHomePath"
     | "cursorApiEndpoint"
     | "cursorBinaryPath"
     | "devinBinaryPath"
@@ -1430,6 +1485,10 @@ export function getProviderStartOptions(
   const codexSecondaryBinaryPath = normalizeProviderBinaryPathOverride(
     "codexSecondary",
     settings.codexSecondaryBinaryPath,
+  );
+  const codexTertiaryBinaryPath = normalizeProviderBinaryPathOverride(
+    "codexTertiary",
+    settings.codexTertiaryBinaryPath,
   );
   const cursorBinaryPath = normalizeProviderBinaryPathOverride("cursor", settings.cursorBinaryPath);
   const devinBinaryPath = normalizeProviderBinaryPathOverride("devin", settings.devinBinaryPath);
@@ -1468,6 +1527,14 @@ export function getProviderStartOptions(
             ...(settings.codexSecondaryHomePath
               ? { homePath: settings.codexSecondaryHomePath }
               : {}),
+          },
+        }
+      : {}),
+    ...(codexTertiaryBinaryPath || settings.codexTertiaryHomePath
+      ? {
+          codexTertiary: {
+            ...(codexTertiaryBinaryPath ? { binaryPath: codexTertiaryBinaryPath } : {}),
+            ...(settings.codexTertiaryHomePath ? { homePath: settings.codexTertiaryHomePath } : {}),
           },
         }
       : {}),
@@ -1574,6 +1641,7 @@ export function getCustomBinaryPathForProvider(
     | "claudeOpenRouterBinaryPath"
     | "codexBinaryPath"
     | "codexSecondaryBinaryPath"
+    | "codexTertiaryBinaryPath"
     | "cursorBinaryPath"
     | "devinBinaryPath"
     | "antigravityBinaryPath"
@@ -1589,6 +1657,8 @@ export function getCustomBinaryPathForProvider(
       return normalizeProviderBinaryPathOverride(provider, settings.codexBinaryPath);
     case "codexSecondary":
       return normalizeProviderBinaryPathOverride(provider, settings.codexSecondaryBinaryPath);
+    case "codexTertiary":
+      return normalizeProviderBinaryPathOverride(provider, settings.codexTertiaryBinaryPath);
     case "claudeAgent":
       return normalizeProviderBinaryPathOverride(provider, settings.claudeBinaryPath);
     case "claudeOpenRouter":

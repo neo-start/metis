@@ -36,6 +36,7 @@ const EMPTY_BY_PROVIDER: Record<ProviderKind, never[]> = {
   claudeOpenRouter: [],
   codex: [],
   codexSecondary: [],
+  codexTertiary: [],
   cursor: [],
   devin: [],
   antigravity: [],

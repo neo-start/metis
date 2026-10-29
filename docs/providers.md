@@ -108,6 +108,8 @@ For a release newer than Synara's catalog, the picker shows the concrete ID. Age
 that ID when it resolves to one discovered non-default model; ambiguous IDs require an exact
 advertised alias.
 
+For the third independent entry, see [Independent Codex accounts](codex-accounts.md).
+
 ### Two Codex accounts (codex-personal)
 
 **codex-personal** (`codexSecondary`) is a second Codex provider for running another ChatGPT account next
