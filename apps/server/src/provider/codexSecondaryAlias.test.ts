@@ -49,6 +49,7 @@ function makeBase(calls: unknown[]): CodexAdapterShape {
 describe.each([
   ["codexSecondary", ".codex-secondary"],
   ["codexTertiary", ".codex-tertiary"],
+  ["codexQuaternary", ".codex-quaternary"],
 ] as const)("Codex account alias %s", (provider, defaultHome) => {
   const aliasCodexAdapterAsSecondary = (
     base: CodexAdapterShape,

@@ -72,6 +72,7 @@ export const ProviderKind = Schema.Literals([
   // They share Codex models, options and runtime behavior.
   "codexSecondary",
   "codexTertiary",
+  "codexQuaternary",
   "claudeAgent",
   "claudeOpenRouter",
   "cursor",
@@ -85,13 +86,23 @@ export const ProviderKind = Schema.Literals([
 export type ProviderKind = typeof ProviderKind.Type;
 
 /** Provider kinds backed by the Codex app-server runtime (one per ChatGPT account). */
-export const CODEX_PROVIDER_KINDS = ["codex", "codexSecondary", "codexTertiary"] as const;
+export const CODEX_PROVIDER_KINDS = [
+  "codex",
+  "codexSecondary",
+  "codexTertiary",
+  "codexQuaternary",
+] as const;
 export type CodexProviderKind = (typeof CODEX_PROVIDER_KINDS)[number];
 
 export function isCodexProviderKind(
   provider: string | null | undefined,
 ): provider is CodexProviderKind {
-  return provider === "codex" || provider === "codexSecondary" || provider === "codexTertiary";
+  return (
+    provider === "codex" ||
+    provider === "codexSecondary" ||
+    provider === "codexTertiary" ||
+    provider === "codexQuaternary"
+  );
 }
 
 /** Claude SDK runtimes with separate authentication and model catalogs. */
@@ -161,8 +172,14 @@ export const CodexTertiaryModelSelection = Schema.Struct({
   model: TrimmedNonEmptyString,
   options: Schema.optional(CodexModelOptions),
 });
+export const CodexQuaternaryModelSelection = Schema.Struct({
+  provider: Schema.Literal("codexQuaternary"),
+  model: TrimmedNonEmptyString,
+  options: Schema.optional(CodexModelOptions),
+});
 export type CodexSecondaryModelSelection = typeof CodexSecondaryModelSelection.Type;
 export type CodexTertiaryModelSelection = typeof CodexTertiaryModelSelection.Type;
+export type CodexQuaternaryModelSelection = typeof CodexQuaternaryModelSelection.Type;
 
 export const ClaudeModelSelection = Schema.Struct({
   provider: Schema.Literal("claudeAgent"),
@@ -232,6 +249,7 @@ export const ModelSelection = Schema.Union([
   CodexModelSelection,
   CodexSecondaryModelSelection,
   CodexTertiaryModelSelection,
+  CodexQuaternaryModelSelection,
   ClaudeModelSelection,
   ClaudeOpenRouterModelSelection,
   CursorModelSelection,
@@ -259,6 +277,10 @@ export const CodexSecondaryProviderStartOptions = Schema.Struct({
   runtimeHost: Schema.optional(Schema.Literal("backend")),
 });
 export const CodexTertiaryProviderStartOptions = Schema.Struct({
+  ...CodexProviderStartOptions.fields,
+  runtimeHost: Schema.optional(Schema.Literal("backend")),
+});
+export const CodexQuaternaryProviderStartOptions = Schema.Struct({
   ...CodexProviderStartOptions.fields,
   runtimeHost: Schema.optional(Schema.Literal("backend")),
 });
@@ -310,6 +332,7 @@ export const ProviderStartOptions = Schema.Struct({
   codex: Schema.optional(CodexProviderStartOptions),
   codexSecondary: Schema.optional(CodexSecondaryProviderStartOptions),
   codexTertiary: Schema.optional(CodexTertiaryProviderStartOptions),
+  codexQuaternary: Schema.optional(CodexQuaternaryProviderStartOptions),
   claudeAgent: Schema.optional(ClaudeProviderStartOptions),
   claudeOpenRouter: Schema.optional(ClaudeOpenRouterProviderStartOptions),
   cursor: Schema.optional(CursorProviderStartOptions),

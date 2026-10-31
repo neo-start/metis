@@ -16,6 +16,7 @@ import {
   CodexAdapterShape,
   CodexSecondaryAdapter,
   CodexTertiaryAdapter,
+  CodexQuaternaryAdapter,
   CodexSecondaryAdapterShape,
 } from "../Services/CodexAdapter.ts";
 import { CursorAdapter, CursorAdapterShape } from "../Services/CursorAdapter.ts";
@@ -219,6 +220,10 @@ const registryLayer = (codexAdapter = fakeCodexAdapter) =>
           ...fakeCodexSecondaryAdapter,
           provider: "codexTertiary",
         }),
+        Layer.succeed(CodexQuaternaryAdapter, {
+          ...fakeCodexSecondaryAdapter,
+          provider: "codexQuaternary",
+        }),
         Layer.succeed(ClaudeAdapter, fakeClaudeAdapter),
         Layer.succeed(ClaudeOpenRouterAdapter, fakeClaudeOpenRouterAdapter),
         Layer.succeed(CursorAdapter, fakeCursorAdapter),
@@ -267,6 +272,7 @@ layer("ProviderAdapterRegistryLive", (it) => {
         "codex",
         "codexSecondary",
         "codexTertiary",
+        "codexQuaternary",
         "claudeAgent",
         "claudeOpenRouter",
         "cursor",
@@ -304,5 +310,5 @@ it("rejects duplicate provider identities while constructing the registry", asyn
 
   await expect(
     Effect.runPromise(Effect.provide(Effect.void, registryLayer(duplicate))),
-  ).rejects.toThrow("Duplicate provider adapter registrations: claudeAgent at index 3.");
+  ).rejects.toThrow("Duplicate provider adapter registrations: claudeAgent at index 4.");
 });

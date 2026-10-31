@@ -13,6 +13,7 @@ export const PROVIDER_KINDS: ReadonlyArray<ProviderKind> = [
   "codex",
   "codexSecondary",
   "codexTertiary",
+  "codexQuaternary",
   "claudeAgent",
   "claudeOpenRouter",
   "cursor",

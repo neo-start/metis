@@ -442,7 +442,7 @@ export function __resetCodexUsageRateLimitState(): void {
 
 /** Additional accounts read strictly from their own CODEX_HOME. */
 function makeCodexAccountUsageFetcher(
-  provider: "codexSecondary" | "codexTertiary",
+  provider: "codexSecondary" | "codexTertiary" | "codexQuaternary",
 ): ProviderUsageFetcher {
   return {
     provider,
@@ -460,6 +460,7 @@ function makeCodexAccountUsageFetcher(
 
 export const codexSecondaryUsageFetcher = makeCodexAccountUsageFetcher("codexSecondary");
 export const codexTertiaryUsageFetcher = makeCodexAccountUsageFetcher("codexTertiary");
+export const codexQuaternaryUsageFetcher = makeCodexAccountUsageFetcher("codexQuaternary");
 
 export const codexUsageFetcher: ProviderUsageFetcher = {
   provider: "codex",

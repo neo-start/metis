@@ -24,6 +24,7 @@ const MODEL_OPTIONS_BY_PROVIDER = {
     { slug: "gpt-5.3-codex", name: "GPT-5.3 Codex" },
   ],
   codexTertiary: [],
+  codexQuaternary: [],
   cursor: [
     { slug: "auto", name: "Auto" },
     { slug: "composer-2", name: "Composer 2" },

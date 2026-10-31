@@ -7,6 +7,7 @@
 import {
   CODEX_SECONDARY_DEFAULT_HOME_PATH,
   CODEX_TERTIARY_DEFAULT_HOME_PATH,
+  CODEX_QUATERNARY_DEFAULT_HOME_PATH,
   type ProviderSession,
   type ProviderSessionStartInput,
   type ProviderStartOptions,
@@ -18,7 +19,7 @@ import { Effect, Stream } from "effect";
 import { expandCodexHomePath } from "../codexHomePaths.ts";
 import type { CodexAdapterShape, CodexSecondaryAdapterShape } from "./Services/CodexAdapter.ts";
 
-type AccountProvider = "codexSecondary" | "codexTertiary";
+type AccountProvider = "codexSecondary" | "codexTertiary" | "codexQuaternary";
 type AccountAdapter<P extends AccountProvider> = Omit<CodexAdapterShape, "provider"> & {
   readonly provider: P;
 };
@@ -38,9 +39,11 @@ export function resolveCodexAccountOptions(
 ): CodexProviderStartOptions {
   const homePath =
     options?.homePath?.trim() ||
-    (provider === "codexTertiary"
-      ? CODEX_TERTIARY_DEFAULT_HOME_PATH
-      : CODEX_SECONDARY_DEFAULT_HOME_PATH);
+    (provider === "codexQuaternary"
+      ? CODEX_QUATERNARY_DEFAULT_HOME_PATH
+      : provider === "codexTertiary"
+        ? CODEX_TERTIARY_DEFAULT_HOME_PATH
+        : CODEX_SECONDARY_DEFAULT_HOME_PATH);
   return {
     ...(options?.binaryPath ? { binaryPath: options.binaryPath } : {}),
     homePath: expandCodexHomePath(homePath),

@@ -70,6 +70,15 @@ export function providerStartOptionsFromServerSettings(
       ...(providers.codexTertiary.homePath ? { homePath: providers.codexTertiary.homePath } : {}),
       runtimeHost: "backend",
     },
+    codexQuaternary: {
+      ...(providers.codexQuaternary.binaryPath
+        ? { binaryPath: providers.codexQuaternary.binaryPath }
+        : {}),
+      ...(providers.codexQuaternary.homePath
+        ? { homePath: providers.codexQuaternary.homePath }
+        : {}),
+      runtimeHost: "backend",
+    },
     claudeAgent: {
       ...(providers.claudeAgent.binaryPath ? { binaryPath: providers.claudeAgent.binaryPath } : {}),
       enableArtifacts: providers.claudeAgent.enableArtifacts,

@@ -391,6 +391,9 @@ export function PluginLibrary() {
   const codexTertiaryCapabilitiesQuery = useQuery(
     providerComposerCapabilitiesQueryOptions("codexTertiary"),
   );
+  const codexQuaternaryCapabilitiesQuery = useQuery(
+    providerComposerCapabilitiesQueryOptions("codexQuaternary"),
+  );
   const claudeCapabilitiesQuery = useQuery(providerComposerCapabilitiesQueryOptions("claudeAgent"));
   const claudeOpenRouterCapabilitiesQuery = useQuery(
     providerComposerCapabilitiesQueryOptions("claudeOpenRouter"),
@@ -417,6 +420,10 @@ export function PluginLibrary() {
     codexTertiary: {
       plugins: supportsPluginDiscovery(codexTertiaryCapabilitiesQuery.data),
       skills: supportsSkillDiscovery(codexTertiaryCapabilitiesQuery.data),
+    },
+    codexQuaternary: {
+      plugins: supportsPluginDiscovery(codexQuaternaryCapabilitiesQuery.data),
+      skills: supportsSkillDiscovery(codexQuaternaryCapabilitiesQuery.data),
     },
     claudeAgent: {
       plugins: supportsPluginDiscovery(claudeCapabilitiesQuery.data),

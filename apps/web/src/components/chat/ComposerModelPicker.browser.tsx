@@ -37,6 +37,7 @@ const EMPTY_BY_PROVIDER: Record<ProviderKind, never[]> = {
   codex: [],
   codexSecondary: [],
   codexTertiary: [],
+  codexQuaternary: [],
   cursor: [],
   devin: [],
   antigravity: [],

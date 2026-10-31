@@ -21,6 +21,11 @@ describe("providerStartOptionsFromServerSettings", () => {
           homePath: "",
         },
         codexTertiary: DEFAULT_SERVER_SETTINGS.providers.codexTertiary,
+        codexQuaternary: {
+          ...DEFAULT_SERVER_SETTINGS.providers.codexQuaternary,
+          binaryPath: "",
+          homePath: "",
+        },
         codexSecondary: {
           ...DEFAULT_SERVER_SETTINGS.providers.codexSecondary,
           binaryPath: "",
@@ -80,6 +85,7 @@ describe("providerStartOptionsFromServerSettings", () => {
     ).not.toThrow();
     expect(providerOptions.codex).toEqual({ runtimeHost: "backend" });
     expect(providerOptions.codexSecondary).toEqual({ runtimeHost: "backend" });
+    expect(providerOptions.codexQuaternary).toEqual({ runtimeHost: "backend" });
     expect(providerOptions.claudeAgent).toEqual({ enableArtifacts: false });
     expect(providerOptions.cursor).toEqual({});
     expect(providerOptions.antigravity).toEqual({});

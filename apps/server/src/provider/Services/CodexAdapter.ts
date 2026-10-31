@@ -39,6 +39,9 @@ export interface CodexSecondaryAdapterShape extends ProviderAdapterShape<Provide
 export interface CodexTertiaryAdapterShape extends ProviderAdapterShape<ProviderAdapterError> {
   readonly provider: "codexTertiary";
 }
+export interface CodexQuaternaryAdapterShape extends ProviderAdapterShape<ProviderAdapterError> {
+  readonly provider: "codexQuaternary";
+}
 
 export class CodexSecondaryAdapter extends ServiceMap.Service<
   CodexSecondaryAdapter,
@@ -48,3 +51,7 @@ export class CodexTertiaryAdapter extends ServiceMap.Service<
   CodexTertiaryAdapter,
   CodexTertiaryAdapterShape
 >()("synara/provider/Services/CodexTertiaryAdapter") {}
+export class CodexQuaternaryAdapter extends ServiceMap.Service<
+  CodexQuaternaryAdapter,
+  CodexQuaternaryAdapterShape
+>()("synara/provider/Services/CodexQuaternaryAdapter") {}

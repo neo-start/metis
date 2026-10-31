@@ -56,7 +56,8 @@ export function getComposerProviderState(input: ComposerProviderStateInput): Com
   switch (provider) {
     case "codex":
     case "codexSecondary":
-    case "codexTertiary": {
+    case "codexTertiary":
+    case "codexQuaternary": {
       const providerOptions = modelOptions?.[provider];
       rawEffort = trimOrNull(providerOptions?.reasoningEffort);
       const defaultReasoningEffort = getDefaultEffort(caps);
