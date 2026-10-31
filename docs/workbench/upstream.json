@@ -112,6 +112,16 @@
         "apps/server/src/peers/peerTransport.ts"
       ],
       "changes": "Reuse local attachment intake, presentation, managed storage quotas, cleanup and engine claim semantics. Add bounded peer chunks with digest checks, scoped image previews and capability negotiation without embedding file bytes in durable commands."
+    },
+    "pluginCatalogTransportAdaptation": {
+      "localBaseCommit": "5e302f244",
+      "reviewedUpstreamCommit": "ec3b1f6ef9c2f656f26dd9711339fe1265d8cb5c",
+      "sources": [
+        "apps/server/src/codexAppServerManager.ts",
+        "apps/server/src/codexAppServerTransport.ts",
+        "packages/shared/src/jsonrpc-stdio.ts"
+      ],
+      "changes": "Reuse the existing discovery session lifecycle and bounded JSONL framer. Route plugin/list and plugin/read to a dedicated account-scoped connection with a 64 MiB receive budget; preserve the existing 64 MiB chat receive budget and 16 MiB stdin/write limits. T3 generated PluginListParams at f5ef0ddb90a8c36584e181b1913e7b8a5df30ffc has no pagination; no T3 implementation copied."
     }
   },
   "t3code": {

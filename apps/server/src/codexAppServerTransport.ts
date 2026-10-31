@@ -11,6 +11,8 @@ export const CODEX_APP_SERVER_MAX_FRAME_BYTES = JSONRPC_STDIO_MAX_FRAME_BYTES;
 // plugin/list returns the entire catalog in one JSONL response (observed >16 MiB).
 // Give inbound catalogs room to grow without raising stdin or helper budgets.
 export const CODEX_APP_SERVER_MAX_INCOMING_FRAME_BYTES = 64 * 1024 * 1024;
+// Dedicated metadata readers retain an explicit budget separate from stdin.
+export const CODEX_DISCOVERY_MAX_FRAME_BYTES = 64 * 1024 * 1024;
 export const CODEX_APP_SERVER_MAX_QUEUED_STDIN_BYTES = JSONRPC_STDIO_MAX_QUEUED_STDIN_BYTES;
 
 export type CodexAppServerTransportErrorReason = JsonRpcStdioTransportErrorReason;

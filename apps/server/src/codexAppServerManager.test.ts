@@ -52,6 +52,7 @@ import {
 } from "./codexWorkingDirectory";
 import {
   CODEX_APP_SERVER_MAX_INCOMING_FRAME_BYTES,
+  CODEX_DISCOVERY_MAX_FRAME_BYTES,
   CodexAppServerTransportError,
   CodexJsonlFramer,
   CodexJsonlWriter,
@@ -86,6 +87,7 @@ const OVERSIZED_HISTORY_ERROR = `Codex app-server JSONL frame exceeded its byte 
 function createSyntheticCodexAppServer(options?: {
   readonly forceFullHistoryResponse?: boolean;
   readonly historyFrameBytes?: number;
+  readonly pluginResponseBytes?: number;
 }) {
   const historySentinel = "SYNTHETIC_PRIVATE_HISTORY_SENTINEL";
   const persistedTranscript = Object.freeze([
@@ -149,6 +151,21 @@ function createSyntheticCodexAppServer(options?: {
         };
         if (request.method === "initialize") {
           respond({});
+        } else if (request.method === "plugin/list" && options?.pluginResponseBytes) {
+          const prefix = Buffer.from(
+            `{"id":${JSON.stringify(request.id)},"result":{"marketplaces":[{"name":"catalog","path":"/catalog","plugins":[{"id":"plugin/example","name":"example","source":{"path":"/example"},"installPolicy":"AVAILABLE","authPolicy":"ON_USE"}]}],"padding":"`,
+          );
+          const suffix = Buffer.from('"}}\n');
+          const frame = Buffer.concat([
+            prefix,
+            Buffer.alloc(options.pluginResponseBytes - prefix.length - suffix.length + 1, 0x78),
+            suffix,
+          ]);
+          queueMicrotask(() => {
+            for (let offset = 0; offset < frame.length; offset += 65_536) {
+              stdout.write(frame.subarray(offset, offset + 65_536));
+            }
+          });
         } else if (request.method === "account/read") {
           respond({ account: { type: "apiKey" } });
         } else if (request.method === "thread/resume" || request.method === "thread/fork") {
@@ -3378,9 +3395,59 @@ describe("CodexAppServerManager discovery", () => {
     ]);
   });
 
+  it.each([
+    { bytes: 16_842_752, succeeds: true },
+    { bytes: CODEX_DISCOVERY_MAX_FRAME_BYTES + 1, succeeds: false },
+  ])("isolates a $bytes-byte plugin catalog from a live chat", async ({ bytes, succeeds }) => {
+    const fake = createSyntheticCodexAppServer({ pluginResponseBytes: bytes });
+    const { manager, teardownProcessTree } = createSyntheticCodexManager(fake);
+    const cwd = mkdtempSync(path.join(os.tmpdir(), "synara-codex-plugin-catalog-"));
+    const threadId = asThreadId("plugin-catalog-chat");
+    const providerOptions = { codex: { binaryPath: "/custom/codex", homePath: cwd } };
+    const discovery = vi.spyOn(
+      manager as unknown as {
+        getOrCreateDiscoverySession: (...args: unknown[]) => Promise<unknown>;
+      },
+      "getOrCreateDiscoverySession",
+    );
+    try {
+      await manager.startSession({
+        threadId,
+        provider: "codex",
+        runtimeMode: "auto",
+        cwd,
+        providerOptions,
+        agentGatewayCapabilityInput: AGENT_GATEWAY_NO_CAPABILITIES,
+      });
+      const listing = manager.listPlugins({ cwd, threadId });
+      if (succeeds) {
+        await expect(listing).resolves.toMatchObject({
+          marketplaces: [{ name: "catalog", plugins: [{ id: "plugin/example" }] }],
+        });
+        await expect(manager.listPlugins({ cwd, threadId })).resolves.toMatchObject({
+          cached: true,
+        });
+        expect(fake.requests.filter((request) => request.method === "plugin/list")).toHaveLength(1);
+      } else {
+        await expect(listing).rejects.toThrow("Operation: plugin/list");
+        expect(teardownProcessTree).toHaveBeenCalledTimes(1);
+      }
+      expect(discovery).toHaveBeenCalledWith(cwd, providerOptions);
+      expect(fake.children).toHaveLength(2);
+      expect(manager.listSessions()).toEqual([
+        expect.objectContaining({ threadId, status: "ready" }),
+      ]);
+      expect(fake.children[0]?.killed).toBe(false);
+    } finally {
+      await manager.stopAll();
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
   it("wires plugin discovery through plugin/list", async () => {
     const manager = new CodexAppServerManager();
     const context = {
+      discovery: true,
       session: {
         provider: "codex",
         status: "ready",
@@ -3435,6 +3502,7 @@ describe("CodexAppServerManager discovery", () => {
   it("wires plugin details through plugin/read", async () => {
     const manager = new CodexAppServerManager();
     const context = {
+      discovery: true,
       session: {
         provider: "codex",
         status: "ready",

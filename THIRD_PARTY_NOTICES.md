@@ -35,6 +35,13 @@ Remote chat attachments (2026-10-17) reuse this fork’s Synara attachment intak
 
 Remote chat presentation (2026-10-17) reuses this fork’s Synara `ChatView.tsx`, `ChatEmptyStateHero.tsx`, `TranscriptQuickComposerForm.tsx`, `ChatComposerFooter.tsx`, and model/runtime presentation helpers at `d592f1b44174997a65179dad6d9047c3da8754b8`. T3 `NoProjectsHero.tsx` and `chat/ChatComposer.tsx` at `f5ef0ddb90a8c36584e181b1913e7b8a5df30ffc` were reviewed; no T3 source was copied. Shared landing and composer presentation retain the existing device-scoped transport and read-only remote settings.
 
+The plugin catalog transport fix (2026-10-21) reuses Synara's `codexAppServerManager.ts`,
+`codexAppServerTransport.ts`, and `packages/shared/src/jsonrpc-stdio.ts` (local base
+`5e302f244`, upstream reviewed at `ec3b1f6ef9c2f656f26dd9711339fe1265d8cb5c`).
+T3's generated `V2PluginListParams` schema at `f5ef0ddb90a8c36584e181b1913e7b8a5df30ffc`
+was reviewed; no T3 code was copied. Dedicated metadata readers retain account scope and
+use a bounded larger receive budget while chat and write budgets remain unchanged.
+
 ## T3 Code license
 
 The Agent task management additions reuse Synara's existing Activity rows,

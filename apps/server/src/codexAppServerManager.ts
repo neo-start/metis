@@ -86,6 +86,7 @@ import { ensureIsolatedScratchWorkspace, resolveScratchWorkspaceCwd } from "./sc
 import { createLogger } from "./logger";
 import { transcribeVoiceWithChatGptSession } from "./voiceTranscription.ts";
 import {
+  CODEX_DISCOVERY_MAX_FRAME_BYTES,
   CodexAppServerTransportError,
   CodexJsonlFramer,
   CodexJsonlWriter,
@@ -184,6 +185,7 @@ type CodexSessionApprovalOverride = {
 };
 
 interface CodexSessionContext {
+  readonly providerOptions?: ProviderSessionStartInput["providerOptions"];
   readonly enableComputerControl?: boolean;
   readonly gatewaySessionLease?: AgentGatewaySessionLease;
   /**
@@ -1245,6 +1247,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
       });
 
       context = {
+        providerOptions: { codex: codexOptions },
         enableComputerControl:
           gatewaySessionLease !== undefined &&
           input.agentGatewayCapabilityInput.enableComputerControl === true,
@@ -2159,6 +2162,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
       });
 
       context = {
+        providerOptions: { codex: codexOptions },
         ...(gatewaySessionLease ? { gatewaySessionLease } : {}),
         ...(input.lifecycleGeneration !== undefined
           ? { lifecycleGeneration: input.lifecycleGeneration }
@@ -2849,7 +2853,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
       }
     }
 
-    const context = await this.resolveContextForDiscovery(input.threadId, cwd ?? undefined);
+    const context = await this.resolvePluginDiscoveryContext(input.threadId, cwd ?? undefined);
     const response = await this.sendRequest<Record<string, unknown>>(context, "plugin/list", {
       ...(cwd ? { cwds: [cwd] } : {}),
       ...(input.forceRemoteSync ? { forceRemoteSync: true } : {}),
@@ -2878,7 +2882,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
       };
     }
 
-    const context = await this.resolveContextForDiscovery(undefined);
+    const context = await this.resolvePluginDiscoveryContext();
     const response = await this.sendRequest<Record<string, unknown>>(context, "plugin/read", {
       marketplacePath,
       pluginName,
@@ -2983,6 +2987,21 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
       this.isContextRoutable(context) &&
       (context.session.status === "ready" || context.session.status === "running")
     );
+  }
+
+  private async resolvePluginDiscoveryContext(
+    threadId?: string,
+    cwd?: string,
+  ): Promise<CodexSessionContext> {
+    const context = await this.resolveContextForDiscovery(threadId, cwd);
+    // Never let a large or malformed plugin response terminate a live conversation.
+    // Reuse the selected runtime's account/binary, rather than the default account.
+    return context.discovery
+      ? context
+      : this.getOrCreateDiscoverySession(
+          context.session.cwd ?? cwd ?? process.cwd(),
+          context.providerOptions,
+        );
   }
 
   private async resolveContextForDiscovery(
@@ -3190,6 +3209,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
       ),
     });
     const context: CodexSessionContext = {
+      ...(providerOptions !== undefined ? { providerOptions } : {}),
       session: {
         provider: "codex",
         status: "connecting",
@@ -3206,7 +3226,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
         sparkEnabled: true,
       },
       child,
-      stdoutFramer: new CodexJsonlFramer(),
+      stdoutFramer: new CodexJsonlFramer(CODEX_DISCOVERY_MAX_FRAME_BYTES),
       stdinWriter: new CodexJsonlWriter(child.stdin),
       pending: new Map(),
       pendingApprovals: new Map(),
@@ -3298,7 +3318,9 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
     }
 
     context.stopping = true;
-    const stopError = new Error("Discovery session stopped before request completed.");
+    const stopError =
+      context.terminalFailure?.error ??
+      new Error("Discovery session stopped before request completed.");
     this.rejectPendingRequests(context, stopError);
     context.detachStdout?.();
     context.stdinWriter?.close(stopError);
@@ -3444,7 +3466,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
 
   private stopFailedContext(context: CodexSessionContext): void {
     const stopping = context.discovery
-      ? this.stopDiscoverySession(context.session.cwd ?? "")
+      ? this.stopDiscoverySession(context.discoveryKey ?? context.session.cwd ?? "")
       : this.stopSession(context.session.threadId);
     void stopping.catch((stopError) => {
       log.error("failed to stop Codex session after process or transport failure", {

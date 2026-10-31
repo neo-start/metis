@@ -145,6 +145,19 @@ Starred models absent from the current catalog remain saved and can be removed, 
 selected. They become selectable again when discovery or custom model settings add them to the
 catalog.
 
+### Codex plugin catalog transport
+
+Plugin listing and detail reads use a dedicated metadata app-server, retaining the selected
+runtime's Codex account, binary and working directory. Its incoming JSONL frame limit is
+64 MiB because plugin catalogs are returned in a single response and can exceed 16 MiB.
+A malformed or oversized catalog closes only that metadata connection. Chat stdout frames
+also accept up to 64 MiB; stdin frames and the write queue retain their existing limits.
+
+If an older backend reports `JSONL frame exceeded its byte limit ... Operation: plugin/list`,
+update and rebuild the backend, then restart it when ongoing tasks can be interrupted.
+Deleting conversations or plugin installations is not required. The upstream
+[plugin API](https://learn.chatgpt.com/docs/app-server) is still under development.
+
 ## Provider sessions
 
 Use [Import projects](project-import.md) to bring local Codex and Claude Code projects and
