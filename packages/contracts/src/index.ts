@@ -25,6 +25,7 @@ export * from "./agentMentions";
 export * from "./agentGateway";
 export * from "./externalMcp";
 export * from "./memory";
+export * from "./thoughts";
 export * from "./ws";
 export * from "./wsCompatibility";
 export * from "./keybindings";

@@ -1,3 +1,13 @@
+import type {
+  Thought,
+  ThoughtListResult,
+  ThoughtDeleteResult,
+  ThoughtListInput,
+  ThoughtReadInput,
+  ThoughtCreateInput,
+  ThoughtUpdateInput,
+  ThoughtDeleteInput,
+} from "./thoughts";
 import type { MetisControlInput, MetisIdentity } from "./metis";
 import type { PeerControlInput, PeerControlResult } from "./peers";
 import { Schema } from "effect";
@@ -1106,6 +1116,13 @@ export interface NativeApi {
   /** Metis long-term memory: soul.md plus global and per-project memory files. */
   metis: { control: (input: MetisControlInput) => Promise<MetisIdentity> };
   peers: { control: (input: PeerControlInput) => Promise<PeerControlResult> };
+  thoughts: {
+    list: (input: ThoughtListInput) => Promise<ThoughtListResult>;
+    read: (input: ThoughtReadInput) => Promise<Thought>;
+    create: (input: ThoughtCreateInput) => Promise<Thought>;
+    update: (input: ThoughtUpdateInput) => Promise<Thought>;
+    delete: (input: ThoughtDeleteInput) => Promise<ThoughtDeleteResult>;
+  };
   memory: {
     getOverview: () => Promise<MetisMemoryOverview>;
     read: (input: MetisMemoryReadInput) => Promise<MetisMemoryDocument>;

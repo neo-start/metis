@@ -101,3 +101,14 @@ Synara `SessionCredentialService.ts` / `wsRpc.ts` at
 `f5ef0ddb90a8c36584e181b1913e7b8a5df30ffc` were reviewed; no replacement
 authentication or admission implementation was introduced. Upstream licenses
 remain unchanged.
+
+## Personal thoughts (2026-11-02)
+
+Reviewed Synara `apps/web/src/components/chat/environment/EnvironmentNotesSection.tsx`
+at `eaa61eded31b6755d4f30ba8eabc5d905cf817cb` and T3 Code
+`apps/web/src/components/Sidebar.tsx` at `f5ef0ddb90a8c36584e181b1913e7b8a5df30ffc`.
+No T3 source was copied. The new Thoughts surface reuses the existing local
+Synara UI primitives, route chrome, owner RPC authorization, private atomic
+writes and Metis Gateway lifecycle (local base `5a88e4ceb954aedd3c2ad2084bbbc367e64186da`).
+Personal journal storage and tools are separate from the long-term memory index.
+Existing upstream MIT notices remain applicable.

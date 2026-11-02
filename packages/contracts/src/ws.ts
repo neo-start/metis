@@ -1,3 +1,10 @@
+import {
+  ThoughtListInput,
+  ThoughtReadInput,
+  ThoughtCreateInput,
+  ThoughtUpdateInput,
+  ThoughtDeleteInput,
+} from "./thoughts";
 import { MetisControlInput } from "./metis";
 import { PeerControlInput } from "./peers";
 import { Schema, Struct } from "effect";
@@ -321,6 +328,11 @@ export const WS_METHODS = {
   // Metis long-term memory (soul + global/project memories)
   metisControl: "metis.control",
   peerControl: "peers.control",
+  thoughtsList: "thoughts.list",
+  thoughtsRead: "thoughts.read",
+  thoughtsCreate: "thoughts.create",
+  thoughtsUpdate: "thoughts.update",
+  thoughtsDelete: "thoughts.delete",
   memoryGetOverview: "memory.getOverview",
   memoryRead: "memory.read",
   memoryWrite: "memory.write",
@@ -546,6 +558,11 @@ const WebSocketRequestBody = Schema.Union([
   // Metis long-term memory
   tagRequestBody(WS_METHODS.metisControl, Schema.Struct({ input: MetisControlInput })),
   tagRequestBody(WS_METHODS.peerControl, Schema.Struct({ input: PeerControlInput })),
+  tagRequestBody(WS_METHODS.thoughtsList, ThoughtListInput),
+  tagRequestBody(WS_METHODS.thoughtsRead, ThoughtReadInput),
+  tagRequestBody(WS_METHODS.thoughtsCreate, ThoughtCreateInput),
+  tagRequestBody(WS_METHODS.thoughtsUpdate, ThoughtUpdateInput),
+  tagRequestBody(WS_METHODS.thoughtsDelete, ThoughtDeleteInput),
   tagRequestBody(WS_METHODS.memoryGetOverview, Schema.Struct({})),
   tagRequestBody(WS_METHODS.memoryRead, MetisMemoryReadInput),
   tagRequestBody(WS_METHODS.memoryWrite, MetisMemoryWriteInput),

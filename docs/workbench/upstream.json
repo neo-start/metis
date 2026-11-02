@@ -227,5 +227,18 @@
       "Reuse local full-history pagination; reject missing native turn IDs, incomplete items, repeated cursors, mismatched thread IDs and unknown history modes before mutation.",
       "Return the previously hydrated prefix only after acknowledged revert; never retry uncertain mutations or interpret metadata-only revert results as empty history."
     ]
+  },
+  "thoughtsReference": {
+    "date": "2026-11-02",
+    "localBaseCommit": "5a88e4ceb954aedd3c2ad2084bbbc367e64186da",
+    "synara": {
+      "commit": "eaa61eded31b6755d4f30ba8eabc5d905cf817cb",
+      "source": "apps/web/src/components/chat/environment/EnvironmentNotesSection.tsx"
+    },
+    "t3code": {
+      "commit": "f5ef0ddb90a8c36584e181b1913e7b8a5df30ffc",
+      "source": "apps/web/src/components/Sidebar.tsx"
+    },
+    "adaptation": "Reviewed upstream per-thread notes and sidebar structure. No T3 code copied. Reuse local Textarea, Input, Button, RouteInsetSurface, sidebar controls, owner RPC authorization, private atomic writes and Metis gateway lifecycle. Add a separate chronological personal-thought store and tools; never inject it into long-term memory."
   }
 }

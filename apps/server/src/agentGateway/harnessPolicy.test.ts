@@ -99,6 +99,7 @@ describe("Metis harness policy", () => {
     assert.include(gateway, "synara_memory_write");
     assert.include(gateway, "one fact per memory");
     assert.include(gateway, "synara_memory_delete");
+    assert.include(gateway, "Feelings use metis_thoughts_* only on request");
     assert.include(gateway, "Never store secrets, tokens, credentials");
     const identityOnly = renderSynaraHarnessPolicy({ gatewayControlAvailable: false });
     assert.notInclude(identityOnly, "synara_memory_write");

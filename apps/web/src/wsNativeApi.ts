@@ -895,6 +895,13 @@ export function createWsNativeApi(): NativeApi {
     },
     metis: { control: (input) => transport.request(WS_METHODS.metisControl, { input }) },
     peers: { control: (input) => transport.request(WS_METHODS.peerControl, { input }) },
+    thoughts: {
+      list: (input) => transport.request(WS_METHODS.thoughtsList, input),
+      read: (input) => transport.request(WS_METHODS.thoughtsRead, input),
+      create: (input) => transport.request(WS_METHODS.thoughtsCreate, input),
+      update: (input) => transport.request(WS_METHODS.thoughtsUpdate, input),
+      delete: (input) => transport.request(WS_METHODS.thoughtsDelete, input),
+    },
     memory: {
       getOverview: () => transport.request(WS_METHODS.memoryGetOverview),
       read: (input) => transport.request(WS_METHODS.memoryRead, input),

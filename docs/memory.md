@@ -5,6 +5,8 @@ than to any single provider: every provider session reads them, whether it runs 
 Claude, Cursor, Antigravity, Grok, Droid, Devin, OpenCode, or Pi. Agents can save what they learn,
 so the assistant keeps improving across sessions and provider switches.
 
+Personal feelings and fleeting reflections have a separate [Thoughts / 随想](thoughts.md) surface and `metis_thoughts_*` tools. They are not part of the injected memory index.
+
 ## Where it lives
 
 Everything is plain markdown under the server state directory: `<base>/userdata/memory`, or

@@ -1,3 +1,4 @@
+import { makeThoughtTools } from "../thoughtTools.ts";
 import { MetisControllerService } from "../../metis/MetisControllerService.ts";
 import { makeMetisTools } from "../metisTools.ts";
 import { PeerService } from "../../peers/PeerService.ts";
@@ -1216,6 +1217,7 @@ export const makeAgentGateway = Effect.gen(function* () {
     setThreadGoal,
     ...automationTools,
     ...memoryTools,
+    ...(metisMemory ? makeThoughtTools(metisMemory.thoughts) : []),
     ...(metisController && metisMemory ? makeMetisTools(metisController, metisMemory) : []),
     ...(peers ? makePeerTools(peers) : []),
     ...browserTools,

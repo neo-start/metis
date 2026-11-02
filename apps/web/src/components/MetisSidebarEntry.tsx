@@ -2,7 +2,7 @@ import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useMemo } from "react";
 import { useStore } from "~/store";
 import { createSidebarThreadSummariesSelector } from "~/storeSelectors";
-import { MessageCircleIcon } from "~/lib/icons";
+import { BookOpenIcon, MessageCircleIcon } from "~/lib/icons";
 import { useMetisController } from "~/hooks/useMetisController";
 import { SidebarGroup, SidebarMenuButton } from "./ui/sidebar";
 import { SynaraLogo } from "./SynaraLogo";
@@ -39,6 +39,15 @@ export function MetisSidebarEntry() {
                 ? "需处理"
                 : ""}
         </span>
+      </SidebarMenuButton>
+      <SidebarMenuButton
+        isActive={pathname === "/thoughts"}
+        onClick={() => void navigate({ to: "/thoughts", search: {} })}
+        tooltip="随想 · 记录与回顾"
+        className="mt-1 rounded-lg px-3 text-ui"
+      >
+        <BookOpenIcon className="size-4" />
+        <span>随想</span>
       </SidebarMenuButton>
       {incoming.map((thread) => (
         <SidebarMenuButton

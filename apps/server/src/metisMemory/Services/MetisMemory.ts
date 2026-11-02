@@ -1,3 +1,4 @@
+import type { ThoughtsStore } from "../thoughtsStore.ts";
 import type {
   MetisMemoryDocument,
   MetisMemoryEntry,
@@ -44,6 +45,7 @@ export interface MetisMemoryListRequest {
 }
 
 export interface MetisMemoryShape {
+  readonly thoughts: ThoughtsStore;
   /** `<stateDir>/memory`: soul.md, global/, projects/<projectKey>/. */
   readonly rootDir: string;
   readonly getOverview: () => Effect.Effect<MetisMemoryOverview, MetisMemoryError>;

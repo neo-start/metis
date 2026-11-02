@@ -13,7 +13,8 @@ import {
   TriangleAlertIcon,
   type LucideIcon,
 } from "~/lib/icons";
-import type { ProviderMentionReference } from "@synara/contracts";
+import { THOUGHT_ID_PATTERN, type ProviderMentionReference } from "@synara/contracts";
+import { Link } from "@tanstack/react-router";
 import { RemoteChatContentContext } from "../lib/remoteChatContent";
 import { isLocalAbsolutePath } from "@synara/shared/path";
 import "katex/dist/katex.min.css";
@@ -1094,6 +1095,22 @@ const MARKDOWN_COMPONENTS: Components = {
     const { isUserVariant, cwd, knownAbsoluteFilePaths, resolvedTheme } =
       useContext(MarkdownRenderContext)!;
     const restoredHref = href ? restoreLiteralDollarPlaceholders(href) : href;
+    const thoughtId = restoredHref?.startsWith("/thoughts?entry=")
+      ? restoredHref.slice("/thoughts?entry=".length)
+      : null;
+    if (thoughtId && new RegExp(THOUGHT_ID_PATTERN).test(thoughtId)) {
+      // Instance-local citations must not become local file chips or open a new desktop window.
+      if (remote) return <span title="随想位于远端 Metis 实例">{children}</span>;
+      return (
+        <Link
+          to="/thoughts"
+          search={{ entry: thoughtId }}
+          className="text-primary underline underline-offset-2"
+        >
+          {children}
+        </Link>
+      );
+    }
     const isExternalHttp = isExternalHttpHref(restoredHref);
     if (isUserVariant && isExternalHttp) {
       // GFM autolinks a pasted URL before the chips plugin can see it; when the

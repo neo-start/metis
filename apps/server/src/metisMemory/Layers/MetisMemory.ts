@@ -1,3 +1,5 @@
+import path from "node:path";
+import { makeThoughtsStore } from "../thoughtsStore.ts";
 import { createHash } from "node:crypto";
 import {
   ProjectId,
@@ -204,6 +206,7 @@ export function makeMetisMemoryShape(input: {
     );
 
   return {
+    thoughts: makeThoughtsStore(path.join(rootDir, "thoughts"), input.now),
     rootDir,
     getOverview,
     list,

@@ -1,3 +1,13 @@
+import {
+  Thought,
+  ThoughtListResult,
+  ThoughtDeleteResult,
+  ThoughtListInput,
+  ThoughtReadInput,
+  ThoughtCreateInput,
+  ThoughtUpdateInput,
+  ThoughtDeleteInput,
+} from "./thoughts";
 import { MetisControlInput, MetisIdentity } from "./metis";
 import { PeerControlInput, PeerControlResult } from "./peers";
 import { Schema } from "effect";
@@ -1556,6 +1566,32 @@ export const WsSubscribeAutomationEventsRpc = Rpc.make(WS_METHODS.subscribeAutom
   stream: true,
 });
 
+export const WsThoughtsListRpc = Rpc.make(WS_METHODS.thoughtsList, {
+  payload: ThoughtListInput,
+  success: ThoughtListResult,
+  error: WsRpcError,
+});
+export const WsThoughtsReadRpc = Rpc.make(WS_METHODS.thoughtsRead, {
+  payload: ThoughtReadInput,
+  success: Thought,
+  error: WsRpcError,
+});
+export const WsThoughtsCreateRpc = Rpc.make(WS_METHODS.thoughtsCreate, {
+  payload: ThoughtCreateInput,
+  success: Thought,
+  error: WsRpcError,
+});
+export const WsThoughtsUpdateRpc = Rpc.make(WS_METHODS.thoughtsUpdate, {
+  payload: ThoughtUpdateInput,
+  success: Thought,
+  error: WsRpcError,
+});
+export const WsThoughtsDeleteRpc = Rpc.make(WS_METHODS.thoughtsDelete, {
+  payload: ThoughtDeleteInput,
+  success: ThoughtDeleteResult,
+  error: WsRpcError,
+});
+
 export const WsMemoryGetOverviewRpc = Rpc.make(WS_METHODS.memoryGetOverview, {
   payload: Schema.Struct({}),
   success: MetisMemoryOverview,
@@ -1738,6 +1774,11 @@ export type WsFeatureRpc =
   | typeof WsAutomationArchiveRunRpc
   | typeof WsAutomationResolveProposalRpc
   | typeof WsSubscribeAutomationEventsRpc
+  | typeof WsThoughtsListRpc
+  | typeof WsThoughtsReadRpc
+  | typeof WsThoughtsCreateRpc
+  | typeof WsThoughtsUpdateRpc
+  | typeof WsThoughtsDeleteRpc
   | typeof WsMemoryGetOverviewRpc
   | typeof WsMemoryReadRpc
   | typeof WsMemoryWriteRpc
@@ -1880,6 +1921,11 @@ export const WsFeatureRpcGroup: RpcGroup.RpcGroup<WsFeatureRpc> = RpcGroup.make(
   WsAutomationArchiveRunRpc,
   WsAutomationResolveProposalRpc,
   WsSubscribeAutomationEventsRpc,
+  WsThoughtsListRpc,
+  WsThoughtsReadRpc,
+  WsThoughtsCreateRpc,
+  WsThoughtsUpdateRpc,
+  WsThoughtsDeleteRpc,
   WsMemoryGetOverviewRpc,
   WsMemoryReadRpc,
   WsMemoryWriteRpc,

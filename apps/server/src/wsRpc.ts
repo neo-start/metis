@@ -2177,6 +2177,22 @@ const makeWsRpcHandlersLayer = () =>
               }),
             ),
           ),
+        [WS_METHODS.thoughtsList]: (input) =>
+          withMetisMemory((memory) => memory.thoughts.list(input), "无法读写随想"),
+        [WS_METHODS.thoughtsRead]: (input) =>
+          withMetisMemory((memory) => memory.thoughts.read(input), "无法读写随想"),
+        [WS_METHODS.thoughtsCreate]: (input) =>
+          withMetisMemory(
+            (memory) => memory.thoughts.create(input, { origin: "user" }),
+            "无法读写随想",
+          ),
+        [WS_METHODS.thoughtsUpdate]: (input) =>
+          withMetisMemory(
+            (memory) => memory.thoughts.update(input, { origin: "user" }),
+            "无法读写随想",
+          ),
+        [WS_METHODS.thoughtsDelete]: (input) =>
+          withMetisMemory((memory) => memory.thoughts.remove(input), "无法读写随想"),
         [WS_METHODS.memoryGetOverview]: () =>
           withMetisMemory((memory) => memory.getOverview(), "Failed to load Metis memory"),
         [WS_METHODS.memoryRead]: (input) =>
