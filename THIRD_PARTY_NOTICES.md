@@ -112,3 +112,9 @@ Synara UI primitives, route chrome, owner RPC authorization, private atomic
 writes and Metis Gateway lifecycle (local base `5a88e4ceb954aedd3c2ad2084bbbc367e64186da`).
 Personal journal storage and tools are separate from the long-term memory index.
 Existing upstream MIT notices remain applicable.
+
+### Feishu outbound media adaptation (2026-11-04)
+
+Uses the existing MIT Synara baseline (`eaa61eded31b6755d4f30ba8eabc5d905cf817cb`) and Metis `ab7c054cc`: `managedAttachmentStore.ts`, `persistence/Services/ManagedAttachments.ts`, `atomicWrite.ts`, `agentGateway/toolRuntime.ts`, `agentGateway/browserProof.ts`, and `feishu/Layers/FeishuBridge.ts` under `apps/server/src`. Reuses quota/owner/thread validation, private atomic persistence and active-turn authority. Official `@larksuiteoapi/node-sdk` remains the existing dependency for tenant authentication and multipart upload.
+
+Reviewed T3 Code `d51bc58f5e05123a416a3737ac4bce42d1d76b7c`, `apps/server/src/mcp/toolkits/attachment/handlers.ts` and `apps/server/src/orchestration-v2/EffectOutbox.ts`: no Feishu equivalent; its provider outbox/data model is incompatible with this baseline. No T3 code was copied. The new small Feishu outbox follows existing durability boundaries without importing another event store. Details in `docs/workbench/upstream.json`.

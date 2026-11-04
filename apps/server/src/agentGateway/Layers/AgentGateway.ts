@@ -1,3 +1,5 @@
+import { FeishuMediaService } from "../../feishu/FeishuMediaService.ts";
+import { makeFeishuMediaTools } from "../feishuMediaTools.ts";
 import { makeThoughtTools } from "../thoughtTools.ts";
 import { MetisControllerService } from "../../metis/MetisControllerService.ts";
 import { makeMetisTools } from "../metisTools.ts";
@@ -167,6 +169,7 @@ export const makeAgentGateway = Effect.gen(function* () {
   const computerService = Option.getOrUndefined(yield* Effect.serviceOption(ComputerService));
   // Optional so gateway tests that do not mount Metis memory keep their exact
   // tool catalog; the server runtime always provides it.
+  const feishuMedia = Option.getOrUndefined(yield* Effect.serviceOption(FeishuMediaService));
   const peers = Option.getOrUndefined(yield* Effect.serviceOption(PeerService));
   const metisController = Option.getOrUndefined(
     yield* Effect.serviceOption(MetisControllerService),
@@ -1220,6 +1223,7 @@ export const makeAgentGateway = Effect.gen(function* () {
     ...(metisMemory ? makeThoughtTools(metisMemory.thoughts) : []),
     ...(metisController && metisMemory ? makeMetisTools(metisController, metisMemory) : []),
     ...(peers ? makePeerTools(peers) : []),
+    ...(feishuMedia ? makeFeishuMediaTools(feishuMedia, resolveWorkspaceRoot) : []),
     ...browserTools,
     ...(deviceService?.supported === true
       ? makeAgentGatewayDeviceTools({ manager: deviceService.manager })

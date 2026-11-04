@@ -17,6 +17,7 @@
  *
  * @module feishu/Layers/FeishuBridge
  */
+import { FeishuMediaService } from "../FeishuMediaService.ts";
 import { mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -98,6 +99,7 @@ export const makeFeishuBridge = Effect.gen(function* () {
   const turnRepository = yield* ProjectionTurnRepository;
   const receipts = yield* OrchestrationCommandReceiptRepository;
   const metisController = yield* MetisControllerService;
+  const media = Option.getOrUndefined(yield* Effect.serviceOption(FeishuMediaService));
 
   const configPath = path.join(config.baseDir, FEISHU_APP_CONFIG_FILENAME);
   const chatMapPath = path.join(config.baseDir, FEISHU_CHAT_MAP_FILENAME);
@@ -229,7 +231,18 @@ export const makeFeishuBridge = Effect.gen(function* () {
       );
       if (turn && turn.state !== "running" && turn.state !== "pending") {
         const detail = await readDetail(input.threadId);
-        const text = assistantTextForTurn(detail, turn.turnId);
+        await media?.drain();
+        const mediaReceipts = media?.receiptsForMessage(input.messageId) ?? [];
+        const deliverySummary = mediaReceipts.length
+          ? "\n\n附件投递：" +
+            mediaReceipts
+              .map(
+                (receipt) =>
+                  `${receipt.requestId}=${receipt.state} (${receipt.items.map((item) => `${item.name}: ${item.state}${item.messageId ? ` ${item.messageId}` : ""}${item.error ? ` [${item.error}]` : ""}${item.warning ? ` [${item.warning}]` : ""}`).join("; ")})`,
+              )
+              .join("\n")
+          : "";
+        const text = (assistantTextForTurn(detail, turn.turnId) ?? "") + deliverySummary;
         return {
           status:
             turn.state === "completed"
@@ -268,9 +281,9 @@ export const makeFeishuBridge = Effect.gen(function* () {
     }
   };
 
-  const currentAllowedOpenIds = (fallback: FeishuBridgeConfig): ReadonlyArray<string> => {
+  const currentAllowedOpenIds = (): ReadonlyArray<string> => {
     const parsed = parseFeishuBridgeConfig(readFileOrNull(configPath), {});
-    return parsed.kind === "ready" ? parsed.config.allowedOpenIds : fallback.allowedOpenIds;
+    return parsed.kind === "ready" ? parsed.config.allowedOpenIds : [];
   };
 
   const start: FeishuBridgeShape["start"] = Effect.fn(function* () {
@@ -309,7 +322,7 @@ export const makeFeishuBridge = Effect.gen(function* () {
 
     channel.on("message", async (message) => {
       if (message.chatType !== "p2p") return;
-      if (!currentAllowedOpenIds(bridgeConfig).includes(message.senderId)) {
+      if (!currentAllowedOpenIds().includes(message.senderId)) {
         log.warn("message from sender not in allowedOpenIds", { senderId: message.senderId });
         return;
       }
@@ -350,6 +363,13 @@ export const makeFeishuBridge = Effect.gen(function* () {
         // Do not redownload already accepted messages on channel redelivery.
         const messageId = MessageId.makeUnsafe(`feishu:${message.messageId}`);
         if ((await readDetail(threadId))?.messages.some((entry) => entry.id === messageId)) return;
+        await media?.bind({
+          threadId,
+          messageId,
+          appId: bridgeConfig.appId,
+          senderId: message.senderId,
+          chatId: message.chatId,
+        });
         await withFeishuInboundAttachments({
           appId: bridgeConfig.appId,
           senderId: message.senderId,
@@ -422,6 +442,16 @@ export const makeFeishuBridge = Effect.gen(function* () {
       }
     });
 
+    if (media) {
+      yield* Effect.forkScoped(
+        Effect.forever(
+          Effect.tryPromise(() => media.drain()).pipe(
+            Effect.catch(() => Effect.logWarning("feishu media recovery pending")),
+            Effect.andThen(Effect.sleep("5 seconds")),
+          ),
+        ),
+      );
+    }
     yield* Effect.addFinalizer(() =>
       Effect.tryPromise(() => channel.disconnect()).pipe(
         Effect.catchCause((cause) =>

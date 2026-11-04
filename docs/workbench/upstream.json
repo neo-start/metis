@@ -240,5 +240,24 @@
       "source": "apps/web/src/components/Sidebar.tsx"
     },
     "adaptation": "Reviewed upstream per-thread notes and sidebar structure. No T3 code copied. Reuse local Textarea, Input, Button, RouteInsetSurface, sidebar controls, owner RPC authorization, private atomic writes and Metis gateway lifecycle. Add a separate chronological personal-thought store and tools; never inject it into long-term memory."
+  },
+  "feishuOutboundMedia": {
+    "date": "2026-11-04",
+    "localBaseCommit": "ab7c054cc",
+    "reviewedSynaraCommit": "eaa61eded31b6755d4f30ba8eabc5d905cf817cb",
+    "reviewedT3Commit": "d51bc58f5e05123a416a3737ac4bce42d1d76b7c",
+    "sources": [
+      "apps/server/src/managedAttachmentStore.ts",
+      "apps/server/src/persistence/Services/ManagedAttachments.ts",
+      "apps/server/src/atomicWrite.ts",
+      "apps/server/src/agentGateway/toolRuntime.ts",
+      "apps/server/src/agentGateway/browserProof.ts",
+      "apps/server/src/feishu/Layers/FeishuBridge.ts"
+    ],
+    "t3Reviewed": [
+      "apps/server/src/mcp/toolkits/attachment/handlers.ts",
+      "apps/server/src/orchestration-v2/EffectOutbox.ts"
+    ],
+    "changes": "Reuse Metis/Synara managed attachment quota/owner/thread lifecycle, private atomic persistence, active-turn gateway authority and Feishu binding. T3 has thread attachment upload/claims and a provider effect outbox, but no Feishu adapter; its orchestration-v2 schema is incompatible with this baseline. Add a small channel-specific outbox rather than repurpose provider/peer delivery tables. No T3 code copied."
   }
 }

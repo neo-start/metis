@@ -7,7 +7,7 @@ import { AUTOMATION_AUTHORING_GUIDANCE } from "./automationAuthoringGuidance.ts"
 import { renderMetisMemoryContextForThread } from "../metisMemory/memoryContext.ts";
 
 /** Canonical, versioned host policy delivered to every supported provider. */
-export const SYNARA_HARNESS_POLICY_VERSION = "2026-10-14.1";
+export const SYNARA_HARNESS_POLICY_VERSION = "2026-11-04.1";
 export const SYNARA_HARNESS_POLICY_MARKER = `[Synara harness policy ${SYNARA_HARNESS_POLICY_VERSION}]`;
 
 export interface SynaraHarnessCapabilities {
@@ -25,7 +25,7 @@ export function renderSynaraHarnessPolicy(capabilities: SynaraHarnessCapabilitie
   const controlPolicy = capabilities.gatewayControlAvailable
     ? [
         "Use the synara_* tools for Metis; metis_devices/metis_peer for paired devices.",
-        "Give a completion report: outcome, checks, limitations. Inspect browser_screenshot({kind:'proof'}); embed artifactPath as ![Result description](/absolute/path.png), also for generated images. No secrets or invented proof; skip open-only proof.",
+        "Give a completion report: outcome/checks/limits. Inspect browser_screenshot({kind:'proof'}); embed artifactPath or generated images as ![Result description](/absolute/path.png). Feishu needs metis_feishu_media; links do not send. No secrets/fake proof; skip open-only.",
         "When explicitly asked for E2E/end-to-end tests, call synara_e2e_review. Do not load it for unrelated work.",
         "For any-language requests involving Metis's integrated, embedded, or in-app browser, use browser_* autonomously as its canonical, complete control surface; never substitute Chrome, Computer Use, Playwright, OS-automation tools/skills, or change the user's active chat. Detailed rules live in each tool description.",
         "For any-language iOS app or simulator request, call device_* directly and autonomously as the canonical, complete control surface; never use xcrun simctl, AppleScript, Appium, idb, open Simulator.app, or substitute mobile/OS-automation tools/skills, because the user watches the streamed pane. Detailed rules live in each tool description.",

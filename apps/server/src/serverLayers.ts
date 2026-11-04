@@ -1,3 +1,4 @@
+import { FeishuMediaLive } from "./feishu/FeishuMediaService.ts";
 import { MetisControllerLive } from "./metis/MetisControllerService.ts";
 import { PeerServiceLive } from "./peers/PeerService.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -210,7 +211,12 @@ export function makeServerRuntimeServicesLayer(
     Layer.provideMerge(metisMemoryLayer),
     Layer.provideMerge(runtimeServicesLayer),
   );
+  const feishuMediaLayer = FeishuMediaLive.pipe(
+    Layer.provideMerge(ProjectionTurnRepositoryLive),
+    Layer.provideMerge(runtimeServicesLayer),
+  );
   const feishuBridgeLayer = FeishuBridgeLive.pipe(
+    Layer.provideMerge(feishuMediaLayer),
     Layer.provideMerge(metisControllerLayer),
     Layer.provideMerge(ProjectionTurnRepositoryLive),
     Layer.provideMerge(OrchestrationCommandReceiptRepositoryLive),
@@ -221,6 +227,7 @@ export function makeServerRuntimeServicesLayer(
     Layer.provideMerge(runtimeServicesLayer),
   );
   const agentGatewayLayer = AgentGatewayLive.pipe(
+    Layer.provideMerge(feishuMediaLayer),
     Layer.provideMerge(metisControllerLayer),
     Layer.provideMerge(peerServiceLayer),
     Layer.provideMerge(metisMemoryLayer),

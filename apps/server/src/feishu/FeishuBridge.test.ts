@@ -1,8 +1,11 @@
+import { FeishuMedia } from "./FeishuMedia.ts";
+import { FeishuMediaService } from "./FeishuMediaService.ts";
+import { ProjectionTurnRepository } from "../persistence/Services/ProjectionTurns.ts";
 import path from "node:path";
 import fs from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { Effect, Exit, Layer, ManagedRuntime, Scope } from "effect";
+import { Effect, Exit, Layer, ManagedRuntime, Scope, Option } from "effect";
 import {
   CommandId,
   MessageId,
@@ -80,7 +83,7 @@ afterEach(async () => {
   vi.clearAllMocks();
 });
 
-async function setup() {
+async function setup(enableMedia = false) {
   const runtimeLayer = OrchestrationEngineLive.pipe(
     Layer.provideMerge(OrchestrationProjectionPipelineLive),
     Layer.provideMerge(OrchestrationProjectionSnapshotQueryLive),
@@ -120,13 +123,43 @@ async function setup() {
   );
   const mapPath = path.join(config.baseDir, "feishu-chats.json");
   await fs.writeFile(mapPath, JSON.stringify({ oc_owner: "obsolete-concierge" }));
+  const mediaSend = vi.fn(async () => "om_media_receipt");
+  const turns = await runtime.runPromise(Effect.service(ProjectionTurnRepository));
+  const media = new FeishuMedia(path.join(config.stateDir, "test-media-outbox"), {
+    turn: async (threadId, turnId) => {
+      const turn = Option.getOrUndefined(
+        await runtime.runPromise(
+          turns.getByTurnId({
+            threadId: ThreadId.makeUnsafe(threadId),
+            turnId: TurnId.makeUnsafe(turnId),
+          }),
+        ),
+      );
+      return turn ? { messageId: turn.pendingMessageId, state: turn.state } : undefined;
+    },
+    transport: async () => ({
+      upload: async () => "img_key",
+      send: mediaSend,
+      reconcile: async () => undefined,
+    }),
+    prepare: async () => ({ name: "proof.png", type: "image", content: { image_key: "img_key" } }),
+  });
+  await media.initialize();
+  const bridgeEffect = makeFeishuBridge.pipe(
+    Effect.provideService(MetisControllerService, controller),
+  );
   const bridge = await runtime.runPromise(
-    makeFeishuBridge.pipe(Effect.provideService(MetisControllerService, controller)),
+    enableMedia
+      ? bridgeEffect.pipe(Effect.provideService(FeishuMediaService, media))
+      : bridgeEffect,
   );
   await runtime.runPromise(Scope.provide(bridge.start(), scope));
   const engine = await runtime.runPromise(Effect.service(OrchestrationEngineService));
   const dispatch = (command: OrchestrationCommand) => runtime.runPromise(engine.dispatch(command));
-  const complete = async (text: string) => {
+  const complete = async (
+    text: string,
+    onRunning?: (threadId: string, turnId: string) => Promise<void>,
+  ) => {
     const threadId = ThreadId.makeUnsafe((await controller.overview()).threadId!);
     const turnId = TurnId.makeUnsafe(randomUUID());
     const messageId = MessageId.makeUnsafe(randomUUID());
@@ -150,6 +183,7 @@ async function setup() {
         },
       });
     await session("running", turnId);
+    await onRunning?.(threadId, turnId);
     await dispatch({
       ...stamp(),
       type: "thread.message.assistant.delta",
@@ -170,10 +204,58 @@ async function setup() {
       resources: [],
       ...override,
     });
-  return { runtime, controller, selection, engine, dispatch, complete, receive, mapPath };
+  return {
+    runtime,
+    controller,
+    selection,
+    engine,
+    dispatch,
+    complete,
+    receive,
+    mapPath,
+    media,
+    mediaSend,
+  };
 }
 
 describe("Feishu instance-controller routing with real orchestration", () => {
+  it("binds media before dispatch and delivers explicit reply attachments at completion with receipt", async () => {
+    const f = await setup(true);
+    transport.beforeStream = () =>
+      f.complete("截图已准备", async (threadId, turnId) => {
+        const receipt = await f.media.request(
+          threadId,
+          turnId,
+          {
+            action: "attach",
+            requestId: "proof",
+            attachments: [{ path: "/work/proof.png", kind: "image" }],
+          },
+          "/work",
+        );
+        expect(receipt.state).toBe("queued");
+        expect(f.mediaSend).not.toHaveBeenCalled();
+      });
+    await f.receive("media-request", "请发截图");
+    expect(f.mediaSend).toHaveBeenCalledWith(
+      "oc_owner",
+      "image",
+      { image_key: "img_key" },
+      expect.any(String),
+    );
+    expect(transport.contents.at(-1)).toContain("om_media_receipt");
+    await f.receive("media-request", "请发截图");
+    expect(f.mediaSend).toHaveBeenCalledOnce();
+    expect(f.media.receiptsForMessage("feishu:media-request")[0]?.state).toBe("sent");
+  });
+
+  it("does not upload or send arbitrary Markdown local image paths", async () => {
+    const f = await setup(true);
+    transport.beforeStream = () => f.complete("![截图](/private/secret.png)");
+    await f.receive("markdown-only");
+    expect(f.mediaSend).not.toHaveBeenCalled();
+    expect(f.media.receiptsForMessage("feishu:markdown-only")).toEqual([]);
+  });
   it("follows /clear, preserves controller settings and deduplicates across conversation rotation", async () => {
     const f = await setup();
     const first = (await f.controller.overview()).threadId!;
