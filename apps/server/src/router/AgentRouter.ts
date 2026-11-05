@@ -53,6 +53,9 @@ const SavedDispatch = Schema.Struct({
   sourceThreadId: Schema.optional(ThreadId),
 });
 const hash = (text: string) => createHash("sha256").update(text).digest("hex");
+export function isRouterGreeting(text: string) {
+  return /^(?:你好|您好|在吗|在不在|hello|hi|hey)[？?！!。\s]*$/iu.test(text.trim());
+}
 const statusQuestion =
   /^(?:(?:现在|目前|当前)?(?:任务|工作|优化|这个任务|这项工作)?(?:进度如何|进度怎么样|做到哪了|做到哪一步了|进展如何|进展怎么样|还在吗|还在运行吗|卡住了吗|怎么样了|查好了吗|查完了吗|做好了吗|完成了吗)|status|progress|are you still (?:there|working)|how(?:'s| is) (?:it|the task) going)$/i;
 export function isRouterStatusQuestion(text: string) {
@@ -384,10 +387,7 @@ export class AgentRouter {
       };
     };
     if (!canRouteTurn(command)) return [workerCommand];
-    if (
-      !command.routerSourceCommandId &&
-      /^(?:你好|您好|在吗|在不在|hello|hi|hey)[？?！!。\s]*$/iu.test(command.message.text.trim())
-    ) {
+    if (!command.routerSourceCommandId && isRouterGreeting(command.message.text)) {
       return [reply("我在，收到你的消息了。")];
     }
     if (!command.routerSourceCommandId && isRouterGlobalStatusQuestion(command.message.text)) {

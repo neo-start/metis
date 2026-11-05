@@ -11,10 +11,81 @@ import {
 } from "@synara/contracts";
 import { afterEach, expect, it, vi } from "vitest";
 import { FeishuRouterDelivery } from "./FeishuRouterDelivery.ts";
+import { FEISHU_RECEIVED_TEXT } from "./feishuAcknowledgement.ts";
 const roots: string[] = [];
 afterEach(async () => {
   for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
 });
+it.each([false, true])(
+  "sends the receipt before admission and recovers without repeating it (failed send=%s)",
+  async (failFirst) => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "feishu-receipt-"));
+    roots.push(root);
+    const command: Extract<OrchestrationCommand, { type: "thread.turn.start" }> = {
+      type: "thread.turn.start",
+      commandId: CommandId.makeUnsafe("receipt-order"),
+      threadId: ThreadId.makeUnsafe("controller"),
+      message: {
+        messageId: MessageId.makeUnsafe("input"),
+        role: "user",
+        text: "检查项目",
+        attachments: [],
+      },
+      runtimeMode: "approval-required",
+      interactionMode: "default",
+      createdAt: new Date().toISOString(),
+    };
+    const key = createHash("sha256").update(command.commandId).digest("hex");
+    const messages: Array<{ id: string; text: string }> = [];
+    let finishSend!: () => void;
+    const host = {
+      allowed: () => true,
+      readThread: async () => ({ messages }) as unknown as OrchestrationThread,
+      accept: vi.fn(async () => ({})),
+      send: vi.fn(async () => ({ messageId: "final" })),
+    };
+    host.send.mockImplementationOnce(async () => {
+      await new Promise<void>((resolve) => {
+        finishSend = resolve;
+      });
+      if (failFirst) throw new Error("offline");
+      return { messageId: "receipt" };
+    });
+    const input = {
+      chatId: "chat",
+      senderId: "owner",
+      replyTo: "input",
+      command,
+      acknowledgementText: FEISHU_RECEIVED_TEXT,
+    };
+    const delivery = new FeishuRouterDelivery(root, host);
+    const pending = delivery.enqueue(input);
+    // Attach the rejection assertion before releasing the failed transport.
+    const settled = failFirst ? expect(pending).rejects.toThrow("offline") : pending;
+    await vi.waitFor(() => expect(finishSend).toBeDefined());
+    await delivery.flush();
+    expect(host.accept).not.toHaveBeenCalled();
+    expect(host.send).toHaveBeenCalledTimes(1);
+    finishSend();
+    await settled;
+    delivery.stop();
+    if (failFirst) {
+      expect(host.accept).not.toHaveBeenCalled();
+      host.send.mockResolvedValueOnce({ messageId: "receipt" });
+    }
+    const recovered = new FeishuRouterDelivery(root, host);
+    await recovered.flush();
+    expect(host.accept).toHaveBeenCalled();
+    expect(host.send).toHaveBeenCalledTimes(failFirst ? 2 : 1);
+    messages.push({ id: `router-${key}`, text: "检查完成" });
+    await recovered.flush();
+    await Promise.all([recovered.enqueue(input), recovered.enqueue(input)]);
+    await new FeishuRouterDelivery(root, host).flush();
+    expect(host.send).toHaveBeenCalledTimes(failFirst ? 3 : 2);
+    expect(await recovered.resolveReference("chat", "owner", "receipt")).toBe(command.commandId);
+    expect(await recovered.resolveReference("chat", "owner", "final")).toBe(command.commandId);
+  },
+);
 it.each(["修改已加入任务 worker 的队列。", "已向任务 worker 提交修改，等待执行器接收。"])(
   "delivers and freezes follow-up results after reconnect: %s",
   async (ack) => {

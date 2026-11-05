@@ -17,6 +17,8 @@ const Delivery = Schema.Struct({
   done: Schema.optional(Schema.Boolean),
   followup: Schema.optional(Schema.Boolean),
   completionText: Schema.optional(Schema.String),
+  acknowledgementText: Schema.optional(Schema.String),
+  acknowledgementSent: Schema.optional(Schema.Boolean),
 });
 type Delivery = typeof Delivery.Type;
 
@@ -100,15 +102,39 @@ export class FeishuRouterDelivery {
       this.active.delete(key);
     }
   }
-  async enqueue(input: { chatId: string; senderId: string; replyTo: string; command: TurnStart }) {
+  private async admit(key: string, record: Delivery): Promise<Delivery> {
+    if (this.stopped || !this.host.allowed(record.senderId)) return record;
+    if (record.command.type !== "thread.turn.start") throw new Error("Invalid Router delivery.");
+    const command = record.command;
+    if (record.acknowledgementText && !record.acknowledgementSent) {
+      const sent = await this.host.send(record.chatId, record.acknowledgementText, record.replyTo);
+      record = {
+        ...record,
+        acknowledgementSent: true,
+        sentMessageIds: [
+          ...(record.sentMessageIds ?? []),
+          ...(sent ? [sent.messageId, ...(sent.chunkIds ?? [])] : []),
+        ],
+      };
+      await this.save(key, record);
+    }
+    if (!this.stopped && this.host.allowed(record.senderId)) await this.host.accept(command);
+    return record;
+  }
+  async enqueue(input: {
+    chatId: string;
+    senderId: string;
+    replyTo: string;
+    command: TurnStart;
+    acknowledgementText?: string;
+  }) {
     if (this.stopped) throw new Error("Feishu Router is shutting down.");
     const key = this.key(input.command.commandId);
     await this.locked(key, async () => {
       const record = (await this.read(key)) ?? input;
       if (!this.host.allowed(record.senderId) || this.stopped) return;
       await this.save(key, record);
-      if (record.command.type !== "thread.turn.start") throw new Error("Invalid Router delivery.");
-      await this.host.accept(record.command);
+      await this.admit(key, record);
     });
   }
   async flush() {
@@ -134,8 +160,8 @@ export class FeishuRouterDelivery {
             if (record.command.type !== "thread.turn.start")
               throw new Error("Invalid Router delivery.");
             const command = record.command;
-            await this.host.accept(command);
-            const thread = await this.host.readThread(record.command.threadId);
+            record = await this.admit(key, record);
+            const thread = await this.host.readThread(command.threadId);
             if (!thread || thread.deletedAt || thread.archivedAt) return;
             if (!record.replied) {
               const reply = thread.messages.find(
@@ -156,7 +182,10 @@ export class FeishuRouterDelivery {
               record = {
                 ...record,
                 replied: true,
-                sentMessageIds: sent ? [sent.messageId, ...(sent.chunkIds ?? [])] : [],
+                sentMessageIds: [
+                  ...(record.sentMessageIds ?? []),
+                  ...(sent ? [sent.messageId, ...(sent.chunkIds ?? [])] : []),
+                ],
                 ...(workerId ? { workerId, followup } : { done: true }),
               };
               await this.save(key, record);
