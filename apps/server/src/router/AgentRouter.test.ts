@@ -177,6 +177,60 @@ describe("AgentRouter above the real orchestration engine", () => {
     await long;
   });
 
+  it("delivers greetings and ordinary chat while an earlier classifier is blocked", async () => {
+    const f = await fixture();
+    let finish!: (value: RouterGenerationResult) => void;
+    f.generate.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const first = f.router.dispatch(f.command("解释一下 Redis", "slow"), f.host);
+    await vi.waitFor(() => expect(f.generate).toHaveBeenCalledTimes(1));
+    try {
+      const greeting = f.router.dispatch(f.command("你好", "greeting"), f.host);
+      const chat = f.router.dispatch(f.command("你还在吗", "chat"), f.host);
+      await vi.waitFor(async () => {
+        const messages = (await f.readThread()).messages;
+        expect(messages.some((m) => m.text === "我在，收到你的消息了。")).toBe(true);
+        expect(messages.some((m) => m.text === "Router：\n独立问题的回答")).toBe(true);
+      });
+      await Promise.all([greeting, chat]);
+    } finally {
+      finish({ route: "reply", reply: "较慢的回答" });
+      await first;
+    }
+  });
+
+  it("keeps task effects ordered even when later chat finishes first", async () => {
+    const f = await fixture();
+    let finish!: (value: RouterGenerationResult) => void;
+    f.generate.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const createWorker = vi.fn(async () => ThreadId.makeUnsafe("worker"));
+    const host = { ...f.host, createWorker };
+    const first = f.router.dispatch(f.command("分析项目", "first-task"), host);
+    await vi.waitFor(() => expect(f.generate).toHaveBeenCalledTimes(1));
+    await f.router.dispatch(f.command("你好", "intervening-chat"), host);
+    const third = f.router.dispatch(f.command("新任务：分析另一个项目", "third-task"), host);
+    try {
+      await vi.waitFor(async () => {
+        const files = await readdir(path.join(f.root, "receipts"));
+        expect(files.length).toBeGreaterThanOrEqual(2);
+      });
+      expect(createWorker).not.toHaveBeenCalled();
+    } finally {
+      finish({ route: "queue", reply: "" });
+      await Promise.all([first, third]);
+    }
+    expect(createWorker).toHaveBeenCalledTimes(2);
+  });
+
   it("replays a completed receipt after restart without regenerating or duplicating chat", async () => {
     const f = await fixture();
     const input = f.command("解释一下 Redis");

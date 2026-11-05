@@ -71,8 +71,9 @@ ordinary approval surface; Router cannot approve on the user's behalf.
 
 ## Ordering, persistence and recovery
 
-Ordinary requests are classified and created in a per-conversation lane, preserving
-arrival order. The lane ends at worker dispatch, never at worker completion. Status
+Ordinary requests are classified concurrently so slow generation cannot hold later
+chat replies. Task-changing effects retain a per-conversation arrival-order lane,
+which ends at worker dispatch, never at worker completion. Status
 and exact cancellation (including task-ID forms) bypass it. The composer remains
 available after durable admission even while a previous classification or worktree
 creation is pending. Router limits concurrent processing requests to 32; overload

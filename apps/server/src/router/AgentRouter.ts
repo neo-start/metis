@@ -120,21 +120,18 @@ export class AgentRouter {
         : Promise.reject(new Error("Router commandId is already bound to different content."));
     if (this.requests.size >= 32)
       return Promise.reject(new Error("Router is busy. Please retry shortly."));
-    // Progress never waits for model generation. Other follow-ups preserve their arrival order.
-    const previous = isRouterPriorityRequest(command.message.text)
-      ? undefined
-      : this.lanes.get(command.threadId);
-    const result = (previous ?? Promise.resolve())
-      .catch(() => undefined)
-      .then(() => this.run(command, fingerprint, key, host));
+    // Classify concurrently: a slow model request must not block later chat.
+    // Only task-changing effects wait for earlier requests in the conversation.
+    const priority = isRouterPriorityRequest(command.message.text);
+    const previous = priority ? undefined : this.lanes.get(command.threadId);
+    const result = this.run(command, fingerprint, key, host, previous);
+    const lane = Promise.allSettled([previous, result]);
     this.requests.set(key, { fingerprint, result });
-    if (!isRouterPriorityRequest(command.message.text)) this.lanes.set(command.threadId, result);
-    void result
-      .finally(() => {
-        this.requests.delete(key);
-        if (this.lanes.get(command.threadId) === result) this.lanes.delete(command.threadId);
-      })
-      .catch(() => undefined);
+    if (!priority) this.lanes.set(command.threadId, lane);
+    void result.finally(() => this.requests.delete(key)).catch(() => undefined);
+    void lane.then(() => {
+      if (this.lanes.get(command.threadId) === lane) this.lanes.delete(command.threadId);
+    });
     return result;
   }
 
@@ -143,6 +140,7 @@ export class AgentRouter {
     fingerprint: string,
     key: string,
     host: AgentRouterHost,
+    previous?: Promise<unknown>,
   ): Promise<DispatchResult> {
     const filePath = path.join(this.stateRoot, `${key}.json`);
     let saved: typeof SavedDispatch.Type | undefined;
@@ -165,6 +163,8 @@ export class AgentRouter {
         writeFileStringAtomically({ filePath, contents: JSON.stringify(saved) }),
       );
     }
+    if (saved.commands.some((planned) => planned.type !== "thread.messages.import"))
+      await previous?.catch(() => undefined);
     let result: DispatchResult = { sequence: 0 };
     for (const planned of saved.commands) {
       if (planned.type !== "router.worker.create") {
