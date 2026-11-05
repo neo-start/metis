@@ -1,3 +1,5 @@
+import { RouterRuntime } from "../../router/RouterRuntime.ts";
+import { FeishuRouterDelivery } from "../FeishuRouterDelivery.ts";
 /**
  * FeishuBridge - talk to Metis from a Feishu private chat.
  *
@@ -98,6 +100,7 @@ export const makeFeishuBridge = Effect.gen(function* () {
   const turnRepository = yield* ProjectionTurnRepository;
   const receipts = yield* OrchestrationCommandReceiptRepository;
   const metisController = yield* MetisControllerService;
+  const router = Option.getOrUndefined(yield* Effect.serviceOption(RouterRuntime));
 
   const configPath = path.join(config.baseDir, FEISHU_APP_CONFIG_FILENAME);
   const chatMapPath = path.join(config.baseDir, FEISHU_CHAT_MAP_FILENAME);
@@ -307,6 +310,35 @@ export const makeFeishuBridge = Effect.gen(function* () {
     channel.on("reconnecting", () => log.info("reconnecting"));
     channel.on("reconnected", () => log.info("reconnected"));
 
+    const routerDelivery = router
+      ? new FeishuRouterDelivery(path.join(config.stateDir, "feishu-router-delivery"), {
+          accept: (command) => router.accept(command),
+          readThread: readDetail,
+          allowed: (sender) => currentAllowedOpenIds(bridgeConfig).includes(sender),
+          send: async (chatId, text, replyTo) => {
+            const markdown = bridgeConfig.publicOrigin
+              ? text.replace(
+                  /\/tasks\?thread=([a-zA-Z0-9_-]+)/gu,
+                  (_, id: string) =>
+                    buildThreadLink(bridgeConfig.publicOrigin, ThreadId.makeUnsafe(id)) ?? id,
+                )
+              : text;
+            await channel.send(chatId, { text: markdown }, { replyTo });
+          },
+        })
+      : undefined;
+    if (routerDelivery) {
+      yield* Effect.addFinalizer(() => Effect.sync(() => routerDelivery.stop()));
+      yield* Effect.forkScoped(
+        Effect.forever(
+          Effect.tryPromise(() => routerDelivery.flush()).pipe(
+            Effect.catch((error) => Effect.logWarning("Feishu Router delivery pending", { error })),
+            Effect.andThen(Effect.sleep("500 millis")),
+          ),
+        ),
+      );
+    }
+
     channel.on("message", async (message) => {
       if (message.chatType !== "p2p") return;
       if (!currentAllowedOpenIds(bridgeConfig).includes(message.senderId)) {
@@ -319,6 +351,8 @@ export const makeFeishuBridge = Effect.gen(function* () {
         const commandId = CommandId.makeUnsafe(
           `feishu:${isStopCommand(text) ? "stop" : "turn"}:${message.messageId}`,
         );
+        // The Router has its own durable receipt, independent of provider turns.
+        if (routerDelivery && (await routerDelivery.has(commandId))) return;
         // Command receipts survive controller /clear and provider handoff.
         // Never redeliver an already accepted message into the new conversation.
         const receipt = Option.getOrUndefined(await run(receipts.getByCommandId({ commandId })));
@@ -327,6 +361,35 @@ export const makeFeishuBridge = Effect.gen(function* () {
         const thread = await readShell(threadId);
         if (!thread || thread.archivedAt !== null) throw new Error("Metis 会话暂时不可用。");
         const threadLink = buildThreadLink(bridgeConfig.publicOrigin, threadId);
+        if (
+          routerDelivery &&
+          message.resources.length === 0 &&
+          (!text.trimStart().startsWith("/") || isStopCommand(text))
+        ) {
+          await routerDelivery.enqueue({
+            chatId: message.chatId,
+            senderId: message.senderId,
+            replyTo: message.messageId,
+            command: {
+              type: "thread.turn.start",
+              commandId,
+              threadId,
+              routingMode: "auto",
+              message: {
+                messageId: MessageId.makeUnsafe(`feishu:${message.messageId}`),
+                role: "user",
+                text,
+                attachments: [],
+              },
+              modelSelection: thread.modelSelection,
+              dispatchMode: "queue",
+              runtimeMode: thread.runtimeMode,
+              interactionMode: thread.interactionMode,
+              createdAt: new Date().toISOString(),
+            },
+          });
+          return;
+        }
         if (isStopCommand(text)) {
           await run(
             orchestrationEngine.dispatch({

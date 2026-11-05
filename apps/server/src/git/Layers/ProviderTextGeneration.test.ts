@@ -115,6 +115,37 @@ function makeProviderTextGenerationTestLayer(
 }
 
 describe("ProviderTextGenerationLive", () => {
+  it("routes the fourth Codex account using its own credentials and exact model", async () => {
+    const { layer, codex, cursor } = makeProviderTextGenerationTestLayer({
+      providers: {
+        codexQuaternary: {
+          enabled: true,
+          homePath: "/private/fourth-account",
+          binaryPath: "/bin/fourth-codex",
+        },
+      },
+    });
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const service = yield* TextGeneration;
+        return yield* service.routeMessage!({
+          cwd: "/router",
+          message: "解释路由",
+          taskContext: "{}",
+          modelSelection: { provider: "codexQuaternary", model: "gpt-6-astra" },
+        });
+      }).pipe(Effect.provide(layer)),
+    );
+    expect(codex.routeMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        modelSelection: { provider: "codex", model: "gpt-6-astra" },
+        providerOptions: {
+          codex: { homePath: "/private/fourth-account", binaryPath: "/bin/fourth-codex" },
+        },
+      }),
+    );
+    expect(cursor.routeMessage).not.toHaveBeenCalled();
+  });
   it("keeps router generation on the selected model instead of the configured fallback", async () => {
     const { layer, codex, cursor } = makeProviderTextGenerationTestLayer({
       textGenerationModelSelection: { provider: "cursor", model: "composer-2" },

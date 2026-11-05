@@ -1,8 +1,5 @@
-import { RouterInbox } from "./router/RouterInbox.ts";
-import { AgentGateway } from "./agentGateway/Services/AgentGateway.ts";
-import { canRouteTurn, AgentRouter } from "./router/AgentRouter.ts";
-import { mkdir as mkdirRouterDirectory } from "node:fs/promises";
-import { join as joinRouterPath } from "node:path";
+import { RouterRuntime, makeRouterRuntime } from "./router/RouterRuntime.ts";
+import { canRouteTurn } from "./router/AgentRouter.ts";
 import { MetisControllerService } from "./metis/MetisControllerService.ts";
 import { PeerService } from "./peers/PeerService.ts";
 import { AgentGatewaySessionRegistry } from "./agentGateway/Services/AgentGatewaySessionRegistry";
@@ -411,75 +408,10 @@ const makeWsRpcHandlersLayer = () =>
       const serverSettings = yield* ServerSettingsService;
       const terminalManager = yield* TerminalManager;
       const textGeneration = yield* TextGeneration;
-      const routerGateway = Option.getOrUndefined(yield* Effect.serviceOption(AgentGateway));
-      const routerAbort = new AbortController();
-      const agentRouter = new AgentRouter(joinRouterPath(config.stateDir, "router", "receipts"));
-      const routerGenerationCwd = joinRouterPath(config.stateDir, "router", "generation");
-      const routerHost = {
-        generationCwd: routerGenerationCwd,
-        readThread: async (threadId: ThreadId) =>
-          Option.getOrNull(
-            await Effect.runPromise(projectionReadModelQuery.getThreadDetailById(threadId), {
-              signal: routerAbort.signal,
-            }),
-          ),
-        listWorkers: async (threadId: ThreadId) =>
-          (
-            await Effect.runPromise(orchestrationEngine.getReadModel(), {
-              signal: routerAbort.signal,
-            })
-          ).threads.filter(
-            (thread) =>
-              thread.creationSource === "router" &&
-              thread.sourceThreadId === threadId &&
-              !thread.deletedAt &&
-              !thread.archivedAt,
-          ),
-        createWorker: async (
-          command: Extract<OrchestrationCommand, { type: "thread.turn.start" }>,
-          sourceContext?: string,
-        ) => {
-          if (!routerGateway?.createRouterWorker)
-            throw new Error("Router worker service unavailable.");
-          return Effect.runPromise(routerGateway.createRouterWorker(command, sourceContext), {
-            signal: routerAbort.signal,
-          });
-        },
-        generate: async (
-          input: import("./git/Services/TextGeneration.ts").RouterGenerationInput,
-        ) => {
-          if (!textGeneration.routeMessage) throw new Error("Router generation unavailable.");
-          await mkdirRouterDirectory(routerGenerationCwd, { recursive: true, mode: 0o700 });
-          return Effect.runPromise(
-            textGeneration.routeMessage(input).pipe(Effect.timeout("12 seconds")),
-            { signal: routerAbort.signal },
-          );
-        },
-        // Plain Router requests contain no attachment claims or approval responses.
-        dispatch: (command: OrchestrationCommand) =>
-          Effect.runPromise(runtimeStartup.enqueueCommand(orchestrationEngine.dispatch(command)), {
-            signal: routerAbort.signal,
-          }),
-      };
-      const routerInbox = new RouterInbox(
-        joinRouterPath(config.stateDir, "router", "inbox"),
-        agentRouter,
-        routerHost,
-      );
-      yield* Effect.addFinalizer(() =>
-        Effect.sync(() => {
-          routerInbox.stop();
-          routerAbort.abort();
-        }),
-      );
-      yield* Effect.forkScoped(
-        Effect.forever(
-          Effect.tryPromise(() => routerInbox.recover()).pipe(
-            Effect.catch((error) => Effect.logWarning("Router inbox recovery failed", { error })),
-            Effect.andThen(Effect.sleep("5 seconds")),
-          ),
-        ),
-      );
+      const sharedRouter = yield* Effect.serviceOption(RouterRuntime);
+      const routerInbox = Option.isSome(sharedRouter)
+        ? sharedRouter.value
+        : yield* makeRouterRuntime;
       const workspaceEntries = yield* WorkspaceEntries;
       const workspaceFileSystem = yield* WorkspaceFileSystem;
       const threadDiagnostics = yield* ThreadDiagnosticsQuery;

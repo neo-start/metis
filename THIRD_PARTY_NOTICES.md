@@ -133,3 +133,8 @@ GitCore worktree boundary and Metis controller patterns at
 `useChatTurnExecution.ts` and the `ChatView.browser.tsx` websocket harness. Reviewed
 T3 Code `apps/web/src/components/ChatView.tsx` at the pinned revision above as an
 additional design reference; no T3 source copied and no new license introduced.
+
+The Router Feishu integration (2026-11-05) reuses the local bridge allowlist,
+transport, controller and account alias resolver from `c5a1669d0`, and extracts
+the existing websocket Router runtime for both ingress paths. T3 has no equivalent
+Feishu transport (reviewed commit above); no additional upstream source copied.

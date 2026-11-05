@@ -279,6 +279,15 @@
         "apps/web/src/components/ChatView.tsx"
       ],
       "adaptations": "Reuse local durable gateway creation saga, ownership-checked worktree compensation, provider lifecycle, task control and completion outbox for server-only owner Router workers. Preserve model, runtime mode, interaction and launch options, source-thread ownership, approvals, exact-turn fences and provider-native subagent semantics. Add private admission inbox and passive transcript results; reuse frontend ACK lifecycle, Thought-link navigation pattern and isolated mock-WebSocket browser harness. No T3 source copied; no migration or process runtime replacement."
+    },
+    "feishuIntegration": {
+      "localBaseCommit": "c5a1669d0",
+      "synaraSources": [
+        "apps/server/src/feishu/Layers/FeishuBridge.ts",
+        "apps/server/src/provider/codexSecondaryAlias.ts",
+        "apps/server/src/wsRpc.ts"
+      ],
+      "adaptations": "Share Router runtime with authorized Feishu ingress; persist transport delivery and recover original thread binding. Reuse account alias resolution. No additional T3 source copied."
     }
   }
 }

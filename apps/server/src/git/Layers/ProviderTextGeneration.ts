@@ -1,3 +1,4 @@
+import { resolveCodexAccountOptions } from "../../provider/codexSecondaryAlias.ts";
 import {
   PROVIDER_DISPLAY_NAMES,
   type DroidModelSelection,
@@ -128,6 +129,49 @@ const makeProviderTextGeneration = Effect.gen(function* () {
     routeMessage: (input: TextGen.RouterGenerationInput) => {
       // Router requests must never silently change the conversation's provider/model.
       const provider = input.modelSelection?.provider;
+      if (
+        provider === "codexSecondary" ||
+        provider === "codexTertiary" ||
+        provider === "codexQuaternary"
+      ) {
+        return Effect.gen(function* () {
+          const settings = yield* serverSettings.getSettings.pipe(
+            Effect.mapError(
+              (cause) =>
+                new TextGenerationError({
+                  operation: "routeMessage",
+                  detail: "Failed to read provider settings.",
+                  cause,
+                }),
+            ),
+          );
+          const account = settings.providers[provider];
+          if (!account.enabled)
+            return yield* Effect.fail(
+              new TextGenerationError({
+                operation: "routeMessage",
+                detail: providerDisabledSettingsMessage(provider),
+              }),
+            );
+          if (!codexTextGeneration.routeMessage)
+            return yield* Effect.fail(
+              new TextGenerationError({
+                operation: "routeMessage",
+                detail: "Router generation unavailable.",
+              }),
+            );
+          return yield* codexTextGeneration.routeMessage({
+            ...input,
+            modelSelection: { ...input.modelSelection!, provider: "codex" } as ModelSelection,
+            providerOptions: {
+              codex: resolveCodexAccountOptions(
+                input.providerOptions?.[provider] ?? account,
+                provider,
+              ),
+            },
+          });
+        });
+      }
       if (!Selection.hasDedicatedTextGenerationProvider(provider)) {
         return Effect.fail(
           new TextGenerationError({

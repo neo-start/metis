@@ -53,7 +53,7 @@ export function isRouterStatusQuestion(text: string) {
   return statusQuestion.exec(normalized)?.[0] === normalized;
 }
 export function isRouterCancelRequest(text: string) {
-  return /^(?:停止|暂停|停一下|停止当前任务|暂停当前任务|取消当前任务|stop|pause|cancel(?: the)? (?:current )?task)[。.!！]?$/iu.test(
+  return /^(?:停|停下|停止|暂停|停一下|停止当前任务|暂停当前任务|取消当前任务|stop|pause|cancel(?: the)? (?:current )?task)[。.!！]?$/iu.test(
     text.trim(),
   );
 }
@@ -247,6 +247,11 @@ export class AgentRouter {
       ],
     });
     if (!canRouteTurn(command)) return [workerCommand];
+    if (
+      /^(?:你好|您好|在吗|在不在|hello|hi|hey)[？?！!。\s]*$/iu.test(command.message.text.trim())
+    ) {
+      return [reply("我在，收到你的消息了。")];
+    }
     const workers = host.listWorkers ? await host.listWorkers(thread.id) : [];
     const tasks = [...(routerHasActiveTurn(thread) ? [thread] : []), ...workers].filter(
       (task) => !task.deletedAt && !task.archivedAt,

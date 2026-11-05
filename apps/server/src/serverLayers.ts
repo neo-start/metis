@@ -1,3 +1,4 @@
+import { RouterRuntimeLive } from "./router/RouterRuntime.ts";
 import { MetisControllerLive } from "./metis/MetisControllerService.ts";
 import { PeerServiceLive } from "./peers/PeerService.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -210,12 +211,6 @@ export function makeServerRuntimeServicesLayer(
     Layer.provideMerge(metisMemoryLayer),
     Layer.provideMerge(runtimeServicesLayer),
   );
-  const feishuBridgeLayer = FeishuBridgeLive.pipe(
-    Layer.provideMerge(metisControllerLayer),
-    Layer.provideMerge(ProjectionTurnRepositoryLive),
-    Layer.provideMerge(OrchestrationCommandReceiptRepositoryLive),
-    Layer.provideMerge(runtimeServicesLayer),
-  );
   const peerServiceLayer = PeerServiceLive.pipe(
     Layer.provideMerge(metisControllerLayer),
     Layer.provideMerge(runtimeServicesLayer),
@@ -240,6 +235,19 @@ export function makeServerRuntimeServicesLayer(
     // resolves the service on every platform to make that decision.
     Layer.provideMerge(DeviceServiceLive),
     Layer.provideMerge(ComputerServiceLive),
+  );
+  const routerRuntimeLayer = RouterRuntimeLive.pipe(
+    Layer.provideMerge(agentGatewayLayer),
+    Layer.provideMerge(TextGenerationLayerLive),
+    Layer.provideMerge(runtimeServicesLayer),
+    Layer.provideMerge(ServerRuntimeStartupLive),
+  );
+  const feishuBridgeLayer = FeishuBridgeLive.pipe(
+    Layer.provideMerge(routerRuntimeLayer),
+    Layer.provideMerge(metisControllerLayer),
+    Layer.provideMerge(ProjectionTurnRepositoryLive),
+    Layer.provideMerge(OrchestrationCommandReceiptRepositoryLive),
+    Layer.provideMerge(runtimeServicesLayer),
   );
   const pullRequestServiceLayer = PullRequestServiceLive.pipe(
     Layer.provideMerge(GitLayerLive),

@@ -304,7 +304,22 @@ const makeCodexTextGeneration = Effect.gen(function* () {
       const schemaPath = yield* writeTempFile(
         operation,
         "codex-schema",
-        JSON.stringify(toJsonSchemaObject(outputSchemaJson)),
+        // Codex strict output rejects optional keys and Effect filter allOf schemas.
+        // Keep the bounded Effect schema for local decoding.
+        JSON.stringify(
+          operation === "routeMessage"
+            ? {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  route: { type: "string", enum: ["reply", "status", "steer", "queue"] },
+                  targetTaskId: { type: "string", maxLength: 200 },
+                  reply: { type: "string", maxLength: 6000 },
+                },
+                required: ["route", "targetTaskId", "reply"],
+              }
+            : toJsonSchemaObject(outputSchemaJson),
+        ),
       );
       const outputPath = yield* writeTempFile(operation, "codex-output", "");
       const isolatedCodexHome = yield* prepareIsolatedCodexHome(operation, resolvedCodexHomePath);

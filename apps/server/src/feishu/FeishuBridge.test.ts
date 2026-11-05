@@ -1,3 +1,7 @@
+import { RouterRuntime } from "../router/RouterRuntime.ts";
+import { RouterInbox } from "../router/RouterInbox.ts";
+import { AgentRouter } from "../router/AgentRouter.ts";
+import type { RouterGenerationResult } from "../git/Services/TextGeneration.ts";
 import path from "node:path";
 import fs from "node:fs/promises";
 import { randomUUID } from "node:crypto";
@@ -80,7 +84,7 @@ afterEach(async () => {
   vi.clearAllMocks();
 });
 
-async function setup() {
+async function setup(routerEnabled = false) {
   const runtimeLayer = OrchestrationEngineLive.pipe(
     Layer.provideMerge(OrchestrationProjectionPipelineLive),
     Layer.provideMerge(OrchestrationProjectionSnapshotQueryLive),
@@ -120,12 +124,34 @@ async function setup() {
   );
   const mapPath = path.join(config.baseDir, "feishu-chats.json");
   await fs.writeFile(mapPath, JSON.stringify({ oc_owner: "obsolete-concierge" }));
-  const bridge = await runtime.runPromise(
-    makeFeishuBridge.pipe(Effect.provideService(MetisControllerService, controller)),
-  );
-  await runtime.runPromise(Scope.provide(bridge.start(), scope));
   const engine = await runtime.runPromise(Effect.service(OrchestrationEngineService));
   const dispatch = (command: OrchestrationCommand) => runtime.runPromise(engine.dispatch(command));
+  const generate = vi.fn(
+    async (): Promise<RouterGenerationResult> => ({ route: "reply", reply: "独立回复" }),
+  );
+  const inbox = new RouterInbox(
+    path.join(config.stateDir, "router/inbox"),
+    new AgentRouter(path.join(config.stateDir, "router/receipts")),
+    {
+      generationCwd: config.stateDir,
+      dispatch,
+      generate,
+      createWorker: async () => {
+        throw new Error("Unexpected worker in conversation test");
+      },
+      readThread: async (id) =>
+        (await runtime.runPromise(engine.getReadModel())).threads.find((t) => t.id === id) ?? null,
+      listWorkers: async () => [],
+    },
+  );
+  disposals.unshift(async () => inbox.stop());
+  const bridgeEffect = makeFeishuBridge.pipe(
+    Effect.provideService(MetisControllerService, controller),
+  );
+  const bridge = await runtime.runPromise(
+    routerEnabled ? bridgeEffect.pipe(Effect.provideService(RouterRuntime, inbox)) : bridgeEffect,
+  );
+  await runtime.runPromise(Scope.provide(bridge.start(), scope));
   const complete = async (text: string) => {
     const threadId = ThreadId.makeUnsafe((await controller.overview()).threadId!);
     const turnId = TurnId.makeUnsafe(randomUUID());
@@ -170,8 +196,69 @@ async function setup() {
       resources: [],
       ...override,
     });
-  return { runtime, controller, selection, engine, dispatch, complete, receive, mapPath };
+  return { runtime, controller, selection, engine, dispatch, complete, receive, mapPath, generate };
 }
+
+describe("Feishu Router ingress and passive delivery", () => {
+  it("answers greetings without a provider turn and deduplicates redelivery after controller rotation", async () => {
+    const f = await setup(true);
+    const first = (await f.controller.overview()).threadId!;
+    await f.receive("router-greeting", "你好？");
+    await vi.waitFor(
+      () =>
+        expect(transport.send).toHaveBeenCalledWith(
+          "oc_owner",
+          { text: "我在，收到你的消息了。" },
+          { replyTo: "router-greeting" },
+        ),
+      { timeout: 3000 },
+    );
+    expect(transport.contents).toEqual([]);
+    expect(f.generate).not.toHaveBeenCalled();
+    const thread = (await f.runtime.runPromise(f.engine.getReadModel())).threads.find(
+      (t) => t.id === first,
+    )!;
+    expect(thread.latestTurn).toBeNull();
+    await f.controller.control({
+      action: "clear",
+      sourceThreadId: ThreadId.makeUnsafe(first),
+      ...f.selection,
+    });
+    await f.receive("router-greeting", "你好？");
+    expect(transport.send).toHaveBeenCalledTimes(1);
+  });
+  it("accepts progress while a classifier is blocked instead of waiting in the provider queue", async () => {
+    const f = await setup(true);
+    let finish!: (result: RouterGenerationResult) => void;
+    f.generate.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    await f.receive("router-question", "解释一下路由器");
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    await f.receive("router-progress", "进度如何");
+    await vi.waitFor(
+      () =>
+        expect(
+          transport.send.mock.calls.some(
+            (call) => (call as unknown[])[2] && JSON.stringify(call).includes("router-progress"),
+          ),
+        ).toBe(true),
+      { timeout: 3000 },
+    );
+    finish({ route: "reply", reply: "路由器负责分发消息。" });
+    await vi.waitFor(
+      () =>
+        expect(
+          transport.send.mock.calls.some((call) => JSON.stringify(call).includes("路由器负责")),
+        ).toBe(true),
+      { timeout: 3000 },
+    );
+    expect(transport.contents).toEqual([]);
+  });
+});
 
 describe("Feishu instance-controller routing with real orchestration", () => {
   it("follows /clear, preserves controller settings and deduplicates across conversation rotation", async () => {

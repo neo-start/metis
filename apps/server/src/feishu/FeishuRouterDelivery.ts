@@ -1,0 +1,132 @@
+import { createHash } from "node:crypto";
+import { readdir, readFile } from "node:fs/promises";
+import path from "node:path";
+import { Effect, Schema } from "effect";
+import { OrchestrationCommand, type OrchestrationThread, type ThreadId } from "@synara/contracts";
+import { writeFileStringAtomically } from "../atomicWrite.ts";
+
+type TurnStart = Extract<OrchestrationCommand, { type: "thread.turn.start" }>;
+const Delivery = Schema.Struct({
+  chatId: Schema.String,
+  senderId: Schema.String,
+  replyTo: Schema.String,
+  command: OrchestrationCommand,
+  replied: Schema.optional(Schema.Boolean),
+  workerId: Schema.optional(Schema.String),
+  done: Schema.optional(Schema.Boolean),
+});
+type Delivery = typeof Delivery.Type;
+
+/** Durable transport binding: Router replies have no provider turn to stream.
+ * Save before admission so reconnects/clear cannot send an input to a new thread.
+ * Feishu send failures remain pending. A lost remote send ACK can repeat a reply.
+ */
+export class FeishuRouterDelivery {
+  private readonly active = new Map<string, Promise<void>>();
+  private stopped = false;
+  constructor(
+    private readonly root: string,
+    private readonly host: {
+      accept(command: TurnStart): Promise<unknown>;
+      readThread(id: ThreadId): Promise<OrchestrationThread | undefined>;
+      allowed(senderId: string): boolean;
+      send(chatId: string, text: string, replyTo: string): Promise<void>;
+    },
+  ) {}
+  stop() {
+    this.stopped = true;
+  }
+  private key(commandId: string) {
+    return createHash("sha256").update(commandId).digest("hex");
+  }
+  private file(key: string) {
+    return path.join(this.root, `${key}.json`);
+  }
+  private async read(key: string): Promise<Delivery | undefined> {
+    try {
+      return Schema.decodeUnknownSync(Delivery)(JSON.parse(await readFile(this.file(key), "utf8")));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+      throw error;
+    }
+  }
+  private save(key: string, record: Delivery) {
+    return Effect.runPromise(
+      writeFileStringAtomically({ filePath: this.file(key), contents: JSON.stringify(record) }),
+    );
+  }
+  async has(commandId: string) {
+    return (await this.read(this.key(commandId))) !== undefined;
+  }
+  private async locked(key: string, work: () => Promise<void>) {
+    const existing = this.active.get(key);
+    if (existing) return existing;
+    const result = work();
+    this.active.set(key, result);
+    try {
+      await result;
+    } finally {
+      this.active.delete(key);
+    }
+  }
+  async enqueue(input: { chatId: string; senderId: string; replyTo: string; command: TurnStart }) {
+    if (this.stopped) throw new Error("Feishu Router is shutting down.");
+    const key = this.key(input.command.commandId);
+    await this.locked(key, async () => {
+      const record = (await this.read(key)) ?? input;
+      if (!this.host.allowed(record.senderId) || this.stopped) return;
+      await this.save(key, record);
+      if (record.command.type !== "thread.turn.start") throw new Error("Invalid Router delivery.");
+      await this.host.accept(record.command);
+    });
+  }
+  async flush() {
+    if (this.stopped) return;
+    let files: string[];
+    try {
+      files = await readdir(this.root);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+      throw error;
+    }
+    // One slow transport delivery must not delay other accepted messages.
+    await Promise.all(
+      files
+        .filter((file) => /^[a-f0-9]{64}\.json$/u.test(file))
+        .map(async (file) => {
+          const key = file.slice(0, -5);
+          if (this.active.has(key)) return;
+          await this.locked(key, async () => {
+            let record = await this.read(key);
+            if (!record || record.done || this.stopped || !this.host.allowed(record.senderId))
+              return;
+            if (record.command.type !== "thread.turn.start")
+              throw new Error("Invalid Router delivery.");
+            await this.host.accept(record.command);
+            const thread = await this.host.readThread(record.command.threadId);
+            if (!thread || thread.deletedAt || thread.archivedAt) return;
+            if (!record.replied) {
+              const reply = thread.messages.find(
+                (m) => m.id === `router-${key}` || m.id === `router-failure-${key}`,
+              );
+              if (!reply || this.stopped || !this.host.allowed(record.senderId)) return;
+              await this.host.send(record.chatId, reply.text, record.replyTo);
+              const workerId = reply.text.startsWith("Router：已创建独立任务")
+                ? reply.text.match(/\/tasks\?thread=([a-zA-Z0-9_-]+)/u)?.[1]
+                : undefined;
+              record = { ...record, replied: true, ...(workerId ? { workerId } : { done: true }) };
+              await this.save(key, record);
+            }
+            if (record.workerId && !record.done) {
+              const completion = thread.messages.find(
+                (m) => m.id === `router-completion:${record!.workerId}`,
+              );
+              if (!completion || this.stopped || !this.host.allowed(record.senderId)) return;
+              await this.host.send(record.chatId, completion.text, record.replyTo);
+              await this.save(key, { ...record, done: true });
+            }
+          });
+        }),
+    );
+  }
+}

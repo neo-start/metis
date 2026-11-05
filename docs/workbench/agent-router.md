@@ -95,7 +95,7 @@ for running workers; Router does not promise that every provider resumes an
 interrupted process. A failure after worker creation may only be a lost notification,
 so the error message explicitly says the task may have been submitted.
 
-The websocket service owns an abort controller and scoped recovery loop. Shutdown
+The shared Router runtime owns an abort controller and scoped recovery loop. Shutdown
 stops new admission and aborts host generation/dispatch/creation effects. Admitted
 requests interrupted during shutdown remain available for restart recovery rather
 than becoming false user-facing failures.
@@ -105,11 +105,19 @@ than becoming false user-facing failures.
 Attachments, skill/plugin mentions, review requests, plan implementation, async
 input responses and computer-control requests retain the ordinary execution path.
 The independent-worker path currently applies to eligible plain local web/desktop
-Auto messages. Paired-device, Feishu, automation and agent-tool entrypoints retain
-their existing dispatch semantics. Explicit Queue/Steer bypasses Auto.
+Auto messages and authorized plain Feishu private-chat messages. Feishu slash
+commands and attachments keep their existing handlers. Paired-device, automation
+and agent-tool entrypoints retain their existing dispatch semantics. Explicit
+Queue/Steer bypasses Auto. Simple greetings and status requests need no model call.
+
+Feishu persists the original chat, sender, reply target and command before Router
+admission. Its delivery loop sends Router acknowledgements and worker completion
+messages without waiting for a provider turn. Recovery preserves the original
+thread across controller resets and rechecks the sender allowlist. Confirmed sends
+are deduplicated; a lost remote send acknowledgement may cause a duplicate reply.
 
 Independent generation uses the conversation's provider/model, currently through
-Codex, OpenCode, Cursor and Droid channels, with a 12-second budget including
+Codex (including secondary, tertiary and quaternary accounts), OpenCode, Cursor and Droid channels, with a 12-second budget including
 startup. Unsupported providers never silently switch models. Generation runs in a
 private empty directory. Codex copies only provider/auth configuration, disables
 shell/apps/hooks/image viewing/web search and retains its read-only sandbox; ACP
@@ -141,3 +149,6 @@ legacy ACK fallback, explicit Queue/Steer, and task-link navigation. These tests
 not establish live provider latency, live provider end-to-end execution, production
 restart behavior or packaged platform behavior. No running user instance is changed
 by this implementation or its verification.
+
+Feishu bridge tests cover concurrent status during blocked classification, greetings,
+redelivery after controller reset, durable transport retry and allowlist revocation.
