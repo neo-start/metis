@@ -382,7 +382,10 @@ describe("AgentRouter above the real orchestration engine", () => {
 
 it("recognizes only whole progress/cancellation utterances", () => {
   expect(isRouterStatusQuestion("现在做到哪了？")).toBe(true);
+  expect(isRouterStatusQuestion("优化进展如何？")).toBe(true);
+  expect(isRouterStatusQuestion("当前任务进展怎么样？")).toBe(true);
   expect(isRouterStatusQuestion("进度如何，然后删除文件")).toBe(false);
+  expect(isRouterStatusQuestion("优化进展如何？然后停止任务")).toBe(false);
   expect(isRouterCancelRequest("stop")).toBe(true);
   expect(isRouterCancelRequest("解释 stop 命令")).toBe(false);
 });
@@ -807,6 +810,8 @@ it("answers local and targeted progress without invoking a provider", async () =
   f.generate.mockImplementation(() => new Promise(() => {}));
   await f.router.dispatch(f.command("进度如何", "progress"), f.host);
   expect((await f.readThread()).messages.at(-1)?.text).toContain("任务仍在运行");
+  await f.router.dispatch(f.command("优化进展如何？", "optimization-progress"), f.host);
+  expect((await f.readThread()).messages.at(-1)?.text).toContain("任务仍在运行");
   await f.router.dispatch(f.command(`任务 ${f.ids[0]} 进度如何`, "targeted"), f.host);
   expect(f.generate).not.toHaveBeenCalled();
   expect(f.ids).toHaveLength(1);
@@ -852,6 +857,18 @@ it("answers instance status from authorized state, filtering unavailable and idl
   expect((await f.readThread()).messages.at(-1)?.text).toContain("没有进行中的会话");
 });
 
+it("excludes expired workers from local progress and task control", async () => {
+  const f = await workerFixture();
+  await f.router.dispatch(f.command("新任务：expired work", "initial"), f.host);
+  const worker = await f.readThread(f.ids[0]!);
+  f.host.listWorkers = async () => [{ ...worker, sidechatExpiredAt: f.createdAt }];
+  await f.router.dispatch(f.command("优化进展如何？", "local"), f.host);
+  expect((await f.readThread()).messages.at(-1)?.text).toContain("尚无已启动任务");
+  await f.router.dispatch(f.command(`任务 ${worker.id} 停止`, "cancel-expired"), f.host);
+  expect((await f.readThread()).messages.at(-1)?.text).toContain("不属于此会话或已不可用");
+  expect(f.generate).not.toHaveBeenCalled();
+});
+
 it("timestamps replies when produced and replays their durable plan unchanged", async () => {
   const f = await fixture();
   const input = { ...f.command("进度如何", "timed"), createdAt: "2020-01-01T00:00:00.000Z" };
@@ -871,6 +888,10 @@ it("timestamps replies when produced and replays their durable plan unchanged", 
 it("matches only whole global status queries", () => {
   expect(isRouterGlobalStatusQuestion("现在有进行中的 Metis 会话吗")).toBe(true);
   expect(isRouterGlobalStatusQuestion("列出所有运行中的任务")).toBe(true);
+  expect(isRouterGlobalStatusQuestion("当前 Metis 有哪些运行中的任务？")).toBe(true);
+  expect(isRouterGlobalStatusQuestion("目前有哪些正在进行的会话？")).toBe(true);
+  expect(isRouterGlobalStatusQuestion("查看全部进行中的 Metis 任务")).toBe(true);
   expect(isRouterGlobalStatusQuestion("现在有进行中的 Metis 会话吗，然后停止它们")).toBe(false);
   expect(isRouterGlobalStatusQuestion("show all running tasks and delete them")).toBe(false);
+  expect(isRouterGlobalStatusQuestion("当前 Metis 有哪些运行中的任务？停止它们")).toBe(false);
 });

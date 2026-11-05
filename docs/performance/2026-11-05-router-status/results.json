@@ -1,0 +1,225 @@
+{
+  "date": "2026-11-05",
+  "baseCommit": "7c6a1b49200efa6c033a4376888e0f758aa6149e",
+  "command": "bun scripts/router-status-e2e.mjs --live-worker",
+  "measurement": "Owner WebSocket RPC admission through response snapshot, polling every 20 ms. Excludes UI paint and external message delivery. Fresh temporary server home.",
+  "statusLatency": {
+    "samples": 16,
+    "minMs": 30,
+    "medianMs": 32.5,
+    "maxMs": 56
+  },
+  "checks": {
+    "focusedTests": 76,
+    "format": "passed",
+    "lint": "0 errors; 736 repository warnings",
+    "typecheck": "7 packages passed",
+    "liveWorker": "real Codex gpt-6-astra completed and delivered to source conversation",
+    "restartReplay": "exact reply and timestamp preserved"
+  },
+  "liveRun": {
+    "liveWorker": true,
+    "results": [
+      {
+        "text": "进度如何",
+        "admissionMs": 11,
+        "elapsedMs": 37,
+        "response": "尚无已启动任务；已受理消息可能仍在路由或创建中。"
+      },
+      {
+        "text": "优化进展如何？",
+        "admissionMs": 7,
+        "elapsedMs": 32,
+        "response": "尚无已启动任务；已受理消息可能仍在路由或创建中。"
+      },
+      {
+        "text": "当前任务进展怎么样？",
+        "admissionMs": 6,
+        "elapsedMs": 30,
+        "response": "尚无已启动任务；已受理消息可能仍在路由或创建中。"
+      },
+      {
+        "text": "status",
+        "admissionMs": 6,
+        "elapsedMs": 31,
+        "response": "尚无已启动任务；已受理消息可能仍在路由或创建中。"
+      },
+      {
+        "text": "现在有进行中的 Metis 会话吗",
+        "admissionMs": 7,
+        "elapsedMs": 32,
+        "response": "当前 Metis 没有进行中的会话。"
+      },
+      {
+        "text": "当前 Metis 有哪些运行中的任务？",
+        "admissionMs": 6,
+        "elapsedMs": 31,
+        "response": "当前 Metis 没有进行中的会话。"
+      },
+      {
+        "text": "目前有哪些正在进行的会话？",
+        "admissionMs": 5,
+        "elapsedMs": 30,
+        "response": "当前 Metis 没有进行中的会话。"
+      },
+      {
+        "text": "show all running tasks",
+        "admissionMs": 7,
+        "elapsedMs": 33,
+        "response": "当前 Metis 没有进行中的会话。"
+      },
+      {
+        "text": "列出所有运行中的任务",
+        "admissionMs": 6,
+        "elapsedMs": 30,
+        "response": "此会话无法读取全局会话状态，请在 Metis 总控中查询。"
+      },
+      {
+        "text": "优化进展如何？",
+        "admissionMs": 15,
+        "elapsedMs": 45,
+        "response": "尚无已启动任务；已受理消息可能仍在路由或创建中。"
+      },
+      {
+        "text": "list active sessions",
+        "admissionMs": 9,
+        "elapsedMs": 35,
+        "response": "当前 Metis 没有进行中的会话。\n另有 1 条请求正在路由或提交，尚不等同于已启动会话。"
+      },
+      {
+        "text": "当前 Metis 有哪些运行中的任务？然后停止它们",
+        "admissionMs": 6,
+        "elapsedMs": 3975,
+        "response": "独立响应通道暂时不可用或超时，消息未交给执行器。请重试；明确的新任务可用「新任务：…」直接提交。"
+      },
+      {
+        "text": "优化进展如何？",
+        "admissionMs": 16,
+        "elapsedMs": 47,
+        "response": "新任务：请只回复 ROUTER_E2E_WORKER_OK。不要调用工具，不要读取或修改文件。\n任务状态：任务仍在运行。\n最近状态更新时间：2026-11-05T13:09:54.660Z。\n这是已记录的状态，不能仅凭没有新输出判断任务卡住。"
+      },
+      {
+        "text": "当前 Metis 有哪些运行中的任务？",
+        "admissionMs": 9,
+        "elapsedMs": 35,
+        "response": "当前 Metis 有 1 个进行中的会话：\n- 新任务：请只回复 ROUTER_E2E_WORKER_OK。不要调用工具，不要读取或修改文件。（运行中） /tasks?thread=agent-27f73021f50a38b60e889100bb4fcee1"
+      },
+      {
+        "text": "list active sessions",
+        "admissionMs": 7,
+        "elapsedMs": 31,
+        "response": "此会话无法读取全局会话状态，请在 Metis 总控中查询。"
+      },
+      {
+        "text": "任务 agent-27f73021f50a38b60e889100bb4fcee1 进度如何",
+        "admissionMs": 10,
+        "elapsedMs": 36,
+        "response": "任务状态：任务仍在运行。\n最近状态更新时间：2026-11-05T13:09:54.781Z。\n最近活动：thread/settings/updated\n这是已记录的状态，不能仅凭没有新输出判断任务卡住。"
+      },
+      {
+        "liveWorker": "agent-27f73021f50a38b60e889100bb4fcee1",
+        "provider": {
+          "provider": "codex",
+          "model": "gpt-6-astra"
+        },
+        "completionDelivered": true
+      },
+      {
+        "text": "进度如何",
+        "admissionMs": 28,
+        "elapsedMs": 56,
+        "response": "新任务：请只回复 ROUTER_E2E_WORKER_OK。不要调用工具，不要读取或修改文件。\n任务状态：当前没有正在执行的任务。\n最近状态更新时间：2026-11-05T13:10:14.511Z。\n这是已记录的状态，不能仅凭没有新输出判断任务卡住。"
+      },
+      {
+        "restartReplay": true
+      }
+    ]
+  },
+  "noProviderRun": {
+    "passed": true,
+    "liveWorker": false,
+    "results": [
+      {
+        "text": "进度如何",
+        "admissionMs": 10,
+        "elapsedMs": 36,
+        "response": "尚无已启动任务；已受理消息可能仍在路由或创建中。"
+      },
+      {
+        "text": "优化进展如何？",
+        "admissionMs": 7,
+        "elapsedMs": 32,
+        "response": "尚无已启动任务；已受理消息可能仍在路由或创建中。"
+      },
+      {
+        "text": "当前任务进展怎么样？",
+        "admissionMs": 6,
+        "elapsedMs": 31,
+        "response": "尚无已启动任务；已受理消息可能仍在路由或创建中。"
+      },
+      {
+        "text": "status",
+        "admissionMs": 7,
+        "elapsedMs": 33,
+        "response": "尚无已启动任务；已受理消息可能仍在路由或创建中。"
+      },
+      {
+        "text": "现在有进行中的 Metis 会话吗",
+        "admissionMs": 6,
+        "elapsedMs": 33,
+        "response": "当前 Metis 没有进行中的会话。"
+      },
+      {
+        "text": "当前 Metis 有哪些运行中的任务？",
+        "admissionMs": 8,
+        "elapsedMs": 34,
+        "response": "当前 Metis 没有进行中的会话。"
+      },
+      {
+        "text": "目前有哪些正在进行的会话？",
+        "admissionMs": 7,
+        "elapsedMs": 33,
+        "response": "当前 Metis 没有进行中的会话。"
+      },
+      {
+        "text": "show all running tasks",
+        "admissionMs": 5,
+        "elapsedMs": 34,
+        "response": "当前 Metis 没有进行中的会话。"
+      },
+      {
+        "text": "列出所有运行中的任务",
+        "admissionMs": 6,
+        "elapsedMs": 31,
+        "response": "此会话无法读取全局会话状态，请在 Metis 总控中查询。"
+      },
+      {
+        "text": "优化进展如何？",
+        "admissionMs": 9,
+        "elapsedMs": 35,
+        "response": "尚无已启动任务；已受理消息可能仍在路由或创建中。"
+      },
+      {
+        "text": "list active sessions",
+        "admissionMs": 8,
+        "elapsedMs": 32,
+        "response": "当前 Metis 没有进行中的会话。\n另有 1 条请求正在路由或提交，尚不等同于已启动会话。"
+      },
+      {
+        "text": "当前 Metis 有哪些运行中的任务？然后停止它们",
+        "admissionMs": 7,
+        "elapsedMs": 3963,
+        "response": "独立响应通道暂时不可用或超时，消息未交给执行器。请重试；明确的新任务可用「新任务：…」直接提交。"
+      },
+      {
+        "text": "进度如何",
+        "admissionMs": 18,
+        "elapsedMs": 50,
+        "response": "尚无已启动任务；已受理消息可能仍在路由或创建中。"
+      },
+      {
+        "restartReplay": true
+      }
+    ]
+  }
+}

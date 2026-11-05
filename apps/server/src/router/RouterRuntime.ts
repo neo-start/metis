@@ -52,7 +52,8 @@ export const makeRouterRuntime = Effect.gen(function* () {
           thread.creationSource === "router" &&
           thread.sourceThreadId === threadId &&
           !thread.deletedAt &&
-          !thread.archivedAt,
+          !thread.archivedAt &&
+          !thread.sidechatExpiredAt,
       ),
     createWorker: async (
       command: Extract<OrchestrationCommand, { type: "thread.turn.start" }>,

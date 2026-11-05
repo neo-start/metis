@@ -50,7 +50,8 @@ available without generation.
 
 ## Task progress and control
 
-Whole-message status questions such as `现在做到哪了？` or `status` read durable state
+Whole-message status questions such as `现在做到哪了？`, `优化进展如何？`,
+`当前任务进展怎么样？` or `status` read durable state
 for the console's associated tasks, including pending interactions, timestamps,
 recent activity and output. Recognized status queries return a factual snapshot
 directly, without provider startup or model generation, even when another request
@@ -73,7 +74,8 @@ The worker's saved model/settings are used; console provider launch overrides ar
 not applied to an existing worker. For approval/input responses, open the worker's
 ordinary approval surface; Router cannot approve on the user's behalf.
 
-Whole-message instance queries such as `现在有进行中的 Metis 会话吗` and
+Whole-message instance queries such as `现在有进行中的 Metis 会话吗`,
+`当前 Metis 有哪些运行中的任务？` and
 `list active sessions` read the instance snapshot for an authorized Metis controller
 conversation. They include running/starting sessions and pending approvals or input,
 exclude deleted, archived and expired conversations, and show at most 20 entries
@@ -85,6 +87,36 @@ user's timestamp. Saved plans preserve these timestamps across retries. Router l
 include command/thread IDs, total dispatch time, planning time, queue wait and
 execution time; provider generation logs include elapsed time on success and failure.
 These measure backend stages, not external transport delivery or frontend paint.
+
+### End-to-end verification
+
+Run `bun scripts/router-status-e2e.mjs` from the repository root. The runner checks
+the dev-runner dry run, selects an unused loopback port (IPv4 and IPv6), and launches
+a real server with a fresh temporary home. It uses the same negotiated owner RPC
+client as the isolated desktop fixtures. No existing service is restarted.
+
+The checks cover local and controller-wide status, ordinary-conversation scope
+denial, response timestamps, retry deduplication and replay after a server restart.
+A request-level executable probe fails if a status query invokes the model. A
+compound instruction deliberately invokes a three-second blocking probe instead:
+local/global progress must still return within two seconds, and the extra action
+must not be swallowed. Expired workers are excluded from both local progress and
+task control, with focused backend regression coverage.
+
+Add `--live-worker` to run one real Codex worker using the default Codex model,
+observe it through local/global/targeted status, and verify its expected answer is
+delivered back to the original conversation. This requires working local Codex
+credentials. The task only asks for a fixed text reply, without tools or file work.
+The runner retains `results.json`, redacted server logs and the dry-run output in
+its printed temporary directory. Timings are RPC admission-to-visible-snapshot
+measurements with 20 ms polling; they do not measure browser paint or Feishu delivery.
+
+The [2026-11-05 verification results](../performance/2026-11-05-router-status/results.json)
+record 16 status requests at 30–56 ms (median 32.5 ms), including a blocked classifier
+and a real `gpt-6-astra` worker. The live worker's result returned to its source
+conversation, and restart replay preserved the exact saved reply. The default
+probe-only runner also passed. These are local observations, not a production SLA
+or a controlled comparison against the earlier 22-second transport observation.
 
 ## Ordering, persistence and recovery
 

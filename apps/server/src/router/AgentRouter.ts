@@ -55,7 +55,7 @@ const SavedDispatch = Schema.Struct({
 });
 const hash = (text: string) => createHash("sha256").update(text).digest("hex");
 const statusQuestion =
-  /^(?:现在|目前|任务)?(?:进度如何|进度怎么样|做到哪了|做到哪一步了|进展如何|还在吗|还在运行吗|卡住了吗|怎么样了)|^(?:status|progress|are you still (?:there|working)|how(?:'s| is) (?:it|the task) going)$/i;
+  /^(?:(?:现在|目前|当前)?(?:任务|工作|优化|这个任务|这项工作)?(?:进度如何|进度怎么样|做到哪了|做到哪一步了|进展如何|进展怎么样|还在吗|还在运行吗|卡住了吗|怎么样了)|status|progress|are you still (?:there|working)|how(?:'s| is) (?:it|the task) going)$/i;
 export function isRouterStatusQuestion(text: string) {
   const normalized = text.trim().replace(/[？?！!。.]$/u, "");
   // Match the whole utterance: a status question plus an action must not lose the action.
@@ -63,8 +63,18 @@ export function isRouterStatusQuestion(text: string) {
 }
 /** Whole utterances only: never swallow an appended action. */
 export function isRouterGlobalStatusQuestion(text: string) {
-  return /^(?:(?:现在|目前)?(?:有(?:哪些)?(?:正在进行|进行中|正在运行|运行中)的\s*(?:Metis\s*)?(?:会话|任务)(?:吗|么)?|(?:Metis\s*)?(?:有哪些|有什么)(?:正在进行|进行中|正在运行|运行中)的(?:会话|任务))|(?:列出|查看)(?:所有|全部)(?:正在进行|进行中|正在运行|运行中)的(?:会话|任务)|(?:list|show)(?: all)? (?:active|running) (?:sessions|threads|tasks))[？?！!。.]?$/iu.test(
-    text.trim(),
+  const normalized = text
+    .trim()
+    .replace(/[？?！!。.]$/u, "")
+    .replace(/\s+/gu, " ");
+  return (
+    /^(?:现在|目前|当前)?\s*(?:Metis\s*)?(?:有(?:哪些)?|有什么)(?:正在进行|进行中|正在运行|运行中)的\s*(?:Metis\s*)?(?:会话|任务)(?:吗|么)?$/iu.test(
+      normalized,
+    ) ||
+    /^(?:列出|查看)(?:所有|全部)(?:正在进行|进行中|正在运行|运行中)的\s*(?:Metis\s*)?(?:会话|任务)$/iu.test(
+      normalized,
+    ) ||
+    /^(?:list|show)(?: all)? (?:active|running) (?:sessions|threads|tasks)$/iu.test(normalized)
   );
 }
 
@@ -419,7 +429,7 @@ export class AgentRouter {
     }
     const workers = host.listWorkers ? await host.listWorkers(thread.id) : [];
     const tasks = [...(routerHasActiveTurn(thread) ? [thread] : []), ...workers].filter(
-      (task) => !task.deletedAt && !task.archivedAt,
+      (task) => !task.deletedAt && !task.archivedAt && !task.sidechatExpiredAt,
     );
     const resolveRequest = async (id: string) => {
       const pending = predecessors.find((entry) => entry.command.commandId === id);
