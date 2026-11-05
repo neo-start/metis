@@ -1,6 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it } from "@effect/vitest";
-import { Effect, FileSystem, Layer, Path } from "effect";
+import { Effect, Fiber, FileSystem, Layer, Path } from "effect";
 import { expect } from "vitest";
 
 import { ServerConfig } from "../../config.ts";
@@ -835,4 +835,90 @@ it.layer(CodexTextGenerationTestLayer)("CodexTextGenerationLive", (it) => {
       }),
     ),
   );
+  for (const scenario of [
+    "completed",
+    "failed",
+    "invalid",
+    "missing",
+    "no-terminal",
+    "cancelled",
+  ] as const) {
+    it.effect(`handles Router ${scenario} events and reaps the isolated process`, () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const dir = yield* fs.makeTempDirectoryScoped({ prefix: "router-terminal-test-" });
+        const binary = path.join(dir, "codex");
+        const marker = path.join(dir, "process.json");
+        const answer =
+          scenario === "invalid"
+            ? { route: "invalid" }
+            : { route: "reply", reply: "你好，结果已核对。" };
+        const events = [
+          ...(scenario === "missing"
+            ? []
+            : [
+                {
+                  type: "item.completed",
+                  item: { type: "agent_message", text: JSON.stringify(answer) },
+                },
+              ]),
+          ...(scenario === "no-terminal" || scenario === "cancelled"
+            ? []
+            : [{ type: scenario === "failed" ? "turn.failed" : "turn.completed" }]),
+        ];
+        yield* fs.writeFileString(
+          binary,
+          `#!/usr/bin/env node
+const fs = require('node:fs');
+const args = process.argv.slice(2);
+if (!args.includes('--json')) process.exit(2);
+fs.writeFileSync(${JSON.stringify(marker)}, JSON.stringify({pid:process.pid, home:process.env.CODEX_HOME, output:args[args.indexOf('--output-last-message')+1]}));
+process.on('SIGTERM', () => {});
+process.stdin.resume();
+process.stdin.on('end', () => {
+  process.stderr.write('diagnostic '.repeat(10000));
+  // Split a multibyte character across chunks, as real streaming can do.
+  const bytes = Buffer.from(${JSON.stringify(events.map((e) => JSON.stringify(e)).join("\n") + "\n")});
+  const split = Math.max(1, bytes.indexOf(Buffer.from('你')) + 1);
+  process.stdout.write(bytes.subarray(0, split));
+  setTimeout(() => {
+    process.stdout.write(bytes.subarray(split));
+    if (${JSON.stringify(scenario)} === 'no-terminal') {
+      fs.writeFileSync(args[args.indexOf('--output-last-message')+1], ${JSON.stringify(JSON.stringify(answer))});
+      process.exitCode = 1;
+    } else setTimeout(() => process.exit(0), 10000);
+  }, 25);
+});
+`,
+        );
+        yield* fs.chmod(binary, 0o755);
+        const service = yield* TextGeneration;
+        const started = Date.now();
+        const request = service.routeMessage!({
+          cwd: dir,
+          message: "你好",
+          taskContext: "{}",
+          providerOptions: { codex: { binaryPath: binary } },
+        }).pipe(Effect.result);
+        if (scenario === "cancelled") {
+          const fiber = yield* Effect.forkChild(request);
+          for (let i = 0; i < 100 && !(yield* fs.exists(marker)); i++)
+            yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 10)));
+          expect(yield* fs.exists(marker)).toBe(true);
+          yield* Fiber.interrupt(fiber);
+        } else {
+          const outcome = yield* request;
+          if (scenario === "completed")
+            expect(outcome).toMatchObject({ _tag: "Success", success: answer });
+          else expect(outcome._tag).toBe("Failure");
+        }
+        expect(Date.now() - started).toBeLessThan(3000);
+        const state = JSON.parse(yield* fs.readFileString(marker));
+        expect(() => process.kill(state.pid, 0)).toThrow();
+        expect(yield* fs.exists(state.home)).toBe(false);
+        expect(yield* fs.exists(state.output)).toBe(false);
+      }),
+    );
+  }
 });

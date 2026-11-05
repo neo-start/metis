@@ -233,10 +233,16 @@ import {appendFileSync,writeFileSync} from 'node:fs';
 const prompt=await Bun.stdin.text();
 const args=process.argv.slice(2);
 const id=crypto.randomUUID();
-appendFileSync(${JSON.stringify(marker)},JSON.stringify({id,presentation:prompt.includes('PRESENTATION MODE:'),completion:prompt.includes('PRESENTATION MODE: completion')})+'\\n');
+appendFileSync(${JSON.stringify(marker)},JSON.stringify({id,pid:process.pid,presentation:prompt.includes('PRESENTATION MODE:'),completion:prompt.includes('PRESENTATION MODE: completion')})+'\\n');
 const output=args[args.indexOf('--output-last-message')+1];
 if(!output)process.exit(2);
-writeFileSync(output,JSON.stringify({route:'reply',targetTaskId:'',reply:'ROUTER_GENERATED_'+id}));
+const answer=JSON.stringify({route:'reply',targetTaskId:'',reply:'ROUTER_GENERATED_'+id});
+writeFileSync(output,answer);
+if(args.includes('--json')) {
+ console.log(JSON.stringify({type:'item.completed',item:{type:'agent_message',text:answer}}));
+ console.log(JSON.stringify({type:'turn.completed'}));
+ setTimeout(()=>process.exit(0),10000);
+}
 `,
     { mode: 0o700 },
   );
@@ -283,6 +289,11 @@ writeFileSync(output,JSON.stringify({route:'reply',targetTaskId:'',reply:'ROUTER
       "every input invokes generation exactly once; retries never regenerate",
     );
     assert.equal(calls.filter((c) => c.presentation).length, 5);
+    assert.ok(
+      results.filter((r) => r.elapsedMs !== undefined).every((r) => r.elapsedMs < 5000),
+      "completed replies must not wait for the fixture's ten-second shutdown delay",
+    );
+    for (const call of calls) assert.throws(() => process.kill(call.pid, 0), { code: "ESRCH" });
     results.push({ providerProcessCalls: calls.length, allResponsesGenerated: true });
   } else {
     const created = await request(

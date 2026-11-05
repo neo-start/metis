@@ -281,3 +281,19 @@ failed creation without false acceptance, binding visibility before publication,
 explicit-target immutability, status fallbacks, full exact-run result delivery and
 frozen retries, and both structured and legacy Feishu delivery. No live-model or
 frontend verification is implied by these tests.
+
+### Codex completion latency
+
+Router uses `codex exec --json` and accepts the final agent message only after the
+`turn.completed` event. It validates the structured answer before dispatching anything.
+It then reaps its tool-free ephemeral process group through the existing scoped process
+runtime, rather than waiting for CLI shutdown. Failed turns, invalid answers and caller
+cancellation still fail/interrupt the request and clean up temporary homes and files.
+Executables without terminal events retain exit-code and output-file validation.
+
+Router disables automatic skill instructions and bundled skills for this isolated call;
+worker settings and account/model selection are unchanged. Logs distinguish answer-ready,
+process and teardown time. The deterministic E2E fixture deliberately delays shutdown by
+ten seconds and checks that replies arrive earlier and subprocesses are gone.
+See [Codex JSON events](https://learn.chatgpt.com/docs/non-interactive-mode) and
+[skill configuration](https://learn.chatgpt.com/docs/config-file/config-reference).
