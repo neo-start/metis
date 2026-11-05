@@ -56,8 +56,17 @@ export const makeRouterRuntime = Effect.gen(function* () {
     generate: async (input: import("../git/Services/TextGeneration.ts").RouterGenerationInput) => {
       if (!textGeneration.routeMessage) throw new Error("Router generation unavailable.");
       await mkdirRouterDirectory(routerGenerationCwd, { recursive: true, mode: 0o700 });
+      const startedAt = Date.now();
       return Effect.runPromise(
-        textGeneration.routeMessage(input).pipe(Effect.timeout("12 seconds")),
+        textGeneration.routeMessage(input).pipe(
+          Effect.timeout("30 seconds"),
+          Effect.tap(() =>
+            Effect.logInfo("Router generation completed", { elapsedMs: Date.now() - startedAt }),
+          ),
+          Effect.tapError((error) =>
+            Effect.logWarning("Router generation failed", { errorType: error._tag }),
+          ),
+        ),
         { signal: routerAbort.signal },
       );
     },

@@ -353,7 +353,7 @@ const makeCodexTextGeneration = Effect.gen(function* () {
           "--model",
           resolveCodexModel(model, modelSelection) ?? DEFAULT_GIT_TEXT_GENERATION_MODEL,
           "--config",
-          `model_reasoning_effort="${DEFAULT_GIT_TEXT_GENERATION_REASONING_EFFORT}"`,
+          `model_reasoning_effort="${operation === "routeMessage" ? "low" : DEFAULT_GIT_TEXT_GENERATION_REASONING_EFFORT}"`,
           ...(operation === "routeMessage"
             ? ROUTER_CODEX_OVERRIDES.flatMap((value) => ["--config", value])
             : []),

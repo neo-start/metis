@@ -118,8 +118,9 @@ thread across controller resets and rechecks the sender allowlist. Confirmed sen
 are deduplicated; a lost remote send acknowledgement may cause a duplicate reply.
 
 Independent generation uses the conversation's provider/model, currently through
-Codex (including secondary, tertiary and quaternary accounts), OpenCode, Cursor and Droid channels, with a 12-second budget including
-startup. Unsupported providers never silently switch models. Generation runs in a
+Codex (including secondary, tertiary and quaternary accounts), OpenCode, Cursor and Droid channels, with a 30-second budget including
+startup. Codex routing uses low reasoning effort independently of worker settings;
+this does not guarantee low latency. Unsupported providers never silently switch models. Generation runs in a
 private empty directory. Codex copies only provider/auth configuration, disables
 shell/apps/hooks/image viewing/web search and retains its read-only sandbox; ACP
 permission requests are rejected and OpenCode retains its deny-all policy. These
