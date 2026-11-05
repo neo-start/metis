@@ -87,6 +87,7 @@ interface PreparedChatTurn {
   mentionedSkillsForSend: ProviderSkillReference[];
   mentionedPluginMentionsForSend: ProviderMentionReference[];
   dispatchMode: "queue" | "steer";
+  routeFollowUp: boolean;
   sourceProposedPlanForSend: QueuedComposerChatTurn["sourceProposedPlan"];
   shouldResumeSettledLocalThread: boolean;
   currentActiveGitBranchForSend: string | null;
@@ -242,6 +243,7 @@ export function useChatTurnExecution({
         mentionedSkillsForSend,
         mentionedPluginMentionsForSend,
         dispatchMode,
+        routeFollowUp,
         sourceProposedPlanForSend,
         shouldResumeSettledLocalThread,
         currentActiveGitBranchForSend,
@@ -615,6 +617,7 @@ export function useChatTurnExecution({
                   : {}),
               },
               ...turnStartDispatchFields(dispatchSettings, dispatchMode),
+              ...(routeFollowUp ? { routingMode: "auto" as const } : {}),
               ...(sourceProposedPlanForSend
                 ? { sourceProposedPlan: sourceProposedPlanForSend }
                 : {}),

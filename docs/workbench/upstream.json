@@ -240,5 +240,21 @@
       "source": "apps/web/src/components/Sidebar.tsx"
     },
     "adaptation": "Reviewed upstream per-thread notes and sidebar structure. No T3 code copied. Reuse local Textarea, Input, Button, RouteInsetSurface, sidebar controls, owner RPC authorization, private atomic writes and Metis gateway lifecycle. Add a separate chronological personal-thought store and tools; never inject it into long-term memory."
+  },
+  "agentRouterAdaptation": {
+    "localBaseCommit": "5a88e4ceb954aedd3c2ad2084bbbc367e64186da",
+    "synaraSources": [
+      "apps/server/src/git/Layers/CodexTextGeneration.ts",
+      "apps/server/src/git/Layers/ProviderTextGeneration.ts",
+      "apps/server/src/taskControl/service.ts",
+      "apps/server/src/orchestration/Layers/ProviderCommandReactor.ts",
+      "apps/server/src/atomicWrite.ts"
+    ],
+    "t3codeReviewedCommit": "f5ef0ddb90a8c36584e181b1913e7b8a5df30ffc",
+    "t3codeSources": [
+      "apps/server/src/textGeneration/CodexTextGeneration.ts",
+      "apps/server/src/orchestration/decider.ts"
+    ],
+    "adaptations": "Reuse local isolated generation, command receipts, message import, atomic private files and strict cancellation fences for independent follow-up routing. Reviewed T3 one-shot generation and steering; no T3 source copied. Keep provider event stores, model selection, approval boundaries and process runner."
   }
 }

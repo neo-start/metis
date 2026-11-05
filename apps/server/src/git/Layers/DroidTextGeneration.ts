@@ -1,3 +1,4 @@
+import { buildRouterPrompt } from "../routerPrompt.ts";
 import { Effect, Layer, Schema } from "effect";
 import { ChildProcessSpawner } from "effect/unstable/process";
 
@@ -122,7 +123,9 @@ type OperationInput = {
   };
   readonly providerOptions?: ProviderStartOptions;
 };
-type OperationInputOf<K extends TextGenerationOperation> = Parameters<TextGenerationShape[K]>[0];
+type OperationInputOf<K extends TextGenerationOperation> = Parameters<
+  NonNullable<TextGenerationShape[K]>
+>[0];
 
 const makeDroidTextGeneration = Effect.gen(function* () {
   const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
@@ -243,6 +246,8 @@ const makeDroidTextGeneration = Effect.gen(function* () {
         (generated) => ({ title: sanitizeGeneratedThreadTitle(generated.title) }),
       );
     }),
+    routeMessage: (input: OperationInputOf<"routeMessage">) =>
+      runDroidAcpOperation("routeMessage", input, buildRouterPrompt, (generated) => generated),
     generateThreadRecap: Effect.fn("DroidTextGeneration.generateThreadRecap")(function* (
       input: OperationInputOf<"generateThreadRecap">,
     ) {

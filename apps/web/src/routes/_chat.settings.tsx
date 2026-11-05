@@ -180,6 +180,7 @@ const SIDEBAR_THREAD_SORT_ORDER_LABELS = {
 } as const;
 
 const FOLLOW_UP_BEHAVIOR_OPTIONS = [
+  { value: "router", label: "Auto" },
   { value: "queue", label: "Queue" },
   { value: "steer", label: "Steer" },
 ] as const satisfies ReadonlyArray<{ value: FollowUpBehavior; label: string }>;
@@ -1145,7 +1146,7 @@ function SettingsRouteView() {
       <SettingsSection title="Conversation">
         <SettingsRow
           title="Follow-up behavior"
-          description="Choose whether messages sent during an active turn wait in the queue or steer the current run. Ctrl/Cmd+Enter uses the opposite behavior for one message."
+          description="Auto answers simple questions independently and routes task changes while work continues. Ctrl/Cmd+Enter queues one message in Auto, or switches Queue and Steer."
           resetAction={
             settings.followUpBehavior !== defaults.followUpBehavior ? (
               <SettingResetButton

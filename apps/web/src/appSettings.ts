@@ -118,9 +118,9 @@ export const DEFAULT_AGENT_CURSOR_COLOR_MODE: AgentCursorColorMode = "stock";
 const SidebarNavItemId = Schema.Literals([...SIDEBAR_NAV_ITEM_IDS]);
 export type SidebarThreadSortOrder = typeof SidebarThreadSortOrder.Type;
 export const DEFAULT_SIDEBAR_THREAD_SORT_ORDER: SidebarThreadSortOrder = "updated_at";
-export const FollowUpBehavior = Schema.Literals(["queue", "steer"]);
+export const FollowUpBehavior = Schema.Literals(["router", "queue", "steer"]);
 export type FollowUpBehavior = typeof FollowUpBehavior.Type;
-export const DEFAULT_FOLLOW_UP_BEHAVIOR: FollowUpBehavior = "queue";
+export const DEFAULT_FOLLOW_UP_BEHAVIOR: FollowUpBehavior = "router";
 export const UiDensity = Schema.Literals(UI_DENSITY_MODES);
 export type UiDensity = typeof UiDensity.Type;
 export { DEFAULT_UI_DENSITY };
@@ -1687,14 +1687,15 @@ export function resolveAssistantDeliveryMode(
 
 /**
  * Resolves the dispatch mode for a composer submit. The preference applies only
- * while a turn is live; Ctrl/Cmd+Enter temporarily selects the opposite mode.
+ * while a turn is live. Auto uses the Router at submission; its explicit
+ * Ctrl/Cmd+Enter bypass queues. Queue/Steer temporarily select the opposite mode.
  */
 export function resolveFollowUpDispatchMode(input: {
   behavior: FollowUpBehavior;
   hasLiveTurn: boolean;
   useOppositeBehavior?: boolean;
-}): FollowUpBehavior {
-  if (!input.hasLiveTurn) {
+}): "queue" | "steer" {
+  if (!input.hasLiveTurn || input.behavior === "router") {
     return "queue";
   }
   if (!input.useOppositeBehavior) {

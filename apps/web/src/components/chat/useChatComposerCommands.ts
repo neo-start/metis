@@ -467,11 +467,13 @@ export function useChatComposerCommands({
     ) {
       void onSend(
         undefined,
-        resolveFollowUpDispatchMode({
-          behavior: settings.followUpBehavior,
-          hasLiveTurn,
-          useOppositeBehavior: event.metaKey || event.ctrlKey,
-        }),
+        settings.followUpBehavior === "router" && !event.metaKey && !event.ctrlKey
+          ? undefined
+          : resolveFollowUpDispatchMode({
+              behavior: settings.followUpBehavior,
+              hasLiveTurn,
+              useOppositeBehavior: event.metaKey || event.ctrlKey,
+            }),
       );
       return true;
     }
@@ -577,11 +579,13 @@ export function useChatComposerCommands({
       expectedPromptHistoryPromptRef.current = null;
       void onSend(
         undefined,
-        resolveFollowUpDispatchMode({
-          behavior: settings.followUpBehavior,
-          hasLiveTurn,
-          useOppositeBehavior: event.metaKey || event.ctrlKey,
-        }),
+        settings.followUpBehavior === "router" && !event.metaKey && !event.ctrlKey
+          ? undefined
+          : resolveFollowUpDispatchMode({
+              behavior: settings.followUpBehavior,
+              hasLiveTurn,
+              useOppositeBehavior: event.metaKey || event.ctrlKey,
+            }),
       );
       return true;
     }

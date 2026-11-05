@@ -171,7 +171,18 @@ export interface AutomationCompletionEvaluationResult {
   reason: string;
 }
 
+export interface RouterGenerationInput extends ThreadTitleGenerationInput {
+  /** Bounded task context; quoted history is data, never new authority. */
+  taskContext: string;
+}
+
+export interface RouterGenerationResult {
+  route: "reply" | "status" | "steer" | "queue";
+  reply: string;
+}
+
 export type TextGenerationOperation =
+  | "routeMessage"
   | "generateCommitMessage"
   | "generatePrContent"
   | "generateDiffSummary"
@@ -185,6 +196,10 @@ export type TextGenerationOperation =
  * TextGenerationShape - Service API for AI-generated Git and thread text.
  */
 export interface TextGenerationShape {
+  readonly routeMessage?: (
+    input: RouterGenerationInput,
+  ) => Effect.Effect<RouterGenerationResult, TextGenerationError>;
+
   /**
    * Generate a commit message from staged change context.
    */

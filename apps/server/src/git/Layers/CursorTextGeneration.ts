@@ -1,3 +1,4 @@
+import { buildRouterPrompt } from "../routerPrompt.ts";
 import { Effect, Layer } from "effect";
 import { ChildProcessSpawner } from "effect/unstable/process";
 
@@ -366,6 +367,22 @@ const makeCursorTextGeneration = Effect.gen(function* () {
     generateDiffSummary,
     generateBranchName,
     generateThreadTitle,
+    routeMessage: (input) =>
+      Effect.gen(function* () {
+        const modelSelection = resolveCursorModelSelection(input);
+        if (!modelSelection)
+          return yield* new TextGenerationError({
+            operation: "routeMessage",
+            detail: "Invalid router model selection.",
+          });
+        return yield* runAcpTextGeneration(cursorAcpConfig, {
+          ...input,
+          ...buildRouterPrompt(input),
+          childProcessSpawner,
+          modelSelection,
+          operation: "routeMessage",
+        });
+      }),
     generateThreadRecap,
     generateAutomationIntent,
     evaluateAutomationCompletion,

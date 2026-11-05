@@ -13,6 +13,9 @@ import {
 import { ProviderTextGenerationLive } from "./ProviderTextGeneration.ts";
 
 function createTextGenerationDouble(label: string) {
+  const routeMessage = vi.fn<NonNullable<TextGenerationShape["routeMessage"]>>(() =>
+    Effect.succeed({ route: "reply", reply: label }),
+  );
   const generateCommitMessage = vi.fn<TextGenerationShape["generateCommitMessage"]>(() =>
     Effect.succeed({
       subject: `${label} commit`,
@@ -70,7 +73,9 @@ function createTextGenerationDouble(label: string) {
   );
 
   return {
+    routeMessage,
     service: {
+      routeMessage,
       generateCommitMessage,
       generatePrContent,
       generateDiffSummary,
@@ -110,6 +115,47 @@ function makeProviderTextGenerationTestLayer(
 }
 
 describe("ProviderTextGenerationLive", () => {
+  it("keeps router generation on the selected model instead of the configured fallback", async () => {
+    const { layer, codex, cursor } = makeProviderTextGenerationTestLayer({
+      textGenerationModelSelection: { provider: "cursor", model: "composer-2" },
+    });
+    const input = {
+      cwd: "/private/router",
+      message: "Explain Redis",
+      taskContext: "{}",
+      modelSelection: { provider: "codex" as const, model: "selected-model" },
+    };
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const text = yield* TextGeneration;
+        return yield* text.routeMessage!(input);
+      }).pipe(Effect.provide(layer)),
+    );
+    expect(codex.routeMessage).toHaveBeenCalledWith(input);
+    expect(cursor.routeMessage).not.toHaveBeenCalled();
+  });
+
+  it("refuses an unsupported router provider instead of switching accounts or models", async () => {
+    const { layer, codex, cursor } = makeProviderTextGenerationTestLayer({
+      textGenerationModelSelection: { provider: "cursor", model: "composer-2" },
+    });
+    await expect(
+      Effect.runPromise(
+        Effect.gen(function* () {
+          const text = yield* TextGeneration;
+          return yield* text.routeMessage!({
+            cwd: "/private/router",
+            message: "Explain Redis",
+            taskContext: "{}",
+            modelSelection: { provider: "claudeAgent", model: "selected-model" },
+          });
+        }).pipe(Effect.provide(layer)),
+      ),
+    ).rejects.toMatchObject({ _tag: "TextGenerationError" });
+    expect(codex.routeMessage).not.toHaveBeenCalled();
+    expect(cursor.routeMessage).not.toHaveBeenCalled();
+  });
+
   it("blocks generation when the selected provider is disabled", async () => {
     const { layer, codex, cursor, opencode } = makeProviderTextGenerationTestLayer({
       providers: {

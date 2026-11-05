@@ -3587,6 +3587,21 @@ const make = Effect.gen(function* () {
         providerSupportsNativeTurnSteering(providerName) &&
         hasLiveTurn &&
         !requiresComputerProfile;
+      if (
+        event.payload.routerTurnId !== undefined &&
+        (!isNativeSteer || liveTurnId !== event.payload.routerTurnId)
+      ) {
+        yield* appendProviderFailureActivity({
+          threadId: event.payload.threadId,
+          kind: "provider.turn.start.failed",
+          summary: "Router correction was not delivered",
+          detail:
+            "The original running turn is no longer available for steering. Read progress and resend the correction.",
+          turnId: null,
+          createdAt: event.payload.createdAt,
+        });
+        return;
+      }
       if (event.payload.dispatchMode === "steer") {
         // The decider records its projected decision on the message immediately,
         // then this runtime check corrects either race direction before delivery:
@@ -4933,7 +4948,9 @@ const make = Effect.gen(function* () {
       turnId: event.payload.turnId,
       createdAt: event.payload.createdAt,
       intentionalQuit: event.commandId?.startsWith("quit-resume-interrupt:") === true,
-      strictTurnId: event.commandId?.startsWith("external_task_control_") === true,
+      strictTurnId:
+        event.commandId?.startsWith("external_task_control_") === true ||
+        event.commandId?.startsWith("router-cancel-") === true,
     });
   });
 

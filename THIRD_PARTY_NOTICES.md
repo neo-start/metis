@@ -112,3 +112,15 @@ Synara UI primitives, route chrome, owner RPC authorization, private atomic
 writes and Metis Gateway lifecycle (local base `5a88e4ceb954aedd3c2ad2084bbbc367e64186da`).
 Personal journal storage and tools are separate from the long-term memory index.
 Existing upstream MIT notices remain applicable.
+
+## Agent Router (2026-11-05)
+
+Extends local Synara-derived text generation, task control, orchestration and atomic
+write modules at Metis commit `5a88e4ceb954aedd3c2ad2084bbbc367e64186da`. Reviewed
+T3 Code `apps/server/src/textGeneration/CodexTextGeneration.ts` and
+`apps/server/src/orchestration/decider.ts` at
+`f5ef0ddb90a8c36584e181b1913e7b8a5df30ffc`; no T3 code copied. Existing licenses
+remain applicable. Adds `smol-toml` (BSD-3-Clause) for allowlisting provider/auth TOML
+configuration in the Router's isolated Codex home. See
+[Router design](docs/workbench/agent-router.md) and
+[upstream provenance](docs/workbench/upstream.json).

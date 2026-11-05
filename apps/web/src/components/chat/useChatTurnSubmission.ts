@@ -613,7 +613,21 @@ export function useChatTurnSubmission({
       composerImagesForSend = captures.composerImagesForSend;
       if (hasPendingCacheReview()) return false;
 
-      if (hasQueueableLiveTurn && dispatchMode === "queue" && queuedChatTurn === null) {
+      // Explicit Queue/Steer retains its meaning. Ordinary text follow-ups reach
+      // the server Router immediately instead of waiting in the browser queue.
+      const routeFollowUp =
+        settings.followUpBehavior === "router" &&
+        hasQueueableLiveTurn &&
+        requestedDispatchMode === undefined &&
+        queuedChatTurn === null &&
+        composerImagesForSend.length === 0 &&
+        composerFilesForSend.length === 0;
+      if (
+        hasQueueableLiveTurn &&
+        dispatchMode === "queue" &&
+        queuedChatTurn === null &&
+        !routeFollowUp
+      ) {
         clearComposerInput(activeThread.id);
         scheduleComposerFocus();
         const queuedImagesForPersistence = await Promise.all(
@@ -888,6 +902,7 @@ export function useChatTurnSubmission({
       }
 
       return executePreparedTurn({
+        routeFollowUp,
         nextThreadEnvMode,
         nextThreadBranch,
         nextThreadWorktreePath,

@@ -125,6 +125,28 @@ const makeProviderTextGeneration = Effect.gen(function* () {
     );
 
   return {
+    routeMessage: (input: TextGen.RouterGenerationInput) => {
+      // Router requests must never silently change the conversation's provider/model.
+      const provider = input.modelSelection?.provider;
+      if (!Selection.hasDedicatedTextGenerationProvider(provider)) {
+        return Effect.fail(
+          new TextGenerationError({
+            operation: "routeMessage",
+            detail: "This provider has no independent router generation channel.",
+          }),
+        );
+      }
+      return call("routeMessage", input, (impl, value) =>
+        impl.routeMessage
+          ? impl.routeMessage(value)
+          : Effect.fail(
+              new TextGenerationError({
+                operation: "routeMessage",
+                detail: "Router generation is unavailable.",
+              }),
+            ),
+      );
+    },
     generateCommitMessage: (input: TextGen.CommitMessageGenerationInput) =>
       call("generateCommitMessage", input, (impl, value) => impl.generateCommitMessage(value)),
     generatePrContent: (input: TextGen.PrContentGenerationInput) =>

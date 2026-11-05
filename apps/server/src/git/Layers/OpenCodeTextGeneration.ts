@@ -1,3 +1,4 @@
+import { buildRouterPrompt } from "../routerPrompt.ts";
 // FILE: OpenCodeTextGeneration.ts
 // Purpose: Runs OpenCode-compatible one-shot text generation for titles, branches, recaps, and release text.
 // Layer: Server git/text-generation adapter
@@ -715,6 +716,21 @@ const makeOpenCodeCompatibleTextGeneration = (config: OpenCodeCompatibleTextGene
       generateDiffSummary,
       generateBranchName,
       generateThreadTitle,
+      routeMessage: (input) =>
+        Effect.gen(function* () {
+          const modelSelection = resolveOpenCodeCompatibleModelSelection(config, input);
+          if (!modelSelection)
+            return yield* new TextGenerationError({
+              operation: "routeMessage",
+              detail: "Invalid router model selection.",
+            });
+          return yield* runOpenCodeJson({
+            ...input,
+            ...buildRouterPrompt(input),
+            modelSelection,
+            operation: "routeMessage",
+          });
+        }),
       generateThreadRecap,
       generateAutomationIntent,
       evaluateAutomationCompletion,

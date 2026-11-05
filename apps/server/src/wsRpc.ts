@@ -1,3 +1,6 @@
+import { AgentRouter } from "./router/AgentRouter.ts";
+import { mkdir as mkdirRouterDirectory } from "node:fs/promises";
+import { join as joinRouterPath } from "node:path";
 import { MetisControllerService } from "./metis/MetisControllerService.ts";
 import { PeerService } from "./peers/PeerService.ts";
 import { AgentGatewaySessionRegistry } from "./agentGateway/Services/AgentGatewaySessionRegistry";
@@ -406,6 +409,8 @@ const makeWsRpcHandlersLayer = () =>
       const serverSettings = yield* ServerSettingsService;
       const terminalManager = yield* TerminalManager;
       const textGeneration = yield* TextGeneration;
+      const agentRouter = new AgentRouter(joinRouterPath(config.stateDir, "router", "receipts"));
+      const routerGenerationCwd = joinRouterPath(config.stateDir, "router", "generation");
       const workspaceEntries = yield* WorkspaceEntries;
       const workspaceFileSystem = yield* WorkspaceFileSystem;
       const threadDiagnostics = yield* ThreadDiagnosticsQuery;
@@ -959,7 +964,39 @@ const makeWsRpcHandlersLayer = () =>
             Effect.gen(function* () {
               const { command: normalizedCommand, prepareWorkspaceRoot } =
                 yield* normalizeDispatchCommand({ command });
-              const result = yield* dispatchOrchestrationCommand(normalizedCommand);
+              const attachmentPrincipal = yield* CurrentManagedAttachmentPrincipal;
+              const result =
+                normalizedCommand.type === "thread.turn.start" &&
+                normalizedCommand.routingMode === "auto"
+                  ? yield* Effect.tryPromise(() =>
+                      agentRouter.dispatch(normalizedCommand, {
+                        generationCwd: routerGenerationCwd,
+                        readThread: async (threadId) =>
+                          Option.getOrNull(
+                            await Effect.runPromise(
+                              projectionReadModelQuery.getThreadDetailById(threadId),
+                            ),
+                          ),
+                        generate: async (input) => {
+                          if (!textGeneration.routeMessage)
+                            throw new Error("Router generation unavailable.");
+                          await mkdirRouterDirectory(routerGenerationCwd, {
+                            recursive: true,
+                            mode: 0o700,
+                          });
+                          return Effect.runPromise(
+                            textGeneration.routeMessage(input).pipe(Effect.timeout("12 seconds")),
+                          );
+                        },
+                        dispatch: (routed) =>
+                          Effect.runPromise(
+                            runtimeStartup.enqueueCommand(
+                              orchestrationEngine.dispatch(routed, { attachmentPrincipal }),
+                            ),
+                          ),
+                      }),
+                    )
+                  : yield* dispatchOrchestrationCommand(normalizedCommand);
               // Only scaffold managed workspace-root subdirectories (Inbox/Outbox/work/outputs)
               // AFTER the decider has accepted the command. A rejected dispatch (e.g. a
               // cross-kind workspace-root ownership conflict) must never mutate the filesystem.

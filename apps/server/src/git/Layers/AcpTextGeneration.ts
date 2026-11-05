@@ -142,6 +142,11 @@ export function runAcpTextGeneration<
       cwd: input.cwd,
     });
 
+    if (input.operation === "routeMessage") {
+      yield* runtime.handleRequestPermission(() =>
+        Effect.succeed({ outcome: { outcome: "cancelled" as const } }),
+      );
+    }
     yield* runtime.handleSessionUpdate((notification) => {
       const update = notification.update;
       if (update.sessionUpdate !== "agent_message_chunk") {

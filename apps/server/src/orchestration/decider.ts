@@ -1721,6 +1721,20 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
       });
       yield* validateSidechatExecutionAvailable(command, targetThread);
       if (
+        command.routerTurnId !== undefined &&
+        (targetThread.session?.status !== "running" ||
+          targetThread.session.activeTurnId !== command.routerTurnId ||
+          targetThread.archivedAt != null ||
+          targetThread.claudeCacheReview ||
+          command.runtimeMode !== targetThread.runtimeMode ||
+          command.interactionMode !== targetThread.interactionMode)
+      )
+        return yield* new OrchestrationCommandInvariantError({
+          commandType: command.type,
+          detail:
+            "Router correction rejected: the original turn or its settings changed. Read progress and resend.",
+        });
+      if (
         command.deliveryPrecondition !== undefined &&
         (targetThread.updatedAt !== command.deliveryPrecondition.expectedThreadUpdatedAt ||
           targetThread.archivedAt != null ||
@@ -1923,6 +1937,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         ...computerActivationMetadata({ ...command, userMessageText: command.message.text }),
         assistantDeliveryMode: command.assistantDeliveryMode ?? DEFAULT_ASSISTANT_DELIVERY_MODE,
         dispatchMode,
+        ...(command.routerTurnId ? { routerTurnId: command.routerTurnId } : {}),
         dispatchOrigin: command.dispatchOrigin ?? "user",
         runtimeMode,
         interactionMode,
@@ -2179,7 +2194,11 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
       });
       // Scoped task-control cancels require an exact run. Legacy desktop Stop
       // and shutdown recovery use turnId as a hint while projections catch up.
-      if (command.commandId.startsWith("external_task_control_") && command.turnId !== undefined) {
+      if (
+        (command.commandId.startsWith("external_task_control_") ||
+          command.commandId.startsWith("router-cancel-")) &&
+        command.turnId !== undefined
+      ) {
         const projectedRunId =
           thread.latestTurn?.state === "running" ? thread.latestTurn.turnId : null;
         const sessionRunId =

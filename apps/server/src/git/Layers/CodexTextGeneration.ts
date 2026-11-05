@@ -1,3 +1,5 @@
+import { routerCodexConfig, ROUTER_CODEX_OVERRIDES } from "../routerCodexConfig.ts";
+import { buildRouterPrompt } from "../routerPrompt.ts";
 import { randomUUID } from "node:crypto";
 
 import { Effect, FileSystem, Layer, Option, Path, Schema, Stream } from "effect";
@@ -203,7 +205,9 @@ const makeCodexTextGeneration = Effect.gen(function* () {
         yield* fileSystem
           .writeFileString(
             path.join(isolatedHomePath, "config.toml"),
-            sanitizeCodexConfigForTextGeneration(sourceConfig),
+            operation === "routeMessage"
+              ? routerCodexConfig(sourceConfig)
+              : sanitizeCodexConfigForTextGeneration(sourceConfig),
           )
           .pipe(
             Effect.mapError(
@@ -335,6 +339,9 @@ const makeCodexTextGeneration = Effect.gen(function* () {
           resolveCodexModel(model, modelSelection) ?? DEFAULT_GIT_TEXT_GENERATION_MODEL,
           "--config",
           `model_reasoning_effort="${DEFAULT_GIT_TEXT_GENERATION_REASONING_EFFORT}"`,
+          ...(operation === "routeMessage"
+            ? ROUTER_CODEX_OVERRIDES.flatMap((value) => ["--config", value])
+            : []),
           "--output-schema",
           schemaPath,
           "--output-last-message",
@@ -665,6 +672,8 @@ const makeCodexTextGeneration = Effect.gen(function* () {
     generateDiffSummary,
     generateBranchName,
     generateThreadTitle,
+    routeMessage: (input) =>
+      runCodexJson({ ...input, ...buildRouterPrompt(input), operation: "routeMessage" }),
     generateThreadRecap,
     generateAutomationIntent,
     evaluateAutomationCompletion,

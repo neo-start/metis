@@ -3822,46 +3822,49 @@ describe("ProviderCommandReactor", () => {
     },
   );
 
-  it("does not redirect a delayed targeted interrupt to a newer live run", async () => {
-    const harness = await createHarness();
-    const threadId = ThreadId.makeUnsafe("thread-1");
-    const now = new Date().toISOString();
-    await Effect.runPromise(
-      harness.engine.dispatch({
-        type: "thread.session.set",
-        commandId: CommandId.makeUnsafe("cmd-targeted-interrupt-session"),
-        threadId,
-        session: {
+  it.each(["external_task_control_", "router-cancel-"])(
+    "does not redirect a delayed %s interrupt to a newer live run",
+    async (prefix) => {
+      const harness = await createHarness();
+      const threadId = ThreadId.makeUnsafe("thread-1");
+      const now = new Date().toISOString();
+      await Effect.runPromise(
+        harness.engine.dispatch({
+          type: "thread.session.set",
+          commandId: CommandId.makeUnsafe("cmd-targeted-interrupt-session"),
           threadId,
-          status: "running",
-          providerName: "codex",
-          runtimeMode: "approval-required",
-          activeTurnId: asTurnId("old-run"),
-          lastError: null,
-          updatedAt: now,
-        },
-        createdAt: now,
-      }),
-    );
-    harness.setRuntimeSessionTurnState({
-      threadId,
-      status: "running",
-      activeTurnId: asTurnId("new-run"),
-    });
-    await Effect.runPromise(
-      harness.engine.dispatch({
-        type: "thread.turn.interrupt",
-        commandId: CommandId.makeUnsafe("external_task_control_delayed-targeted-interrupt"),
+          session: {
+            threadId,
+            status: "running",
+            providerName: "codex",
+            runtimeMode: "approval-required",
+            activeTurnId: asTurnId("old-run"),
+            lastError: null,
+            updatedAt: now,
+          },
+          createdAt: now,
+        }),
+      );
+      harness.setRuntimeSessionTurnState({
         threadId,
-        turnId: asTurnId("old-run"),
-        createdAt: now,
-      }),
-    );
-    await harness.drain();
-    expect(harness.interruptTurn).not.toHaveBeenCalled();
-    expect(harness.stopRuntimeSession).not.toHaveBeenCalled();
-    expect(harness.stopSession).not.toHaveBeenCalled();
-  });
+        status: "running",
+        activeTurnId: asTurnId("new-run"),
+      });
+      await Effect.runPromise(
+        harness.engine.dispatch({
+          type: "thread.turn.interrupt",
+          commandId: CommandId.makeUnsafe(`${prefix}delayed-targeted-interrupt`),
+          threadId,
+          turnId: asTurnId("old-run"),
+          createdAt: now,
+        }),
+      );
+      await harness.drain();
+      expect(harness.interruptTurn).not.toHaveBeenCalled();
+      expect(harness.stopRuntimeSession).not.toHaveBeenCalled();
+      expect(harness.stopSession).not.toHaveBeenCalled();
+    },
+  );
 
   it("REL-01B gate: advances the durable cursor through irrelevant events", async () => {
     const harness = await createHarness({ startReactor: false });
@@ -12124,69 +12127,86 @@ describe("ProviderCommandReactor", () => {
     expect(message?.startsNewTurn).toBe(false);
   });
 
-  it("dispatches a codex steer as a queued turn when the live provider turn already settled", async () => {
-    const harness = await createHarness();
-    const now = new Date().toISOString();
+  it.each([false, true])(
+    "handles a settled codex steer with Router protection=%s",
+    async (routerProtected) => {
+      const harness = await createHarness();
+      const now = new Date().toISOString();
 
-    // Projection lags: it still says running, but the provider runtime has no
-    // live turn. The steer must not ride the native codex steer path (which
-    // would skip the turn-start checkpoint) — it dispatches as a normal turn.
-    harness.setRuntimeSessionTurnState({ threadId: "thread-1", status: "ready" });
-    await Effect.runPromise(
-      harness.engine.dispatch({
-        type: "thread.session.set",
-        commandId: CommandId.makeUnsafe("cmd-session-stale-steer-codex"),
-        threadId: ThreadId.makeUnsafe("thread-1"),
-        session: {
+      // Projection lags: it still says running, but the provider runtime has no
+      // live turn. The steer must not ride the native codex steer path (which
+      // would skip the turn-start checkpoint) — it dispatches as a normal turn.
+      harness.setRuntimeSessionTurnState({ threadId: "thread-1", status: "ready" });
+      await Effect.runPromise(
+        harness.engine.dispatch({
+          type: "thread.session.set",
+          commandId: CommandId.makeUnsafe("cmd-session-stale-steer-codex"),
           threadId: ThreadId.makeUnsafe("thread-1"),
-          status: "running",
-          providerName: "codex",
+          session: {
+            threadId: ThreadId.makeUnsafe("thread-1"),
+            status: "running",
+            providerName: "codex",
+            runtimeMode: "approval-required",
+            activeTurnId: asTurnId("turn-settled"),
+            lastError: null,
+            updatedAt: now,
+          },
+          createdAt: now,
+        }),
+      );
+
+      harness.sendTurn.mockClear();
+      harness.steerTurn.mockClear();
+      harness.interruptTurn.mockClear();
+
+      await Effect.runPromise(
+        harness.engine.dispatch({
+          type: "thread.turn.start",
+          commandId: CommandId.makeUnsafe("cmd-turn-steer-codex-stale"),
+          threadId: ThreadId.makeUnsafe("thread-1"),
+          message: {
+            messageId: asMessageId("msg-steer-codex-stale"),
+            role: "user",
+            text: "steer but nothing is running",
+            attachments: [],
+          },
+          dispatchMode: "steer",
+          ...(routerProtected ? { routerTurnId: asTurnId("turn-settled") } : {}),
           runtimeMode: "approval-required",
-          activeTurnId: asTurnId("turn-settled"),
-          lastError: null,
-          updatedAt: now,
-        },
-        createdAt: now,
-      }),
-    );
+          interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+          createdAt: now,
+        }),
+      );
 
-    harness.sendTurn.mockClear();
-    harness.steerTurn.mockClear();
-    harness.interruptTurn.mockClear();
-
-    await Effect.runPromise(
-      harness.engine.dispatch({
-        type: "thread.turn.start",
-        commandId: CommandId.makeUnsafe("cmd-turn-steer-codex-stale"),
+      if (routerProtected) {
+        await harness.drain();
+        expect(harness.sendTurn).not.toHaveBeenCalled();
+        expect(harness.steerTurn).not.toHaveBeenCalled();
+        expect(harness.interruptTurn).not.toHaveBeenCalled();
+        const thread = (await Effect.runPromise(harness.engine.getReadModel())).threads[0];
+        expect(
+          thread?.activities.some(
+            (activity) => activity.summary === "Router correction was not delivered",
+          ),
+        ).toBe(true);
+        return;
+      }
+      await waitFor(() => harness.sendTurn.mock.calls.length === 1);
+      await harness.drain();
+      expect(harness.steerTurn).not.toHaveBeenCalled();
+      expect(harness.interruptTurn).not.toHaveBeenCalled();
+      expect(harness.sendTurn.mock.calls[0]?.[0]).toMatchObject({
         threadId: ThreadId.makeUnsafe("thread-1"),
-        message: {
-          messageId: asMessageId("msg-steer-codex-stale"),
-          role: "user",
-          text: "steer but nothing is running",
-          attachments: [],
-        },
-        dispatchMode: "steer",
-        runtimeMode: "approval-required",
-        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
-        createdAt: now,
-      }),
-    );
-
-    await waitFor(() => harness.sendTurn.mock.calls.length === 1);
-    await harness.drain();
-    expect(harness.steerTurn).not.toHaveBeenCalled();
-    expect(harness.interruptTurn).not.toHaveBeenCalled();
-    expect(harness.sendTurn.mock.calls[0]?.[0]).toMatchObject({
-      threadId: ThreadId.makeUnsafe("thread-1"),
-      input: "steer but nothing is running",
-      deliveryId: "command:cmd-turn-steer-codex-stale",
-    });
-    const message = (
-      await Effect.runPromise(harness.engine.getReadModel())
-    ).threads[0]?.messages.find((entry) => entry.id === "msg-steer-codex-stale");
-    expect(message?.turnId).toBe("turn-1");
-    expect(message?.startsNewTurn).toBe(true);
-  });
+        input: "steer but nothing is running",
+        deliveryId: "command:cmd-turn-steer-codex-stale",
+      });
+      const message = (
+        await Effect.runPromise(harness.engine.getReadModel())
+      ).threads[0]?.messages.find((entry) => entry.id === "msg-steer-codex-stale");
+      expect(message?.turnId).toBe("turn-1");
+      expect(message?.startsNewTurn).toBe(true);
+    },
+  );
 
   it("steers a running claude turn natively without interrupting it", async () => {
     const harness = await createHarness({

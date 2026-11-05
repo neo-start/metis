@@ -1433,7 +1433,11 @@ export const ComputerControlMode = Schema.Literals(["off", "request", "chat"]);
 export type ComputerControlMode = typeof ComputerControlMode.Type;
 
 export const ThreadTurnStartCommand = Schema.Struct({
+  /** Server-only: never turn a Router correction into work on a replacement run. */
+  routerTurnId: Schema.optional(TurnId),
   type: Schema.Literal("thread.turn.start"),
+  /** Route plain follow-ups independently of the active provider turn. */
+  routingMode: Schema.optional(Schema.Literal("auto")),
   asyncUserInputResponse: Schema.optional(AsyncUserInputResponse),
   commandId: CommandId,
   threadId: ThreadId,
@@ -1485,6 +1489,8 @@ export const ThreadTurnStartCommand = Schema.Struct({
 
 const ClientThreadTurnStartCommand = Schema.Struct({
   type: Schema.Literal("thread.turn.start"),
+  /** Route plain follow-ups independently of the active provider turn. */
+  routingMode: Schema.optional(Schema.Literal("auto")),
   asyncUserInputResponse: Schema.optional(AsyncUserInputResponse),
   commandId: CommandId,
   threadId: ThreadId,
@@ -2204,6 +2210,7 @@ export const ThreadClaudeCacheResponseRequestedPayload = Schema.Struct({
 });
 
 export const ThreadTurnStartRequestedPayload = Schema.Struct({
+  routerTurnId: Schema.optional(TurnId),
   threadId: ThreadId,
   messageId: MessageId,
   modelSelection: Schema.optional(ModelSelection),
