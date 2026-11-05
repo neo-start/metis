@@ -143,7 +143,7 @@ describe("AgentRouter above the real orchestration engine", () => {
     expect(thread.session?.activeTurnId).toBe(f.turnId);
     expect(thread.messages.map((message) => message.text)).toEqual([
       "解释一下 Redis",
-      "Router：\n独立问题的回答",
+      "独立问题的回答",
     ]);
     expect(thread.latestTurn?.turnId).toBe(f.turnId);
     expect(thread.latestTurn?.state).toBe("running");
@@ -194,7 +194,7 @@ describe("AgentRouter above the real orchestration engine", () => {
       await vi.waitFor(async () => {
         const messages = (await f.readThread()).messages;
         expect(messages.some((m) => m.text === "我在，收到你的消息了。")).toBe(true);
-        expect(messages.some((m) => m.text === "Router：\n独立问题的回答")).toBe(true);
+        expect(messages.some((m) => m.text === "独立问题的回答")).toBe(true);
       });
       await Promise.all([greeting, chat]);
     } finally {

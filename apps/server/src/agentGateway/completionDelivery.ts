@@ -139,7 +139,7 @@ export const deliverGatewayCompletions = (dependencies: CompletionDeliveryDepend
               {
                 messageId: MessageId.makeUnsafe(`router-completion:${row.childThreadId}`),
                 role: "assistant",
-                text: `Router：任务 [${row.childThreadId}](/tasks?thread=${encodeURIComponent(row.childThreadId)}) ${result.status}。\n${result.error ?? result.summary ?? "执行器没有提供最终回复。"}`,
+                text: `任务 [${row.childThreadId}](/tasks?thread=${encodeURIComponent(row.childThreadId)}) ${result.status}。\n${result.error ?? result.summary ?? "执行器没有提供最终回复。"}`,
                 createdAt,
                 updatedAt: createdAt,
               },

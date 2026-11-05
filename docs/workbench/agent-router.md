@@ -179,3 +179,7 @@ clarification; missing, invented and unowned targets cannot dispatch. Quoted
 references retain their verified binding. Task associations inferred from text
 remain model decisions, not a guarantee of semantic correctness. Pending requests
 are recovered through the existing ordered durable inbox, not a second task store.
+
+User-facing replies, status and completion notifications omit the Router label.
+Feishu worker binding accepts both current notifications and legacy prefixed
+notifications recovered from persisted delivery records.

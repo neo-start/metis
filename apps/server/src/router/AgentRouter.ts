@@ -97,7 +97,7 @@ export function routerStatusReply(thread: OrchestrationThread) {
       : routerHasActiveTurn(thread)
         ? "任务仍在运行"
         : "当前没有正在执行的任务";
-  return `Router 状态：${state}。\n最近状态更新时间：${thread.session?.updatedAt ?? thread.updatedAt}。${activity ? `\n最近活动：${activity.summary.slice(0, 500)}` : ""}${latest ? `\n最近回复：\n${latest.text.slice(-1200)}` : ""}\n这是已记录的状态，不能仅凭没有新输出判断任务卡住。`;
+  return `任务状态：${state}。\n最近状态更新时间：${thread.session?.updatedAt ?? thread.updatedAt}。${activity ? `\n最近活动：${activity.summary.slice(0, 500)}` : ""}${latest ? `\n最近回复：\n${latest.text.slice(-1200)}` : ""}\n这是已记录的状态，不能仅凭没有新输出判断任务卡住。`;
 }
 
 /** Independent of provider turn locks. Only finalized plans are persisted; an RPC
@@ -197,7 +197,7 @@ export class AgentRouter {
           {
             messageId: MessageId.makeUnsafe(`router-${key}`),
             role: "assistant",
-            text: `Router：已创建独立任务 [${workerId}](/tasks?thread=${encodeURIComponent(workerId)})。可继续在这里聊天；打开任务可查看进度、修改要求或取消。任务完成后会通知此会话。`,
+            text: `已创建独立任务 [${workerId}](/tasks?thread=${encodeURIComponent(workerId)})。可继续在这里聊天；打开任务可查看进度、修改要求或取消。任务完成后会通知此会话。`,
             createdAt: command.createdAt,
             updatedAt: command.createdAt,
           },
@@ -306,7 +306,7 @@ export class AgentRouter {
     ) {
       referencedTask = await resolveRequest(command.routerSourceCommandId);
       if (!referencedTask)
-        return [reply("Router：引用的消息没有可确认的关联任务，请指定任务 ID；这条消息尚未追加。")];
+        return [reply("引用的消息没有可确认的关联任务，请指定任务 ID；这条消息尚未追加。")];
       tasks.splice(0, tasks.length, referencedTask);
     }
     const status = () =>
@@ -318,19 +318,16 @@ export class AgentRouter {
             )
             .join("\n\n")
         : host.createWorker
-          ? "Router：尚无已启动任务；已受理消息可能仍在路由或创建中。"
+          ? "尚无已启动任务；已受理消息可能仍在路由或创建中。"
           : routerStatusReply(thread);
     if (isRouterStatusQuestion(command.message.text)) return [reply(status())];
     if (isRouterCancelRequest(command.message.text)) {
       const active = tasks.filter(routerHasActiveTurn);
       if (active.length > 1)
-        return [
-          reply("Router：有多个运行中任务，请打开需要停止的任务，或发送 `任务 <任务ID> 停止`。"),
-        ];
+        return [reply("有多个运行中任务，请打开需要停止的任务，或发送 `任务 <任务ID> 停止`。")];
       const target = active[0];
       const turnId = target?.session?.activeTurnId;
-      if (!target || !turnId)
-        return [reply("Router：当前没有可确认的运行中任务，未发送取消指令。")];
+      if (!target || !turnId) return [reply("当前没有可确认的运行中任务，未发送取消指令。")];
       return [
         {
           type: "thread.turn.interrupt",
@@ -339,7 +336,7 @@ export class AgentRouter {
           turnId,
           createdAt: command.createdAt,
         },
-        reply("Router：已请求停止当前任务，正在等待执行器确认。已发生的操作不会因此撤销。"),
+        reply("已请求停止当前任务，正在等待执行器确认。已发生的操作不会因此撤销。"),
       ];
     }
     if (
@@ -351,10 +348,10 @@ export class AgentRouter {
     const explicit = /^(?:任务|task)\s+(\S+)\s+([\s\S]+)$/iu.exec(command.message.text.trim());
     if (explicit) {
       const target = tasks.find((task) => task.id === explicit[1]);
-      if (!target) return [reply("Router：该任务不属于此会话或已不可用，未发送指令。")];
+      if (!target) return [reply("该任务不属于此会话或已不可用，未发送指令。")];
       if (isRouterCancelRequest(explicit[2]!)) {
         if (!routerHasActiveTurn(target) || !target.session?.activeTurnId)
-          return [reply("Router：此任务没有可确认的运行中回合。")];
+          return [reply("此任务没有可确认的运行中回合。")];
         return [
           {
             type: "thread.turn.interrupt",
@@ -363,7 +360,7 @@ export class AgentRouter {
             turnId: target.session.activeTurnId,
             createdAt: command.createdAt,
           },
-          reply(`Router：已请求停止任务 ${target.id}，等待执行器确认。`),
+          reply(`已请求停止任务 ${target.id}，等待执行器确认。`),
         ];
       }
       if (isRouterStatusQuestion(explicit[2]!)) return [reply(routerStatusReply(target))];
@@ -432,8 +429,7 @@ export class AgentRouter {
     if (!current || current.deletedAt || current.archivedAt || current.sidechatExpiredAt)
       throw new Error("Router target conversation is unavailable.");
     if (decision.route === "status") return [reply(status())];
-    if (decision.route === "reply" && decision.reply.trim())
-      return [reply(`Router：\n${decision.reply.trim()}`)];
+    if (decision.route === "reply" && decision.reply.trim()) return [reply(decision.reply.trim())];
     if (decision.route === "steer") {
       const selectedPending = predecessors.find(
         (entry) => `pending:${entry.command.commandId}` === decision.targetTaskId,
@@ -442,9 +438,7 @@ export class AgentRouter {
       if (selectedPending) {
         const resolved = await resolveRequest(selectedPending.command.commandId);
         if (!resolved)
-          return [
-            reply("Router：前一条消息尚未形成可确认的任务，请指定任务 ID；这条补充尚未追加。"),
-          ];
+          return [reply("前一条消息尚未形成可确认的任务，请指定任务 ID；这条补充尚未追加。")];
         if (!tasks.some((task) => task.id === resolved.id)) tasks.push(resolved);
         decision = { ...decision, targetTaskId: resolved.id };
       }
@@ -453,7 +447,7 @@ export class AgentRouter {
         : tasks.length === 1
           ? tasks[0]
           : undefined;
-      if (!target) return [reply("Router：请指定要修改的任务，当前没有唯一可确认的目标。")];
+      if (!target) return [reply("请指定要修改的任务，当前没有唯一可确认的目标。")];
       const latest = await host.readThread(target.id);
       if (
         !latest ||
@@ -462,12 +456,9 @@ export class AgentRouter {
         latest.sidechatExpiredAt ||
         latest.session?.activeTurnId !== target.session?.activeTurnId
       )
-        return [
-          reply("Router：目标任务的运行状态已改变，这条修改尚未发送。请确认任务后重新发送。"),
-        ];
+        return [reply("目标任务的运行状态已改变，这条修改尚未发送。请确认任务后重新发送。")];
       const active = routerHasActiveTurn(latest);
-      if (active && !target.session?.activeTurnId)
-        return [reply("Router：任务正在启动，请稍后重试修改。")];
+      if (active && !target.session?.activeTurnId) return [reply("任务正在启动，请稍后重试修改。")];
       const steer =
         active &&
         providerSupportsNativeTurnSteering(
@@ -486,8 +477,8 @@ export class AgentRouter {
         },
         reply(
           steer
-            ? `Router：已向任务 ${target.id} 提交修改，等待执行器接收。这不代表修改已经完成。`
-            : `Router：修改已加入任务 ${target.id} 的队列。`,
+            ? `已向任务 ${target.id} 提交修改，等待执行器接收。这不代表修改已经完成。`
+            : `修改已加入任务 ${target.id} 的队列。`,
           false,
         ),
       ];
@@ -496,7 +487,7 @@ export class AgentRouter {
       if (failed)
         return [
           reply(
-            "Router：独立响应通道暂时不可用或超时，消息未交给执行器。请重试；明确的新任务可用「新任务：…」直接提交。",
+            "独立响应通道暂时不可用或超时，消息未交给执行器。请重试；明确的新任务可用「新任务：…」直接提交。",
           ),
         ];
       return [workerPlan()];
@@ -505,8 +496,8 @@ export class AgentRouter {
       { ...workerCommand, dispatchMode: "queue" },
       reply(
         failed
-          ? "Router：独立响应通道暂时不可用或超时，这条消息已交给任务队列。"
-          : "Router：这条消息需要任务执行，已交给任务队列。",
+          ? "独立响应通道暂时不可用或超时，这条消息已交给任务队列。"
+          : "这条消息需要任务执行，已交给任务队列。",
         false,
       ),
     ];

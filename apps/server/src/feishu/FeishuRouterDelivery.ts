@@ -136,7 +136,7 @@ export class FeishuRouterDelivery {
               );
               if (!reply || this.stopped || !this.host.allowed(record.senderId)) return;
               const sent = await this.host.send(record.chatId, reply.text, record.replyTo);
-              const workerId = reply.text.startsWith("Router：已创建独立任务")
+              const workerId = /^(?:Router[：:]\s*)?已创建独立任务/u.test(reply.text)
                 ? reply.text.match(/\/tasks\?thread=([a-zA-Z0-9_-]+)/u)?.[1]
                 : undefined;
               record = {

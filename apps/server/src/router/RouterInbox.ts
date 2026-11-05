@@ -164,7 +164,7 @@ export class RouterInbox {
           {
             messageId: MessageId.makeUnsafe(`router-failure-${key}`),
             role: "assistant",
-            text: `Router：处理遇到错误，任务可能已提交；请先查看此会话的任务和进度，再决定是否重试。${record.error}`,
+            text: `处理遇到错误，任务可能已提交；请先查看此会话的任务和进度，再决定是否重试。${record.error}`,
             createdAt: command.createdAt,
             updatedAt: command.createdAt,
           },
