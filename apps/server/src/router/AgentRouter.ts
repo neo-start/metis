@@ -28,6 +28,8 @@ export interface AgentRouterHost {
   dispatch(command: OrchestrationCommand): Promise<DispatchResult>;
   /** An empty, private working directory, not the user's repository. */
   generationCwd: string;
+  /** Only authorized controller conversations may receive instance-wide state. */
+  listActiveThreads?(id: ThreadId): Promise<ReadonlyArray<OrchestrationThread> | null>;
   listWorkers?(id: ThreadId): Promise<ReadonlyArray<OrchestrationThread>>;
   createWorker?(command: TurnStart, sourceContext?: string): Promise<ThreadId>;
   /** Durable inbox already imported the user message. */
@@ -42,6 +44,7 @@ const WorkerPlan = Schema.Struct({
 const PlannedCommand = Schema.Union([OrchestrationCommand, WorkerPlan]);
 type PlannedCommand = typeof PlannedCommand.Type;
 const SavedDispatch = Schema.Struct({
+  replyCreatedAt: Schema.optional(Schema.String),
   presentationVersion: Schema.optional(Schema.Literal(1)),
   followup: Schema.optional(Schema.Boolean),
   fingerprint: Schema.String,
@@ -58,6 +61,13 @@ export function isRouterStatusQuestion(text: string) {
   // Match the whole utterance: a status question plus an action must not lose the action.
   return statusQuestion.exec(normalized)?.[0] === normalized;
 }
+/** Whole utterances only: never swallow an appended action. */
+export function isRouterGlobalStatusQuestion(text: string) {
+  return /^(?:(?:现在|目前)?(?:有(?:哪些)?(?:正在进行|进行中|正在运行|运行中)的\s*(?:Metis\s*)?(?:会话|任务)(?:吗|么)?|(?:Metis\s*)?(?:有哪些|有什么)(?:正在进行|进行中|正在运行|运行中)的(?:会话|任务))|(?:列出|查看)(?:所有|全部)(?:正在进行|进行中|正在运行|运行中)的(?:会话|任务)|(?:list|show)(?: all)? (?:active|running) (?:sessions|threads|tasks))[？?！!。.]?$/iu.test(
+    text.trim(),
+  );
+}
+
 export function isRouterCancelRequest(text: string) {
   return /^(?:停|停下|停止|暂停|停一下|停止当前任务|暂停当前任务|取消当前任务|stop|pause|cancel(?: the)? (?:current )?task)[。.!！]?$/iu.test(
     text.trim(),
@@ -66,7 +76,11 @@ export function isRouterCancelRequest(text: string) {
 function isRouterPriorityRequest(text: string) {
   const targeted = /^(?:任务|task)\s+\S+\s+([\s\S]+)$/iu.exec(text.trim());
   const action = targeted?.[1] ?? text;
-  return isRouterStatusQuestion(action) || isRouterCancelRequest(action);
+  return (
+    isRouterStatusQuestion(action) ||
+    isRouterGlobalStatusQuestion(text) ||
+    isRouterCancelRequest(action)
+  );
 }
 export function routerHasActiveTurn(thread: OrchestrationThread) {
   return (
@@ -154,7 +168,31 @@ export class AgentRouter {
     const predecessors = [...this.requests.values()].filter(
       (entry) => entry.command.threadId === command.threadId,
     );
-    const result = this.run(command, fingerprint, key, host, previous, predecessors);
+    const startedAt = Date.now();
+    const timings: Record<string, number> = {};
+    const result = this.run(command, fingerprint, key, host, timings, previous, predecessors);
+    void result
+      .then(
+        () =>
+          Effect.runPromise(
+            Effect.logInfo("Router dispatch completed", {
+              commandId: command.commandId,
+              threadId: command.threadId,
+              elapsedMs: Date.now() - startedAt,
+              ...timings,
+            }),
+          ),
+        () =>
+          Effect.runPromise(
+            Effect.logWarning("Router dispatch failed", {
+              commandId: command.commandId,
+              threadId: command.threadId,
+              elapsedMs: Date.now() - startedAt,
+              ...timings,
+            }),
+          ),
+      )
+      .catch(() => undefined);
     const lane = Promise.allSettled([previous, result]);
     this.requests.set(key, { fingerprint, command, result });
     if (!priority) this.lanes.set(command.threadId, lane);
@@ -170,6 +208,7 @@ export class AgentRouter {
     fingerprint: string,
     key: string,
     host: AgentRouterHost,
+    timings: Record<string, number>,
     previous?: Promise<unknown>,
     predecessors: Array<{ command: TurnStart; result: Promise<DispatchResult> }> = [],
   ): Promise<DispatchResult> {
@@ -188,14 +227,29 @@ export class AgentRouter {
       throw new Error("Router target conversation is unavailable.");
     }
     if (!saved) {
-      const commands = await this.plan(command, thread, host, key, predecessors);
-      saved = { fingerprint, commands, presentationVersion: 1, sourceThreadId: command.threadId };
+      const planStartedAt = Date.now();
+      let commands: ReadonlyArray<PlannedCommand>;
+      try {
+        commands = await this.plan(command, thread, host, key, predecessors);
+      } finally {
+        timings.planMs = Date.now() - planStartedAt;
+      }
+      saved = {
+        fingerprint,
+        commands,
+        presentationVersion: 1,
+        sourceThreadId: command.threadId,
+        replyCreatedAt: new Date().toISOString(),
+      };
       await Effect.runPromise(
         writeFileStringAtomically({ filePath, contents: JSON.stringify(saved) }),
       );
     }
+    const waitStartedAt = Date.now();
     if (saved.commands.some((planned) => planned.type !== "thread.messages.import"))
       await previous?.catch(() => undefined);
+    timings.queueWaitMs = Date.now() - waitStartedAt;
+    const executionStartedAt = Date.now();
     let workerBinding = saved.workerId;
     let result: DispatchResult = { sequence: 0 };
     for (const planned of saved.commands) {
@@ -220,7 +274,13 @@ export class AgentRouter {
         throw new Error("Router worker service unavailable.");
       const workerId = await host.createWorker(planned.command, planned.sourceContext);
       workerBinding = workerId;
-      saved = { ...saved, workerId, sourceThreadId: command.threadId };
+      saved = {
+        ...saved,
+        workerId,
+        sourceThreadId: command.threadId,
+        // Old in-flight receipts must replay their original command fingerprint.
+        replyCreatedAt: saved.replyCreatedAt ?? command.createdAt,
+      };
       await Effect.runPromise(
         writeFileStringAtomically({ filePath, contents: JSON.stringify(saved) }),
       );
@@ -228,7 +288,7 @@ export class AgentRouter {
         type: "thread.messages.import",
         commandId: CommandId.makeUnsafe(`router-worker-reply-${key}`),
         threadId: command.threadId,
-        createdAt: command.createdAt,
+        createdAt: saved.replyCreatedAt!,
         messages: [
           {
             messageId: MessageId.makeUnsafe(`router-${key}`),
@@ -238,12 +298,13 @@ export class AgentRouter {
               (saved.presentationVersion === 1
                 ? "我会按你的要求处理，有结果后在这里告诉你。"
                 : `已创建独立任务 [${workerId}](/tasks?thread=${encodeURIComponent(workerId)})。可继续在这里聊天；打开任务可查看进度、修改要求或取消。任务完成后会通知此会话。`),
-            createdAt: command.createdAt,
-            updatedAt: command.createdAt,
+            createdAt: saved.replyCreatedAt!,
+            updatedAt: saved.replyCreatedAt!,
           },
         ],
       });
     }
+    timings.executionMs = Date.now() - executionStartedAt;
     // Retain only the receipt after acknowledgement, not another copy of chat text.
     await Effect.runPromise(
       writeFileStringAtomically({
@@ -284,38 +345,77 @@ export class AgentRouter {
           .map(({ role, text }) => ({ role, text: text.slice(-2000) })),
       }),
     });
-    const reply = (text: string, includeUser = !host.inputAccepted): OrchestrationCommand => ({
-      type: "thread.messages.import",
-      commandId: includeUser ? command.commandId : CommandId.makeUnsafe(`router-reply-${key}`),
-      threadId: command.threadId,
-      createdAt: command.createdAt,
-      messages: [
-        ...(includeUser
-          ? [
-              {
-                messageId: command.message.messageId,
-                role: "user" as const,
-                text: command.message.text,
-                createdAt: command.createdAt,
-                updatedAt: command.createdAt,
-              },
-            ]
-          : []),
-        {
-          messageId: MessageId.makeUnsafe(`router-${key}`),
-          role: "assistant",
-          text,
-          createdAt: command.createdAt,
-          updatedAt: command.createdAt,
-        },
-      ],
-    });
+    const reply = (text: string, includeUser = !host.inputAccepted): OrchestrationCommand => {
+      const repliedAt = new Date().toISOString();
+      return {
+        type: "thread.messages.import",
+        commandId: includeUser ? command.commandId : CommandId.makeUnsafe(`router-reply-${key}`),
+        threadId: command.threadId,
+        createdAt: repliedAt,
+        messages: [
+          ...(includeUser
+            ? [
+                {
+                  messageId: command.message.messageId,
+                  role: "user" as const,
+                  text: command.message.text,
+                  createdAt: command.createdAt,
+                  updatedAt: command.createdAt,
+                },
+              ]
+            : []),
+          {
+            messageId: MessageId.makeUnsafe(`router-${key}`),
+            role: "assistant",
+            text,
+            createdAt: repliedAt,
+            updatedAt: repliedAt,
+          },
+        ],
+      };
+    };
     if (!canRouteTurn(command)) return [workerCommand];
     if (
       !command.routerSourceCommandId &&
       /^(?:你好|您好|在吗|在不在|hello|hi|hey)[？?！!。\s]*$/iu.test(command.message.text.trim())
     ) {
       return [reply("我在，收到你的消息了。")];
+    }
+    if (!command.routerSourceCommandId && isRouterGlobalStatusQuestion(command.message.text)) {
+      const threads = await host.listActiveThreads?.(thread.id);
+      if (!threads) return [reply("此会话无法读取全局会话状态，请在 Metis 总控中查询。")];
+      const active = threads.filter(
+        (task) =>
+          !task.deletedAt &&
+          !task.archivedAt &&
+          !task.sidechatExpiredAt &&
+          (routerHasActiveTurn(task) ||
+            taskControlProgress(task).pendingInteractions.length > 0 ||
+            taskControlProgress(task).asyncUserInputs.length > 0),
+      );
+      const lines = active.slice(0, 20).map((task) => {
+        const progress = taskControlProgress(task);
+        const state =
+          progress.pendingInteractions.length || progress.asyncUserInputs.length
+            ? "等待确认或补充"
+            : "运行中";
+        return `- ${task.title}（${state}） /tasks?thread=${encodeURIComponent(task.id)}`;
+      });
+      const pending = Math.max(0, this.requests.size - 1);
+      return [
+        reply(
+          [
+            active.length
+              ? `当前 Metis 有 ${active.length} 个进行中的会话：`
+              : "当前 Metis 没有进行中的会话。",
+            ...lines,
+            ...(active.length > 20
+              ? [`另有 ${active.length - 20} 个，完整列表请查看任务页面。`]
+              : []),
+            ...(pending ? [`另有 ${pending} 条请求正在路由或提交，尚不等同于已启动会话。`] : []),
+          ].join("\n"),
+        ),
+      ];
     }
     const workers = host.listWorkers ? await host.listWorkers(thread.id) : [];
     const tasks = [...(routerHasActiveTurn(thread) ? [thread] : []), ...workers].filter(
@@ -377,8 +477,7 @@ export class AgentRouter {
         fallback,
       );
     // Preserve instant progress while an earlier classifier/creation is still pending.
-    if (isRouterStatusQuestion(command.message.text))
-      return [reply(predecessors.length ? status() : await present("status", status(), status()))];
+    if (isRouterStatusQuestion(command.message.text)) return [reply(status())];
     if (isRouterCancelRequest(command.message.text)) {
       const active = tasks.filter(routerHasActiveTurn);
       if (active.length > 1)
@@ -425,10 +524,7 @@ export class AgentRouter {
           reply(`已请求停止“${target.title}”，正在等待停止确认。`),
         ];
       }
-      if (isRouterStatusQuestion(explicit[2]!))
-        return [
-          reply(await present("status", routerStatusReply(target), routerStatusReply(target))),
-        ];
+      if (isRouterStatusQuestion(explicit[2]!)) return [reply(routerStatusReply(target))];
     }
     if (!explicit && host.createWorker && command.message.text.length > 16000)
       return [workerPlan()];

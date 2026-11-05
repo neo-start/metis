@@ -1,6 +1,7 @@
 import { join as joinRouterPath } from "node:path";
 import { Effect, Layer, Option, ServiceMap } from "effect";
 import type { OrchestrationCommand, ThreadId } from "@synara/contracts";
+import { MetisControllerService } from "../metis/MetisControllerService.ts";
 import { RouterInbox } from "./RouterInbox.ts";
 import { generateRouterMessage } from "./routerGeneration.ts";
 import { AgentRouter } from "./AgentRouter.ts";
@@ -21,6 +22,7 @@ export const makeRouterRuntime = Effect.gen(function* () {
   const orchestrationEngine = yield* OrchestrationEngineService;
   const runtimeStartup = yield* ServerRuntimeStartup;
   const routerGateway = Option.getOrUndefined(yield* Effect.serviceOption(AgentGateway));
+  const controller = Option.getOrUndefined(yield* Effect.serviceOption(MetisControllerService));
   const routerAbort = new AbortController();
   const agentRouter = new AgentRouter(joinRouterPath(config.stateDir, "router", "receipts"));
   const routerGenerationCwd = joinRouterPath(config.stateDir, "router", "generation");
@@ -32,6 +34,14 @@ export const makeRouterRuntime = Effect.gen(function* () {
           signal: routerAbort.signal,
         }),
       ),
+    listActiveThreads: async (threadId: ThreadId) => {
+      if (!controller || !(await controller.isController(threadId))) return null;
+      return (
+        await Effect.runPromise(orchestrationEngine.getReadModel(), {
+          signal: routerAbort.signal,
+        })
+      ).threads;
+    },
     listWorkers: async (threadId: ThreadId) =>
       (
         await Effect.runPromise(orchestrationEngine.getReadModel(), {
@@ -61,7 +71,10 @@ export const makeRouterRuntime = Effect.gen(function* () {
             Effect.logInfo("Router generation completed", { elapsedMs: Date.now() - startedAt }),
           ),
           Effect.tapError((error) =>
-            Effect.logWarning("Router generation failed", { error: String(error) }),
+            Effect.logWarning("Router generation failed", {
+              error: String(error),
+              elapsedMs: Date.now() - startedAt,
+            }),
           ),
         ),
         { signal: routerAbort.signal },

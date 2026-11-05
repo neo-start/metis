@@ -52,9 +52,9 @@ available without generation.
 
 Whole-message status questions such as `现在做到哪了？` or `status` read durable state
 for the console's associated tasks, including pending interactions, timestamps,
-recent activity and output. The existing isolated generation channel presents those
-facts conversationally. While an earlier classification/creation is pending, status
-returns a factual snapshot immediately without waiting for generation. Before a worker has started, the reply explicitly notes
+recent activity and output. Recognized status queries return a factual snapshot
+directly, without provider startup or model generation, even when another request
+is still being classified. Before a worker has started, the reply explicitly notes
 that admitted messages may still be routing or creating a task. It never invents
 progress percentages or treats silence as proof of a hang.
 
@@ -72,6 +72,19 @@ correction on that worker. Completed tasks may receive explicit continuations.
 The worker's saved model/settings are used; console provider launch overrides are
 not applied to an existing worker. For approval/input responses, open the worker's
 ordinary approval surface; Router cannot approve on the user's behalf.
+
+Whole-message instance queries such as `现在有进行中的 Metis 会话吗` and
+`list active sessions` read the instance snapshot for an authorized Metis controller
+conversation. They include running/starting sessions and pending approvals or input,
+exclude deleted, archived and expired conversations, and show at most 20 entries
+with the full count. Ordinary conversations receive an explicit scope limitation.
+Compound queries containing additional actions continue through normal routing.
+
+Assistant reply timestamps reflect response production, rather than copying the
+user's timestamp. Saved plans preserve these timestamps across retries. Router logs
+include command/thread IDs, total dispatch time, planning time, queue wait and
+execution time; provider generation logs include elapsed time on success and failure.
+These measure backend stages, not external transport delivery or frontend paint.
 
 ## Ordering, persistence and recovery
 

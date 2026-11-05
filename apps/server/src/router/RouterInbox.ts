@@ -19,6 +19,7 @@ const Record = Schema.Struct({
   command: Schema.optional(OrchestrationCommand),
   sequence: Schema.optional(Schema.Number),
   error: Schema.optional(Schema.String),
+  errorCreatedAt: Schema.optional(Schema.String),
 });
 type Record = typeof Record.Type;
 
@@ -170,6 +171,7 @@ export class RouterInbox {
         if (this.stopped) return;
         record = {
           ...record,
+          errorCreatedAt: new Date().toISOString(),
           error: error instanceof Error ? error.message.slice(0, 2000) : "Router task failed.",
         };
         await this.save(key, record);
@@ -181,14 +183,14 @@ export class RouterInbox {
         type: "thread.messages.import",
         commandId: CommandId.makeUnsafe(`router-failure-${key}`),
         threadId: command.threadId,
-        createdAt: command.createdAt,
+        createdAt: record.errorCreatedAt ?? command.createdAt,
         messages: [
           {
             messageId: MessageId.makeUnsafe(`router-failure-${key}`),
             role: "assistant",
             text: `处理遇到错误，任务可能已提交；请先查看此会话的任务和进度，再决定是否重试。${record.error}`,
-            createdAt: command.createdAt,
-            updatedAt: command.createdAt,
+            createdAt: record.errorCreatedAt ?? command.createdAt,
+            updatedAt: record.errorCreatedAt ?? command.createdAt,
           },
         ],
       });

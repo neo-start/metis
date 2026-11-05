@@ -25,6 +25,7 @@ import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
 import {
   AgentRouter,
   isRouterStatusQuestion,
+  isRouterGlobalStatusQuestion,
   isRouterCancelRequest,
   type AgentRouterHost,
 } from "./AgentRouter.ts";
@@ -800,16 +801,76 @@ it("keeps a generated supplement scoped to its worker and saves the binding befo
   expect((await f.readThread(f.ids[0]!)).messages.at(-1)?.text).toBe(input.message.text);
 });
 
-it("answers progress from recorded facts without allowing presentation to create work", async () => {
+it("answers local and targeted progress without invoking a provider", async () => {
   const f = await workerFixture();
   await f.router.dispatch(f.command("新任务：MCP", "initial"), f.host);
-  f.generate.mockResolvedValueOnce({ route: "reply", reply: "MCP 接口还在处理中。" });
+  f.generate.mockImplementation(() => new Promise(() => {}));
   await f.router.dispatch(f.command("进度如何", "progress"), f.host);
-  expect(f.generate.mock.lastCall?.[0].responseMode).toBe("status");
-  expect(f.generate.mock.lastCall?.[0].taskContext).toContain("任务仍在运行");
-  expect((await f.readThread()).messages.at(-1)?.text).toBe("MCP 接口还在处理中。");
-  f.generate.mockResolvedValueOnce({ route: "queue", reply: "create another task" });
-  await f.router.dispatch(f.command("进度如何", "progress-again"), f.host);
-  expect(f.ids).toHaveLength(1);
   expect((await f.readThread()).messages.at(-1)?.text).toContain("任务仍在运行");
+  await f.router.dispatch(f.command(`任务 ${f.ids[0]} 进度如何`, "targeted"), f.host);
+  expect(f.generate).not.toHaveBeenCalled();
+  expect(f.ids).toHaveLength(1);
+});
+
+it("answers instance status from authorized state, filtering unavailable and idle threads", async () => {
+  const f = await fixture(false);
+  const base = await f.readThread();
+  f.host.listActiveThreads = vi.fn(async () => [
+    base,
+    {
+      ...base,
+      id: ThreadId.makeUnsafe("elsewhere"),
+      title: "Other project",
+      latestTurn: { ...base.latestTurn!, state: "running" as const },
+    },
+    {
+      ...base,
+      title: "Archived",
+      archivedAt: f.createdAt,
+      latestTurn: { ...base.latestTurn!, state: "running" as const },
+    },
+    {
+      ...base,
+      title: "Expired",
+      sidechatExpiredAt: f.createdAt,
+      latestTurn: { ...base.latestTurn!, state: "running" as const },
+    },
+  ]);
+  await f.router.dispatch(f.command("现在有进行中的 Metis 会话吗", "global"), f.host);
+  const reply = (await f.readThread()).messages.at(-1)?.text;
+  expect(reply).toContain("1 个进行中的会话");
+  expect(reply).toContain("Other project");
+  expect(reply).not.toContain("Archived");
+  expect(reply).not.toContain("Expired");
+  expect(reply).not.toContain("正在路由");
+  expect(f.generate).not.toHaveBeenCalled();
+  f.host.listActiveThreads = async () => null;
+  await f.router.dispatch(f.command("现在有进行中的 Metis 会话吗", "denied"), f.host);
+  expect((await f.readThread()).messages.at(-1)?.text).toContain("无法读取全局");
+  f.host.listActiveThreads = async () => [];
+  await f.router.dispatch(f.command("list active sessions", "empty"), f.host);
+  expect((await f.readThread()).messages.at(-1)?.text).toContain("没有进行中的会话");
+});
+
+it("timestamps replies when produced and replays their durable plan unchanged", async () => {
+  const f = await fixture();
+  const input = { ...f.command("进度如何", "timed"), createdAt: "2020-01-01T00:00:00.000Z" };
+  const dispatch = vi.fn(f.host.dispatch);
+  f.host.dispatch = dispatch;
+  dispatch.mockRejectedValueOnce(new Error("delivery unavailable"));
+  await expect(f.router.dispatch(input, f.host)).rejects.toThrow("delivery unavailable");
+  const first = dispatch.mock.calls[0]![0];
+  expect(first.type).toBe("thread.messages.import");
+  if (first.type !== "thread.messages.import") throw new Error("Expected reply");
+  expect(first.messages[0]?.createdAt).toBe(input.createdAt);
+  expect(first.messages[1]?.createdAt).not.toBe(input.createdAt);
+  await f.router.dispatch(input, f.host);
+  expect(dispatch.mock.calls[1]![0]).toEqual(first);
+});
+
+it("matches only whole global status queries", () => {
+  expect(isRouterGlobalStatusQuestion("现在有进行中的 Metis 会话吗")).toBe(true);
+  expect(isRouterGlobalStatusQuestion("列出所有运行中的任务")).toBe(true);
+  expect(isRouterGlobalStatusQuestion("现在有进行中的 Metis 会话吗，然后停止它们")).toBe(false);
+  expect(isRouterGlobalStatusQuestion("show all running tasks and delete them")).toBe(false);
 });
