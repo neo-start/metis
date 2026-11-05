@@ -17,6 +17,8 @@ const Delivery = Schema.Struct({
   done: Schema.optional(Schema.Boolean),
   followup: Schema.optional(Schema.Boolean),
   completionText: Schema.optional(Schema.String),
+  acknowledgementText: Schema.optional(Schema.String),
+  acknowledgementSent: Schema.optional(Schema.Boolean),
 });
 type Delivery = typeof Delivery.Type;
 
@@ -37,6 +39,8 @@ export class FeishuRouterDelivery {
       ): Promise<{ workerId?: string | undefined; followup: boolean } | undefined>;
       readFollowup?(workerId: string, command: TurnStart): Promise<string | undefined>;
       allowed(senderId: string): boolean;
+      startReply?(chatId: string, replyTo: string): void;
+      cancelReply?(chatId: string, replyTo: string): void;
       send(
         chatId: string,
         text: string,
@@ -100,15 +104,40 @@ export class FeishuRouterDelivery {
       this.active.delete(key);
     }
   }
-  async enqueue(input: { chatId: string; senderId: string; replyTo: string; command: TurnStart }) {
+  private async admit(key: string, record: Delivery): Promise<Delivery> {
+    if (this.stopped || !this.host.allowed(record.senderId)) return record;
+    if (record.command.type !== "thread.turn.start") throw new Error("Invalid Router delivery.");
+    const command = record.command;
+    if (record.acknowledgementText && !record.acknowledgementSent) {
+      const sent = await this.host.send(record.chatId, record.acknowledgementText, record.replyTo);
+      record = {
+        ...record,
+        acknowledgementSent: true,
+        sentMessageIds: [
+          ...(record.sentMessageIds ?? []),
+          ...(sent ? [sent.messageId, ...(sent.chunkIds ?? [])] : []),
+        ],
+      };
+      await this.save(key, record);
+    }
+    if (!this.stopped && this.host.allowed(record.senderId)) await this.host.accept(command);
+    return record;
+  }
+  async enqueue(input: {
+    chatId: string;
+    senderId: string;
+    replyTo: string;
+    command: TurnStart;
+    acknowledgementText?: string;
+  }) {
     if (this.stopped) throw new Error("Feishu Router is shutting down.");
     const key = this.key(input.command.commandId);
     await this.locked(key, async () => {
-      const record = (await this.read(key)) ?? input;
+      const record: Delivery = (await this.read(key)) ?? input;
       if (!this.host.allowed(record.senderId) || this.stopped) return;
       await this.save(key, record);
-      if (record.command.type !== "thread.turn.start") throw new Error("Invalid Router delivery.");
-      await this.host.accept(record.command);
+      if (!record.replied && !record.done) this.host.startReply?.(record.chatId, record.replyTo);
+      await this.admit(key, record);
     });
   }
   async flush() {
@@ -129,14 +158,20 @@ export class FeishuRouterDelivery {
           if (this.active.has(key)) return;
           await this.locked(key, async () => {
             let record = await this.read(key);
-            if (!record || record.done || this.stopped || !this.host.allowed(record.senderId))
+            if (!record || record.done || this.stopped) return;
+            if (!this.host.allowed(record.senderId)) {
+              this.host.cancelReply?.(record.chatId, record.replyTo);
               return;
+            }
             if (record.command.type !== "thread.turn.start")
               throw new Error("Invalid Router delivery.");
             const command = record.command;
-            await this.host.accept(command);
-            const thread = await this.host.readThread(record.command.threadId);
-            if (!thread || thread.deletedAt || thread.archivedAt) return;
+            record = await this.admit(key, record);
+            const thread = await this.host.readThread(command.threadId);
+            if (!thread || thread.deletedAt || thread.archivedAt) {
+              this.host.cancelReply?.(record.chatId, record.replyTo);
+              return;
+            }
             if (!record.replied) {
               const reply = thread.messages.find(
                 (m) => m.id === `router-${key}` || m.id === `router-failure-${key}`,
@@ -156,7 +191,10 @@ export class FeishuRouterDelivery {
               record = {
                 ...record,
                 replied: true,
-                sentMessageIds: sent ? [sent.messageId, ...(sent.chunkIds ?? [])] : [],
+                sentMessageIds: [
+                  ...(record.sentMessageIds ?? []),
+                  ...(sent ? [sent.messageId, ...(sent.chunkIds ?? [])] : []),
+                ],
                 ...(workerId ? { workerId, followup } : { done: true }),
               };
               await this.save(key, record);

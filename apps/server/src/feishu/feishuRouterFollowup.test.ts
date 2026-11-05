@@ -72,3 +72,18 @@ it.each(["error", "interrupted"] as const)(
     );
   },
 );
+
+it("routes bound follow-up results through presentation and propagates failure for retry", async () => {
+  const { command, host } = fixture();
+  const presentResult = vi.fn(async (result: { summary: string | null }) => {
+    expect(result.summary).toBe("correct result");
+    return "按你的补充，修改已经完成。";
+  });
+  expect(await readFeishuFollowup("worker", command, { ...host, presentResult })).toBe(
+    "按你的补充，修改已经完成。",
+  );
+  presentResult.mockRejectedValueOnce(new Error("model unavailable"));
+  await expect(readFeishuFollowup("worker", command, { ...host, presentResult })).rejects.toThrow(
+    "model unavailable",
+  );
+});

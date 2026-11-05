@@ -19,7 +19,7 @@ interface CompletionDeliveryDependencies {
     source: OrchestrationThread,
     request: string,
     result: RouterResult,
-  ) => Effect.Effect<string>;
+  ) => Effect.Effect<string, Error>;
   readonly repository: CompletionRepository;
   readonly snapshotQuery: ProjectionSnapshotQueryShape;
   readonly projectionTurns: ProjectionTurnRepositoryShape;
@@ -72,14 +72,13 @@ export const deliverGatewayCompletions = (dependencies: CompletionDeliveryDepend
             const detail = child
               ? Option.getOrUndefined(yield* snapshotQuery.getThreadDetailById(childThreadId))
               : undefined;
-            const summary = summarizeWaitThreadText(
-              detail?.messages.findLast(
-                (message) =>
-                  message.role === "assistant" &&
-                  turn?.turnId != null &&
-                  message.turnId === turn.turnId,
-              )?.text,
-            );
+            const finalText = detail?.messages.findLast(
+              (message) =>
+                message.role === "assistant" &&
+                turn?.turnId != null &&
+                message.turnId === turn.turnId,
+            )?.text;
+            const summary = summarizeWaitThreadText(finalText);
             const error = goalUnsupported
               ? "Completion delivery does not support goals. This is not a goal-completion notification; read the child for its current progress."
               : !child
@@ -118,6 +117,7 @@ export const deliverGatewayCompletions = (dependencies: CompletionDeliveryDepend
               const source = Option.getOrUndefined(
                 yield* snapshotQuery.getThreadDetailById(ThreadId.makeUnsafe(row.creatorThreadId)),
               );
+              const evidence = { ...result, summary: finalText ?? null, summaryTruncated: false };
               const request =
                 detail?.messages.find((message) => message.id === row.initialMessageId)?.text ??
                 child.title;
@@ -126,8 +126,8 @@ export const deliverGatewayCompletions = (dependencies: CompletionDeliveryDepend
                 !source.deletedAt &&
                 !source.archivedAt &&
                 dependencies.presentRouterResult
-                  ? yield* dependencies.presentRouterResult(source, request, result)
-                  : routerResultFallback(result);
+                  ? yield* dependencies.presentRouterResult(source, request, evidence)
+                  : routerResultFallback(evidence);
             }
             // Freeze presentation together with evidence before any message or activity dispatch.
             resultJson = JSON.stringify({

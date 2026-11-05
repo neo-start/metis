@@ -27,4 +27,6 @@ export const ROUTER_CODEX_OVERRIDES = [
   "features.view_image=false",
   "features.multi_agent=false",
   "project_doc_max_bytes=0",
+  "skills.include_instructions=false",
+  "skills.bundled.enabled=false",
 ];

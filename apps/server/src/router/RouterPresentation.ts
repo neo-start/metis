@@ -50,18 +50,13 @@ export function routerResultInput(
   };
 }
 
-/** Presentation cannot select actions. Failure preserves the underlying facts. */
+/** Presentation cannot select actions; failures stay visible to the durable owner. */
 export async function presentRouterResponse(
   generate: (input: RouterGenerationInput) => Promise<RouterGenerationResult>,
   input: RouterGenerationInput,
-  fallback: string,
 ): Promise<string> {
-  try {
-    const response = Schema.decodeUnknownSync(RouterDecision)(await generate(input));
-    return response.route === "reply" && !response.targetTaskId && response.reply.trim()
-      ? response.reply.trim()
-      : fallback;
-  } catch {
-    return fallback;
-  }
+  const response = Schema.decodeUnknownSync(RouterDecision)(await generate(input));
+  if (response.route !== "reply" || response.targetTaskId || !response.reply.trim())
+    throw new Error("Router returned an invalid presentation; no replacement template was used.");
+  return response.reply.trim();
 }

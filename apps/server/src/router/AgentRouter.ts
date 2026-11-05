@@ -11,13 +11,13 @@ import {
 } from "@synara/contracts";
 import { writeFileStringAtomically } from "../atomicWrite.ts";
 import { fingerprintOrchestrationCommand } from "../orchestration/commandFingerprint.ts";
+import { presentRouterResponse } from "./RouterPresentation.ts";
 import { RouterDecision } from "../git/routerPrompt.ts";
 import type {
   RouterGenerationInput,
   RouterGenerationResult,
 } from "../git/Services/TextGeneration.ts";
 import { providerSupportsNativeTurnSteering } from "@synara/shared/providerMetadata";
-import { presentRouterResponse } from "./RouterPresentation.ts";
 import { taskControlProgress } from "../taskControl/service.ts";
 
 type TurnStart = Extract<OrchestrationCommand, { type: "thread.turn.start" }>;
@@ -54,8 +54,11 @@ const SavedDispatch = Schema.Struct({
   sourceThreadId: Schema.optional(ThreadId),
 });
 const hash = (text: string) => createHash("sha256").update(text).digest("hex");
+export function isRouterGreeting(text: string) {
+  return /^(?:你好|您好|在吗|在不在|hello|hi|hey)[？?！!。\s]*$/iu.test(text.trim());
+}
 const statusQuestion =
-  /^(?:(?:现在|目前|当前)?(?:任务|工作|优化|这个任务|这项工作)?(?:进度如何|进度怎么样|做到哪了|做到哪一步了|进展如何|进展怎么样|还在吗|还在运行吗|卡住了吗|怎么样了)|status|progress|are you still (?:there|working)|how(?:'s| is) (?:it|the task) going)$/i;
+  /^(?:(?:现在|目前|当前)?(?:任务|工作|优化|这个任务|这项工作)?(?:进度如何|进度怎么样|做到哪了|做到哪一步了|进展如何|进展怎么样|还在吗|还在运行吗|卡住了吗|怎么样了|查好了吗|查完了吗|做好了吗|完成了吗)|status|progress|are you still (?:there|working)|how(?:'s| is) (?:it|the task) going)$/i;
 export function isRouterStatusQuestion(text: string) {
   const normalized = text.trim().replace(/[？?！!。.]$/u, "");
   // Match the whole utterance: a status question plus an action must not lose the action.
@@ -340,6 +343,69 @@ export class AgentRouter {
     key: string,
     predecessors: Array<{ command: TurnStart; result: Promise<DispatchResult> }>,
   ): Promise<ReadonlyArray<PlannedCommand>> {
+    const generatedReplies = new Set<string>();
+    const plans = await this.selectPlan(command, thread, host, key, predecessors, generatedReplies);
+    if (!canRouteTurn(command)) return plans;
+    const present = (facts: unknown, mode: "status" | "acknowledgement") =>
+      presentRouterResponse(host.generate, {
+        cwd: host.generationCwd,
+        modelSelection: thread.modelSelection,
+        ...(command.providerOptions ? { providerOptions: command.providerOptions } : {}),
+        responseMode: mode,
+        message: command.message.text,
+        taskContext: JSON.stringify({
+          facts,
+          conversation: thread.messages
+            .slice(-8)
+            .map(({ role, text }) => ({ role, text: text.slice(-2000) })),
+        }),
+      });
+    const finalized: PlannedCommand[] = [];
+    for (const planned of plans) {
+      if (planned.type === "router.worker.create" && !planned.reply?.trim()) {
+        finalized.push({
+          ...planned,
+          reply: await present(
+            { action: "create independent work", request: command.message.text },
+            "acknowledgement",
+          ),
+        });
+      } else if (planned.type === "thread.messages.import") {
+        const messages = [];
+        for (const message of planned.messages) {
+          if (message.role === "assistant" && !generatedReplies.has(message.messageId)) {
+            const hasAction = plans.some((entry) => entry.type !== "thread.messages.import");
+            const text = await present(
+              { observed: message.text },
+              hasAction ? "acknowledgement" : "status",
+            );
+            const producedAt = new Date().toISOString();
+            messages.push({ ...message, text, createdAt: producedAt, updatedAt: producedAt });
+          } else messages.push(message);
+        }
+        finalized.push({ ...planned, messages });
+      } else {
+        // Rich requests retain the typed execution protocol. Eligible plain requests
+        // must still pass through Router before any work is dispatched.
+        if (plans.length === 1 && planned.type === "thread.turn.start")
+          await present(
+            { action: "execute request", request: command.message.text },
+            "acknowledgement",
+          );
+        finalized.push(planned);
+      }
+    }
+    return finalized;
+  }
+
+  private async selectPlan(
+    command: TurnStart,
+    thread: OrchestrationThread,
+    host: AgentRouterHost,
+    key: string,
+    predecessors: Array<{ command: TurnStart; result: Promise<DispatchResult> }>,
+    generatedReplies: Set<string>,
+  ): Promise<ReadonlyArray<PlannedCommand>> {
     const { routingMode: _, routerSourceCommandId: _sourceReference, ...workerCommand } = command;
     const { providerOptions: _workerOptions, ...correctionCommand } = workerCommand;
     const workerPlan = (response?: string): PlannedCommand => ({
@@ -355,7 +421,12 @@ export class AgentRouter {
           .map(({ role, text }) => ({ role, text: text.slice(-2000) })),
       }),
     });
-    const reply = (text: string, includeUser = !host.inputAccepted): OrchestrationCommand => {
+    const reply = (
+      text: string,
+      includeUser = !host.inputAccepted,
+      generated = false,
+    ): OrchestrationCommand => {
+      if (generated) generatedReplies.add(`router-${key}`);
       const repliedAt = new Date().toISOString();
       return {
         type: "thread.messages.import",
@@ -385,10 +456,7 @@ export class AgentRouter {
       };
     };
     if (!canRouteTurn(command)) return [workerCommand];
-    if (
-      !command.routerSourceCommandId &&
-      /^(?:你好|您好|在吗|在不在|hello|hi|hey)[？?！!。\s]*$/iu.test(command.message.text.trim())
-    ) {
+    if (!command.routerSourceCommandId && isRouterGreeting(command.message.text)) {
       return [reply("我在，收到你的消息了。")];
     }
     if (!command.routerSourceCommandId && isRouterGlobalStatusQuestion(command.message.text)) {
@@ -468,24 +536,6 @@ export class AgentRouter {
         : host.createWorker
           ? "尚无已启动任务；已受理消息可能仍在路由或创建中。"
           : routerStatusReply(thread);
-    const present = (mode: "status" | "acknowledgement", facts: unknown, fallback: string) =>
-      presentRouterResponse(
-        host.generate,
-        {
-          cwd: host.generationCwd,
-          modelSelection: thread.modelSelection,
-          ...(command.providerOptions ? { providerOptions: command.providerOptions } : {}),
-          responseMode: mode,
-          message: command.message.text,
-          taskContext: JSON.stringify({
-            facts,
-            conversation: thread.messages
-              .slice(-8)
-              .map(({ role, text }) => ({ role, text: text.slice(-2000) })),
-          }),
-        },
-        fallback,
-      );
     // Preserve instant progress while an earlier classifier/creation is still pending.
     if (isRouterStatusQuestion(command.message.text)) return [reply(status())];
     if (isRouterCancelRequest(command.message.text)) {
@@ -549,22 +599,13 @@ export class AgentRouter {
     )
       return host.createWorker ? [workerPlan()] : [workerCommand];
     let decision: RouterGenerationResult;
-    let failed = false;
     try {
       decision = Schema.decodeUnknownSync(RouterDecision)(
         referencedTask || explicit
           ? {
               route: "steer",
               targetTaskId: referencedTask?.id ?? explicit![1],
-              reply: await present(
-                "acknowledgement",
-                {
-                  action: "supplement",
-                  task:
-                    referencedTask?.title ?? tasks.find((task) => task.id === explicit?.[1])?.title,
-                },
-                "明白，我会按这条补充继续处理。",
-              ),
+              reply: "明白，我会按这条补充继续处理。",
             }
           : await host.generate({
               cwd: host.generationCwd,
@@ -608,15 +649,23 @@ export class AgentRouter {
               }),
             }),
       );
+      if (!decision.reply.trim()) throw new Error("Empty Router response.");
     } catch {
-      failed = true;
-      decision = { route: "queue", reply: "" };
+      throw new Error("Router generation unavailable or invalid; request was not submitted.");
     }
     const current = await host.readThread(command.threadId);
     if (!current || current.deletedAt || current.archivedAt || current.sidechatExpiredAt)
       throw new Error("Router target conversation is unavailable.");
-    if (decision.route === "status") return [reply(decision.reply.trim() || status())];
-    if (decision.route === "reply" && decision.reply.trim()) return [reply(decision.reply.trim())];
+    if (decision.route === "status")
+      return [
+        reply(
+          decision.reply.trim() || status(),
+          !host.inputAccepted,
+          Boolean(decision.reply.trim()),
+        ),
+      ];
+    if (decision.route === "reply" && decision.reply.trim())
+      return [reply(decision.reply.trim(), !host.inputAccepted, true)];
     if (decision.route === "steer") {
       const selectedPending = predecessors.find(
         (entry) => `pending:${entry.command.commandId}` === decision.targetTaskId,
@@ -668,26 +717,11 @@ export class AgentRouter {
               ? "明白，我会按这条补充继续处理。"
               : "收到这条补充，我会在当前这一步结束后继续处理。"),
           false,
+          !referencedTask && !explicit && Boolean(decision.reply.trim()),
         ),
       ];
     }
-    if (host.createWorker) {
-      if (failed)
-        return [
-          reply(
-            "独立响应通道暂时不可用或超时，消息未交给执行器。请重试；明确的新任务可用「新任务：…」直接提交。",
-          ),
-        ];
-      return [workerPlan(decision.reply)];
-    }
-    return [
-      { ...workerCommand, dispatchMode: "queue" },
-      reply(
-        failed
-          ? "独立响应通道暂时不可用或超时，这条消息已交给任务队列。"
-          : decision.reply.trim() || "我会按你的要求继续处理。",
-        false,
-      ),
-    ];
+    if (host.createWorker) return [workerPlan(decision.reply)];
+    return [{ ...workerCommand, dispatchMode: "queue" }, reply(decision.reply.trim(), false, true)];
   }
 }

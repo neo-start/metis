@@ -37,30 +37,44 @@ Router handles the first plain Auto message as well as follow-ups:
 - The original conversation acknowledges the user's request in natural language.
   Worker identity remains in structured receipts and task details. Completion uses
   the existing gateway outbox and adds a passive result message and activity to
-  that conversation; it does not start another console turn. Detailed results
-  remain in the worker transcript.
+  that conversation without starting another console turn. Router receives the exact
+  run's final answer and generates the result report, preserving evidence and limitations.
 
-`新任务：…` or `new task: …` explicitly starts independent work without a classifier.
-Untargeted plain requests longer than 16,000 characters also go directly to a worker. For
-shorter unmarked requests, generation distinguishes conversation, status, task
-correction and new work. A failed/unsupported/timed-out classifier reports that
-nothing was handed to an executor; it does not guess that an ambiguous instruction
-is permission to start new work. Explicit new-task and task-control commands remain
-available without generation.
+The user-facing flow has two cases. Simple questions receive a complete Router answer
+and create no worker or later completion report. Work requests receive one brief,
+request-specific acknowledgement, followed by a substantive report after the worker
+finishes. That report preserves the result, supporting details, verification and known
+limitations, while respecting requests for a short answer. Both messages are generated;
+"brief" describes the first reply's content, not a guaranteed low-latency response.
+Acknowledgements have no prescribed sentence count, tense or example phrase. The prompt
+asks for wording suited to the current message, avoiding repeated explanations, generic
+reassurance and habitual closing caveats or emoji. Questions about actual implementation,
+configuration or observed behavior require investigation unless supplied evidence answers
+them; earlier assistant claims alone are not verification. These are generation instructions,
+not a guarantee of conversational quality from every model response.
+
+Every eligible plain Auto message passes through the isolated Router model before
+publishing its conversational reply. Explicit `新任务：…`, quoted/task-ID follow-ups,
+recognized progress/cancel commands and long inputs may have a server-selected action,
+but Router still writes their acknowledgement from the request and validated facts.
+Free-form messages use one classification call that also writes the reply. Neither
+path substitutes a canned answer when generation fails. Permission, ownership and
+turn checks remain server-owned. Rich/approval-bearing commands keep their typed
+execution protocol; this does not grant the conversational model approval authority.
 
 ## Task progress and control
 
 Whole-message status questions such as `现在做到哪了？`, `优化进展如何？`,
-`当前任务进展怎么样？` or `status` read durable state
+`当前任务进展怎么样？`, `查好了吗`, `当前任务完成了吗？` or `status` read durable state
 for the console's associated tasks, including pending interactions, timestamps,
 recent activity and output. Recognized status queries return a factual snapshot
-directly, without provider startup or model generation, even when another request
-is still being classified. Before a worker has started, the reply explicitly notes
+as evidence for Router to write a contextual reply, even when another request
+is still being classified. They no longer bypass model generation. Before a worker has started, the reply explicitly notes
 that admitted messages may still be routing or creating a task. It never invents
 progress percentages or treats silence as proof of a hang.
 
 `任务 <task-id> 进度如何` and `任务 <task-id> 停止` target a particular associated task
-without generation. A plain stop/pause request is accepted only when one running
+with Router-generated wording. A plain stop/pause request is accepted only when one running
 task is unambiguous. With multiple running tasks, Router asks for a target. Stop
 receipts say cancellation was requested, not that all tools have stopped. The
 existing exact-turn cancellation fences reject replacement runs.
@@ -90,33 +104,19 @@ These measure backend stages, not external transport delivery or frontend paint.
 
 ### End-to-end verification
 
-Run `bun scripts/router-status-e2e.mjs` from the repository root. The runner checks
-the dev-runner dry run, selects an unused loopback port (IPv4 and IPv6), and launches
-a real server with a fresh temporary home. It uses the same negotiated owner RPC
-client as the isolated desktop fixtures. No existing service is restarted.
+Run `bun scripts/router-conversation-e2e.mjs` for isolated owner-RPC coverage of greeting,
+status, global state, chat, stop and invalid-target replies. A deterministic provider
+process writes unique text and records every invocation: all six requests must invoke
+Router, and replay/restart must not regenerate or duplicate messages. This proves
+process wiring and persistence, not model quality.
 
-The checks cover local and controller-wide status, ordinary-conversation scope
-denial, response timestamps, retry deduplication and replay after a server restart.
-A request-level executable probe fails if a status query invokes the model. A
-compound instruction deliberately invokes a three-second blocking probe instead:
-local/global progress must still return within two seconds, and the extra action
-must not be swallowed. Expired workers are excluded from both local progress and
-task control, with focused backend regression coverage.
-
-Add `--live-worker` to run one real Codex worker using the default Codex model,
-observe it through local/global/targeted status, and verify its expected answer is
-delivered back to the original conversation. This requires working local Codex
-credentials. The task only asks for a fixed text reply, without tools or file work.
-The runner retains `results.json`, redacted server logs and the dry-run output in
-its printed temporary directory. Timings are RPC admission-to-visible-snapshot
-measurements with 20 ms polling; they do not measure browser paint or Feishu delivery.
-
-The [2026-11-05 verification results](../performance/2026-11-05-router-status/results.json)
-record 16 status requests at 30–56 ms (median 32.5 ms), including a blocked classifier
-and a real `gpt-6-astra` worker. The live worker's result returned to its source
-conversation, and restart replay preserved the exact saved reply. The default
-probe-only runner also passed. These are local observations, not a production SLA
-or a controlled comparison against the earlier 22-second transport observation.
+Run `ROUTER_E2E_CODEX_HOME=<selected-account-home> bun scripts/router-conversation-e2e.mjs
+--live --model <selected-model>` for real model generation, independent worker execution
+and generated completion delivery. It uses a fresh home, unused IPv4/IPv6 port and the
+existing authenticated owner RPC; no production state or messaging transport is used.
+Both modes save `results.json` and redacted logs in the printed temporary directory.
+The old `router-status-e2e.mjs` and its 130–227ms evidence describe the retired
+no-generation shortcut implementation and do not validate the current behavior.
 
 ## Ordering, persistence and recovery
 
@@ -158,8 +158,8 @@ The independent-worker path currently applies to eligible plain local web/deskto
 Auto messages and authorized plain Feishu private-chat messages. Feishu slash
 commands and attachments keep their existing handlers. Paired-device, automation
 and agent-tool entrypoints retain their existing dispatch semantics. Explicit
-Queue/Steer bypasses Auto. Simple greetings need no model call; status during pending classification/creation
-also retains an immediate snapshot path.
+Queue/Steer bypasses Auto. Greetings and status during pending classification/creation
+also call the Router; independent generation does not wait on the worker's turn lock.
 
 Feishu persists the original chat, sender, reply target and command before Router
 admission. Its delivery loop sends Router acknowledgements and worker completion
@@ -248,25 +248,31 @@ new work and supplements. It describes the user's goal and next step in future
 tense; it cannot claim execution, applied changes or successful verification.
 The server persists that wording in the dispatch plan and publishes it only after
 worker creation or correction admission succeeds. Explicit quoted/task-ID targets
-remain server-selected; a presentation-only call cannot redirect them. Explicit
-new-task commands and oversized requests retain a generation-free admission path
-with a short fallback acknowledgement.
+remain server-selected; Router generates their wording without changing their target.
+New-task commands and oversized requests also receive a generated acknowledgement.
+All normal replies are finalized before the durable dispatch plan is saved. Publication
+follows successful worker creation or correction/cancellation admission. Failure to
+generate valid prose never silently becomes permission to execute a request.
 
-Status and completion presentation use the existing provider/model and tool-free
-Router generation path, with the same 30-second timeout. Presentation output must
-be a nonempty bounded `reply` without a target. Invalid output or generation failure
-falls back to recorded facts. There are no generation calls for every worker event.
-A completed provider turn is not treated as proof the user's objective was met;
-result instructions preserve incomplete work, failed checks, errors and artifact
-links. These are model instructions, not a guarantee against semantic mistakes.
+Recognized status queries send authoritative, permission-filtered observations to
+Router rather than sending a fixed status template to the user. Global observations
+remain restricted to the authorized controller. Operational errors still report a
+failed request; they are not a substitute conversational success response.
 
-Initial Router results are rewritten once using the source conversation and exact
-initial-run evidence, then frozen with the gateway outbox result before dispatch.
-Up to four outbox entries may be processed concurrently so one slow presentation
-need not block every other result. Feishu follow-up results use their exact bound
-turn and are frozen in the transport delivery record before sending. Retrying a
-saved result does not regenerate it. Legacy saved results/plans retain their original
-wording to preserve engine command fingerprints on replay.
+Initial Router results and Feishu follow-up results are presented by Router using
+the exact bound turn. The complete final answer is supplied up to the presentation
+context limit, with an explicit truncation flag; the 2,000-character tool summary does
+not replace that evidence. Generation failure leaves result delivery pending for retry,
+not a canned fallback. Successful prose is frozen before transport retry. Legacy
+saved results/plans retain their original wording and fingerprints on replay.
+
+Codex requests log preparation, environment setup, process spawn, process runtime,
+total elapsed time and prompt character count without prompt text or credentials.
+Process runtime includes CLI initialization, network/model waiting and generation;
+it is not a measurement of model inference alone. This instrumentation is separate
+from Router plan/queue/execution timings. Ordinary chat, new work, explicit follow-up
+and final result delivery must be measured separately; do not extrapolate shortcut
+status-query timings to all of them.
 
 New Router receipts carry a presentation version and source-scoped worker/follow-up
 binding, persisted before the conversational acknowledgement. Feishu reads those
@@ -278,6 +284,22 @@ execution or approval authority.
 
 Focused backend tests cover generated acknowledgements after successful dispatch,
 failed creation without false acceptance, binding visibility before publication,
-explicit-target immutability, status fallbacks, exact-run result presentation and
+explicit-target immutability, status fallbacks, full exact-run result delivery and
 frozen retries, and both structured and legacy Feishu delivery. No live-model or
 frontend verification is implied by these tests.
+
+### Codex completion latency
+
+Router uses `codex exec --json` and accepts the final agent message only after the
+`turn.completed` event. It validates the structured answer before dispatching anything.
+It then reaps its tool-free ephemeral process group through the existing scoped process
+runtime, rather than waiting for CLI shutdown. Failed turns, invalid answers and caller
+cancellation still fail/interrupt the request and clean up temporary homes and files.
+Executables without terminal events retain exit-code and output-file validation.
+
+Router disables automatic skill instructions and bundled skills for this isolated call;
+worker settings and account/model selection are unchanged. Logs distinguish answer-ready,
+process and teardown time. The deterministic E2E fixture deliberately delays shutdown by
+ten seconds and checks that replies arrive earlier and subprocesses are gone.
+See [Codex JSON events](https://learn.chatgpt.com/docs/non-interactive-mode) and
+[skill configuration](https://learn.chatgpt.com/docs/config-file/config-reference).

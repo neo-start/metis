@@ -2,7 +2,7 @@ import { routerCodexConfig, ROUTER_CODEX_OVERRIDES } from "../routerCodexConfig.
 import { buildRouterPrompt } from "../routerPrompt.ts";
 import { randomUUID } from "node:crypto";
 
-import { Effect, FileSystem, Layer, Option, Path, Schema, Stream } from "effect";
+import { Deferred, Effect, FileSystem, Layer, Option, Path, Schema, Stream } from "effect";
 import { ChildProcessSpawner } from "effect/unstable/process";
 import { makeEffectProcessCommand } from "../../platform/effectProcessRuntime.ts";
 
@@ -16,6 +16,7 @@ import { sanitizeBranchFragment, sanitizeFeatureBranchName } from "@synara/share
 
 import { resolveProviderAttachmentPath } from "../../provider/providerAttachmentPaths.ts";
 import { buildCodexProcessEnv } from "../../codexProcessEnv.ts";
+import { resolveSynaraCodexHomeOverlayPath } from "../../codexHomePaths.ts";
 import { formatMissingCodexWorkingDirectoryError } from "../../codexWorkingDirectory.ts";
 import { ServerConfig } from "../../config.ts";
 import { TextGenerationError } from "../Errors.ts";
@@ -299,6 +300,8 @@ const makeCodexTextGeneration = Effect.gen(function* () {
     providerOptions?: BranchNameGenerationInput["providerOptions"];
   }): Effect.Effect<S["Type"], TextGenerationError, S["DecodingServices"]> =>
     Effect.gen(function* () {
+      const startedAt = Date.now();
+      const timings: Record<string, number> = {};
       const codexBinaryPath = resolveCodexBinaryPath(providerOptions);
       const resolvedCodexHomePath = resolveCodexHomePath(codexHomePath, providerOptions);
       const schemaPath = yield* writeTempFile(
@@ -335,16 +338,20 @@ const makeCodexTextGeneration = Effect.gen(function* () {
         });
 
       const runCodexCommand = Effect.gen(function* () {
+        timings.preparationMs = Date.now() - startedAt;
         if (!(yield* workingDirectoryExists)) {
           return yield* missingWorkingDirectoryError();
         }
 
+        const environmentStartedAt = Date.now();
         const env = yield* Effect.promise(() =>
           buildCodexProcessEnv({ homePath: isolatedCodexHome.homePath }),
         );
+        timings.environmentMs = Date.now() - environmentStartedAt;
         const args = [
           "exec",
           "--ephemeral",
+          ...(operation === "routeMessage" ? ["--json"] : []),
           "--skip-git-repo-check",
           "--config",
           'approval_policy="never"',
@@ -367,11 +374,15 @@ const makeCodexTextGeneration = Effect.gen(function* () {
         const command = makeEffectProcessCommand(codexBinaryPath, args, {
           cwd,
           env,
+          // Router is ephemeral and tool-free. Once its terminal event is consumed,
+          // reap the process group without waiting for CLI shutdown/telemetry flush.
+          ...(operation === "routeMessage" ? { killSignal: "SIGKILL" as const } : {}),
           stdin: {
             stream: Stream.make(new TextEncoder().encode(prompt)),
           },
         });
 
+        const spawnStartedAt = Date.now();
         const child = yield* commandSpawner
           .spawn(command)
           .pipe(
@@ -393,37 +404,95 @@ const makeCodexTextGeneration = Effect.gen(function* () {
             ),
           );
 
-        const [stdout, stderr, exitCode] = yield* Effect.all(
-          [
-            readStreamAsString(operation, child.stdout),
-            readStreamAsString(operation, child.stderr),
-            child.exitCode.pipe(
-              Effect.map((value) => Number(value)),
-              Effect.mapError((cause) =>
-                normalizeCodexError(
-                  codexBinaryPath,
-                  operation,
-                  cause,
-                  "Failed to read Codex CLI exit code",
+        timings.spawnMs = Date.now() - spawnStartedAt;
+        const processStartedAt = Date.now();
+        const completion = yield* Deferred.make<string, TextGenerationError>();
+        let agentText: string | undefined;
+        const routerStdout = child.stdout.pipe(
+          Stream.decodeText(),
+          Stream.splitLines,
+          Stream.runForEach((line) =>
+            Effect.gen(function* () {
+              let event;
+              try {
+                event = JSON.parse(line);
+              } catch {
+                return;
+              }
+              if (
+                event?.type === "item.completed" &&
+                event.item?.type === "agent_message" &&
+                typeof event.item.text === "string"
+              )
+                agentText = event.item.text;
+              if (event?.type === "turn.failed") {
+                yield* Deferred.fail(
+                  completion,
+                  new TextGenerationError({
+                    operation,
+                    detail: "Codex Router turn failed.",
+                  }),
+                );
+              } else if (event?.type === "turn.completed") {
+                timings.answerReadyMs = Date.now() - processStartedAt;
+                if (agentText === undefined) {
+                  yield* Deferred.fail(
+                    completion,
+                    new TextGenerationError({
+                      operation,
+                      detail: "Codex Router completed without a final answer.",
+                    }),
+                  );
+                } else yield* Deferred.succeed(completion, agentText);
+              }
+            }),
+          ),
+          Effect.as(""),
+          Effect.mapError((cause) =>
+            normalizeCodexError(codexBinaryPath, operation, cause, "Failed to read Router events"),
+          ),
+        );
+        const waitForExit = Effect.gen(function* () {
+          const [stdout, stderr, exitCode] = yield* Effect.all(
+            [
+              operation === "routeMessage"
+                ? routerStdout
+                : readStreamAsString(operation, child.stdout),
+              readStreamAsString(operation, child.stderr),
+              child.exitCode.pipe(
+                Effect.map((value) => Number(value)),
+                Effect.mapError((cause) =>
+                  normalizeCodexError(
+                    codexBinaryPath,
+                    operation,
+                    cause,
+                    "Failed to read Codex CLI exit code",
+                  ),
                 ),
               ),
-            ),
-          ],
-          { concurrency: "unbounded" },
-        );
+            ],
+            { concurrency: "unbounded" },
+          );
 
-        if (exitCode !== 0) {
-          const stderrDetail = stderr.trim();
-          const stdoutDetail = stdout.trim();
-          const detail = stderrDetail.length > 0 ? stderrDetail : stdoutDetail;
-          return yield* new TextGenerationError({
-            operation,
-            detail:
-              detail.length > 0
-                ? `Codex CLI command failed: ${detail}`
-                : `Codex CLI command failed with code ${exitCode}.`,
-          });
-        }
+          if (exitCode !== 0) {
+            const stderrDetail = stderr.trim();
+            const stdoutDetail = stdout.trim();
+            const detail = stderrDetail.length > 0 ? stderrDetail : stdoutDetail;
+            return yield* new TextGenerationError({
+              operation,
+              detail:
+                detail.length > 0
+                  ? `Codex CLI command failed: ${detail}`
+                  : `Codex CLI command failed with code ${exitCode}.`,
+            });
+          }
+          return undefined;
+        });
+        const output = yield* operation === "routeMessage"
+          ? Effect.raceFirst(waitForExit, Deferred.await(completion))
+          : waitForExit;
+        timings.processMs = Date.now() - processStartedAt;
+        return output;
       });
 
       const cleanup = Effect.all(
@@ -431,6 +500,13 @@ const makeCodexTextGeneration = Effect.gen(function* () {
           safeUnlink(schemaPath),
           safeUnlink(outputPath),
           safeRemoveDirectory(isolatedCodexHome.homePath),
+          ...(operation === "routeMessage"
+            ? [
+                safeRemoveDirectory(
+                  resolveSynaraCodexHomeOverlayPath(process.env, isolatedCodexHome.homePath),
+                ),
+              ]
+            : []),
           ...cleanupPaths.map((filePath) => safeUnlink(filePath)),
         ],
         {
@@ -439,7 +515,7 @@ const makeCodexTextGeneration = Effect.gen(function* () {
       ).pipe(Effect.asVoid);
 
       return yield* Effect.gen(function* () {
-        yield* runCodexCommand.pipe(
+        const streamedOutput = yield* runCodexCommand.pipe(
           Effect.scoped,
           Effect.timeoutOption(CODEX_TIMEOUT_MS),
           Effect.flatMap(
@@ -448,20 +524,33 @@ const makeCodexTextGeneration = Effect.gen(function* () {
                 Effect.fail(
                   new TextGenerationError({ operation, detail: "Codex CLI request timed out." }),
                 ),
-              onSome: () => Effect.void,
+              onSome: (output) => Effect.succeed(output),
             }),
           ),
         );
 
-        return yield* fileSystem.readFileString(outputPath).pipe(
-          Effect.mapError(
-            (cause) =>
-              new TextGenerationError({
-                operation,
-                detail: "Failed to read Codex output file.",
-                cause,
-              }),
-          ),
+        if (timings.processMs !== undefined)
+          timings.teardownMs =
+            Date.now() -
+            startedAt -
+            (timings.preparationMs ?? 0) -
+            (timings.environmentMs ?? 0) -
+            (timings.spawnMs ?? 0) -
+            timings.processMs;
+        return yield* (
+          streamedOutput === undefined
+            ? fileSystem.readFileString(outputPath).pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new TextGenerationError({
+                      operation,
+                      detail: "Failed to read Codex output file.",
+                      cause,
+                    }),
+                ),
+              )
+            : Effect.succeed(streamedOutput)
+        ).pipe(
           Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(outputSchemaJson))),
           Effect.catchTag("SchemaError", (cause) =>
             Effect.fail(
@@ -473,7 +562,20 @@ const makeCodexTextGeneration = Effect.gen(function* () {
             ),
           ),
         );
-      }).pipe(Effect.ensuring(cleanup));
+      }).pipe(
+        Effect.ensuring(cleanup),
+        Effect.ensuring(
+          operation === "routeMessage"
+            ? Effect.suspend(() =>
+                Effect.logInfo("Router Codex request timings", {
+                  elapsedMs: Date.now() - startedAt,
+                  promptChars: prompt.length,
+                  ...timings,
+                }),
+              )
+            : Effect.void,
+        ),
+      );
     });
 
   const generateCommitMessage: TextGenerationShape["generateCommitMessage"] = (input) => {

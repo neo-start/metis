@@ -8,7 +8,6 @@ import { fingerprintOrchestrationCommand } from "../orchestration/commandFingerp
 import {
   presentRouterResponse,
   routerResultInput,
-  routerResultFallback,
   type RouterResult,
 } from "./RouterPresentation.ts";
 import { AgentRouter, type AgentRouterHost } from "./AgentRouter.ts";
@@ -41,14 +40,13 @@ export class RouterInbox {
   }
 
   async presentResult(command: TurnStart, result: RouterResult) {
-    const fallback = routerResultFallback(result);
-    if (this.stopped) return fallback;
+    if (this.stopped) throw new Error("Router is shutting down.");
     const source = await this.host.readThread(command.threadId);
-    if (!source || source.deletedAt || source.archivedAt) return fallback;
+    if (!source || source.deletedAt || source.archivedAt)
+      throw new Error("Router conversation unavailable.");
     return presentRouterResponse(
       this.host.generate,
       routerResultInput(this.host.generationCwd, source, command.message.text, result),
-      fallback,
     );
   }
 

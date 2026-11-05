@@ -2,6 +2,8 @@ import { makeCompletionRepository } from "../../agentGateway/completionRepositor
 import { readFeishuFollowup } from "../feishuRouterFollowup.ts";
 import { RouterRuntime } from "../../router/RouterRuntime.ts";
 import { FeishuRouterDelivery } from "../FeishuRouterDelivery.ts";
+import { FeishuReplyStreams } from "../FeishuReplyStreams.ts";
+import { FEISHU_RECEIVED_TEXT } from "../feishuAcknowledgement.ts";
 /**
  * FeishuBridge - talk to Metis from a Feishu private chat.
  *
@@ -300,6 +302,7 @@ export const makeFeishuBridge = Effect.gen(function* () {
       transport: "websocket",
       domain: sdk.Domain.Feishu,
       loggerLevel: sdk.LoggerLevel.warn,
+      outbound: { streamInitialText: FEISHU_RECEIVED_TEXT },
       // The allowlist is enforced in the message handler instead of the SDK
       // policy so that rejected senders are logged and edits to
       // feishu-app.json take effect without restarting Metis. open_id is
@@ -313,6 +316,9 @@ export const makeFeishuBridge = Effect.gen(function* () {
     channel.on("reconnecting", () => log.info("reconnecting"));
     channel.on("reconnected", () => log.info("reconnected"));
 
+    const replyStreams = new FeishuReplyStreams(channel, (error) =>
+      log.warn("Router reply stream failed", { error: String(error) }),
+    );
     const routerDelivery = router
       ? new FeishuRouterDelivery(path.join(config.stateDir, "feishu-router-delivery"), {
           accept: (command) => router.accept(command),
@@ -328,6 +334,10 @@ export const makeFeishuBridge = Effect.gen(function* () {
                 run(completions.hasCompletedRun(threadId, turnId)),
             }),
           allowed: (sender) => currentAllowedOpenIds(bridgeConfig).includes(sender),
+          startReply: (chatId, replyTo) => replyStreams.start(chatId, replyTo),
+          cancelReply: (chatId, replyTo) => {
+            void replyStreams.cancel(chatId, replyTo);
+          },
           send: async (chatId, text, replyTo) => {
             const markdown = bridgeConfig.publicOrigin
               ? text.replace(
@@ -336,7 +346,7 @@ export const makeFeishuBridge = Effect.gen(function* () {
                     buildThreadLink(bridgeConfig.publicOrigin, ThreadId.makeUnsafe(id)) ?? id,
                 )
               : text;
-            return channel.send(chatId, { text: markdown }, { replyTo });
+            return replyStreams.send(chatId, markdown, replyTo);
           },
         })
       : undefined;
@@ -440,43 +450,44 @@ export const makeFeishuBridge = Effect.gen(function* () {
         // Do not redownload already accepted messages on channel redelivery.
         const messageId = MessageId.makeUnsafe(`feishu:${message.messageId}`);
         if ((await readDetail(threadId))?.messages.some((entry) => entry.id === messageId)) return;
-        await withFeishuInboundAttachments({
-          appId: bridgeConfig.appId,
-          senderId: message.senderId,
-          messageId: message.messageId,
-          threadId,
-          resources: message.resources,
-          attachmentsDir: config.attachmentsDir,
-          repository: attachmentRepository,
-          getResource: (request) => channel.rawClient.im.v1.messageResource.get(request),
-          submit: (attachments, attachmentPrincipal) =>
-            run(
-              orchestrationEngine.dispatch(
-                {
-                  type: "thread.turn.start",
-                  commandId,
-                  threadId,
-                  message: {
-                    messageId,
-                    role: "user",
-                    text: text || "请查看附件。",
-                    attachments,
-                  },
-                  dispatchMode: "queue",
-                  runtimeMode: thread.runtimeMode,
-                  interactionMode: thread.interactionMode,
-                  createdAt: startedAt,
-                },
-                { attachmentPrincipal },
-              ),
-            ),
-        });
 
         let outcome: TurnOutcome | null = null;
         await channel.stream(
           message.chatId,
           {
             markdown: async (controller) => {
+              // The SDK sends the initial receipt card before invoking this producer.
+              await withFeishuInboundAttachments({
+                appId: bridgeConfig.appId,
+                senderId: message.senderId,
+                messageId: message.messageId,
+                threadId,
+                resources: message.resources,
+                attachmentsDir: config.attachmentsDir,
+                repository: attachmentRepository,
+                getResource: (request) => channel.rawClient.im.v1.messageResource.get(request),
+                submit: (attachments, attachmentPrincipal) =>
+                  run(
+                    orchestrationEngine.dispatch(
+                      {
+                        type: "thread.turn.start",
+                        commandId,
+                        threadId,
+                        message: {
+                          messageId,
+                          role: "user",
+                          text: text || "请查看附件。",
+                          attachments,
+                        },
+                        dispatchMode: "queue",
+                        runtimeMode: thread.runtimeMode,
+                        interactionMode: thread.interactionMode,
+                        createdAt: startedAt,
+                      },
+                      { attachmentPrincipal },
+                    ),
+                  ),
+              });
               outcome = await waitForTurn({
                 threadId,
                 messageId,
@@ -500,6 +511,7 @@ export const makeFeishuBridge = Effect.gen(function* () {
           { replyTo: message.messageId },
         );
       } catch (cause) {
+        await replyStreams.cancel(message.chatId, message.messageId, "本次回复失败，请稍后重试。");
         log.warn("failed to handle message", {
           messageId: message.messageId,
           cause: cause instanceof Error ? cause.message : String(cause),
@@ -513,7 +525,11 @@ export const makeFeishuBridge = Effect.gen(function* () {
     });
 
     yield* Effect.addFinalizer(() =>
-      Effect.tryPromise(() => channel.disconnect()).pipe(
+      Effect.tryPromise(async () => {
+        routerDelivery?.stop();
+        await replyStreams.stop();
+        await channel.disconnect();
+      }).pipe(
         Effect.catchCause((cause) =>
           Effect.logWarning("feishu bridge disconnect failed", { cause: Cause.pretty(cause) }),
         ),

@@ -1,8 +1,7 @@
 import path from "node:path";
 import { TextGeneration } from "../../git/Services/TextGeneration.ts";
 import { generateRouterMessage } from "../../router/routerGeneration.ts";
-import { routerResultInput, routerResultFallback } from "../../router/RouterPresentation.ts";
-import { RouterDecision } from "../../git/routerPrompt.ts";
+import { presentRouterResponse, routerResultInput } from "../../router/RouterPresentation.ts";
 import { GatewayToolError } from "../toolRuntime.ts";
 import { makeThoughtTools } from "../thoughtTools.ts";
 import { MetisControllerService } from "../../metis/MetisControllerService.ts";
@@ -220,24 +219,23 @@ export const makeAgentGateway = Effect.gen(function* () {
       deliverGatewayCompletions({
         presentRouterResult: (source, request, result) =>
           routerTextGeneration
-            ? generateRouterMessage(
-                routerTextGeneration,
-                routerResultInput(
-                  path.join(serverConfig.stateDir, "router", "generation"),
-                  source,
-                  request,
-                  result,
-                ),
-              ).pipe(
-                Effect.flatMap((response) => Schema.decodeUnknownEffect(RouterDecision)(response)),
-                Effect.map((response) =>
-                  response.route === "reply" && !response.targetTaskId && response.reply.trim()
-                    ? response.reply.trim()
-                    : routerResultFallback(result),
-                ),
-                Effect.catch(() => Effect.succeed(routerResultFallback(result))),
-              )
-            : Effect.succeed(routerResultFallback(result)),
+            ? Effect.tryPromise({
+                try: (signal) =>
+                  presentRouterResponse(
+                    (input) =>
+                      Effect.runPromise(generateRouterMessage(routerTextGeneration, input), {
+                        signal,
+                      }),
+                    routerResultInput(
+                      path.join(serverConfig.stateDir, "router", "generation"),
+                      source,
+                      request,
+                      result,
+                    ),
+                  ),
+                catch: (cause) => new Error("Router result generation failed", { cause }),
+              })
+            : Effect.fail(new Error("Router generation unavailable")),
         repository: operationRepository.completions,
         snapshotQuery,
         projectionTurns,
