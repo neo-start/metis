@@ -59,3 +59,16 @@
 Router 新建任务及后续补充的结果会回复到对应飞书入站消息；补充按持久消息 ID 关联轮次，等待输出落库后发送，重连会重试未确认发送的结果。已发送确认丢失时仍可能重复。升级前已结束的投递记录不会自动重放。
 
 飞书卡片审批、附件向飞书发送尚未接入。实例总控的普通回复已可回传；网页发起的轮次不会自动广播到飞书。历史消息不会自动重放。
+
+### Pending turn ownership
+
+A steering request arriving before the provider publishes its active turn must not
+replace an existing pending turn owner. The original message ID binds transport
+completion to the provider turn; losing it leaves the Feishu stream waiting even
+when the model has completed. The turn projector retains an existing pending
+binding for steering requests, including internal agent coordination messages.
+
+Operational recovery must use the persisted answer and its exact provider turn,
+not rerun the task. A successful card update is distinct from deploying a code
+fix: do not restart a shared backend with unrelated active tasks. The SDK chat
+queue is serial, so an unresolved stream may also delay subsequent messages.

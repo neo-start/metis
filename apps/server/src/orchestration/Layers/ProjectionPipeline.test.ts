@@ -5942,3 +5942,41 @@ it.layer(Layer.fresh(makeProjectionPipelinePrefixedTestLayer("synara-human-recen
     );
   },
 );
+
+it.effect("preserves the pending transport owner when an internal steer races provider start", () =>
+  Effect.gen(function* () {
+    const store = yield* OrchestrationEventStore;
+    const pipeline = yield* OrchestrationProjectionPipeline;
+    const sql = yield* SqlClient.SqlClient;
+    const append = makeScenarioAppender(makeAppendAndProject(store, pipeline), "steer-binding");
+    const threadId = ThreadId.makeUnsafe("steer-binding-thread");
+    const at = "2026-11-05T19:00:49.185Z";
+    for (const [messageId, dispatchMode, dispatchOrigin] of [
+      ["feishu:original", "queue", "user"],
+      ["agent:coordination", "steer", "agent"],
+    ] as const) {
+      yield* append({
+        type: "thread.turn-start-requested",
+        aggregateKind: "thread",
+        aggregateId: threadId,
+        occurredAt: at,
+        payload: {
+          threadId,
+          messageId: MessageId.makeUnsafe(messageId),
+          dispatchMode,
+          dispatchOrigin,
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          createdAt: at,
+        },
+      });
+    }
+    const rows = yield* sql<{ pending_message_id: string }>`
+      SELECT pending_message_id FROM projection_turns WHERE thread_id = ${threadId}
+    `;
+    assert.deepEqual(
+      rows.map((row) => row.pending_message_id),
+      ["feishu:original"],
+    );
+  }).pipe(Effect.provide(makeProjectionPipelinePrefixedTestLayer("steer-binding"))),
+);

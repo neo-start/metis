@@ -1356,6 +1356,14 @@ const makeOrchestrationProjectionPipeline = Effect.gen(function* () {
           return;
 
         case "thread.turn-start-requested": {
+          // Steering can arrive before the provider publishes session-set. It
+          // belongs to the in-flight turn, not a replacement transport owner.
+          if (event.payload.dispatchMode === "steer") {
+            const pending = yield* projectionTurnRepository.getPendingTurnStartByThreadId({
+              threadId: event.payload.threadId,
+            });
+            if (Option.isSome(pending)) return;
+          }
           yield* projectionTurnRepository.replacePendingTurnStart({
             threadId: event.payload.threadId,
             messageId: event.payload.messageId,
