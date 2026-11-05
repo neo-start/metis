@@ -445,6 +445,7 @@ describe("durable Router workers", () => {
           finish = resolve;
         }),
     );
+    await f.router.dispatch(f.command("新任务：旧书店页面", "old"), f.host);
     const first = f.router.dispatch(f.command("帮我改页面", "page"), f.host);
     await vi.waitFor(() => expect(f.generate).toHaveBeenCalledTimes(1));
     f.generate.mockResolvedValueOnce({ route: "steer", targetTaskId: "pending:page", reply: "" });
@@ -455,19 +456,34 @@ describe("durable Router workers", () => {
     );
     finish({ route: "queue", reply: "" });
     await Promise.all([first, followup]);
-    expect(f.ids).toHaveLength(1);
-    expect((await f.readThread(f.ids[0]!)).messages.some((m) => m.text === "背景用蓝色")).toBe(
+    expect(f.ids).toHaveLength(2);
+    expect((await f.readThread(f.ids[1]!)).messages.some((m) => m.text === "背景用蓝色")).toBe(
       true,
     );
+  });
+
+  it("accepts a semantic target among several owned workers", async () => {
+    const f = await workerFixture();
+    await f.router.dispatch(f.command("新任务：咖啡店页面", "coffee"), f.host);
+    await f.router.dispatch(f.command("新任务：书店页面", "book"), f.host);
+    f.generate.mockResolvedValueOnce({ route: "steer", targetTaskId: f.ids[0]!, reply: "" });
+    await f.router.dispatch(f.command("咖啡店那个用蓝色", "blue"), f.host);
+    expect(
+      (await f.readThread(f.ids[0]!)).messages.some((m) => m.text === "咖啡店那个用蓝色"),
+    ).toBe(true);
+    expect(
+      (await f.readThread(f.ids[1]!)).messages.some((m) => m.text === "咖啡店那个用蓝色"),
+    ).toBe(false);
+    expect(f.ids).toHaveLength(2);
   });
 
   it("requires a target among multiple workers but resolves quoted bindings after restart", async () => {
     const f = await workerFixture();
     await f.router.dispatch(f.command("新任务：页面 A", "a"), f.host);
     await f.router.dispatch(f.command("新任务：页面 B", "b"), f.host);
-    f.generate.mockResolvedValueOnce({ route: "steer", targetTaskId: f.ids[0]!, reply: "" });
+    f.generate.mockResolvedValueOnce({ route: "steer", targetTaskId: "", reply: "" });
     await f.router.dispatch(f.command("背景用蓝色", "ambiguous"), f.host);
-    expect((await f.readThread()).messages.at(-1)?.text).toContain("多个任务");
+    expect((await f.readThread()).messages.at(-1)?.text).toContain("没有唯一可确认的目标");
     expect((await f.readThread(f.ids[0]!)).messages.some((m) => m.text === "背景用蓝色")).toBe(
       false,
     );

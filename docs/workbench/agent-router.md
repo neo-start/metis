@@ -172,8 +172,10 @@ legacy unbound, deleted, archived or cross-conversation targets produce clarific
 Explicit `新任务：` overrides a quoted context. Web clients cannot inject the
 server-only transport binding. No web quotation UI is added.
 
-When multiple tasks or pending requests exist, implicit steering asks for a task
-ID or quoted reply even if the classifier selects an ID. Explicit task IDs and
-verified quotes bypass that ambiguity check. Task associations inferred from text
+When multiple tasks or pending requests exist, the classifier can select an exact
+owned target using topic, task names and recent conversational focus. Candidate
+count alone does not override that selection. Ambiguous supplements ask for
+clarification; missing, invented and unowned targets cannot dispatch. Quoted
+references retain their verified binding. Task associations inferred from text
 remain model decisions, not a guarantee of semantic correctness. Pending requests
 are recovered through the existing ordered durable inbox, not a second task store.

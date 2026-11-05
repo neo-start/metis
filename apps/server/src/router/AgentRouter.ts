@@ -395,6 +395,7 @@ export class AgentRouter {
                 pendingRequests: predecessors.map((entry) => ({
                   id: `pending:${entry.command.commandId}`,
                   request: entry.command.message.text.slice(0, 2000),
+                  createdAt: entry.command.createdAt,
                 })),
                 tasks: tasks.slice(-20).map((task) => ({
                   id: task.id,
@@ -437,20 +438,7 @@ export class AgentRouter {
       const selectedPending = predecessors.find(
         (entry) => `pending:${entry.command.commandId}` === decision.targetTaskId,
       );
-      const activeCandidates =
-        tasks.length +
-        predecessors.filter(
-          (entry) =>
-            !tasks.some((task) =>
-              task.messages.some((m) => m.id === entry.command.message.messageId),
-            ),
-        ).length;
-      if (!explicit && !referencedTask && activeCandidates > 1)
-        return [
-          reply(
-            "Router：这条补充可能对应多个任务，请用 `任务 <任务ID> 要求` 或引用对应任务消息；尚未追加到任何任务。",
-          ),
-        ];
+      // Semantic selection may resolve one target among several owned tasks.
       if (selectedPending) {
         const resolved = await resolveRequest(selectedPending.command.commandId);
         if (!resolved)
