@@ -39,6 +39,8 @@ export class FeishuRouterDelivery {
       ): Promise<{ workerId?: string | undefined; followup: boolean } | undefined>;
       readFollowup?(workerId: string, command: TurnStart): Promise<string | undefined>;
       allowed(senderId: string): boolean;
+      startReply?(chatId: string, replyTo: string): void;
+      cancelReply?(chatId: string, replyTo: string): void;
       send(
         chatId: string,
         text: string,
@@ -131,9 +133,10 @@ export class FeishuRouterDelivery {
     if (this.stopped) throw new Error("Feishu Router is shutting down.");
     const key = this.key(input.command.commandId);
     await this.locked(key, async () => {
-      const record = (await this.read(key)) ?? input;
+      const record: Delivery = (await this.read(key)) ?? input;
       if (!this.host.allowed(record.senderId) || this.stopped) return;
       await this.save(key, record);
+      if (!record.replied && !record.done) this.host.startReply?.(record.chatId, record.replyTo);
       await this.admit(key, record);
     });
   }
@@ -155,14 +158,20 @@ export class FeishuRouterDelivery {
           if (this.active.has(key)) return;
           await this.locked(key, async () => {
             let record = await this.read(key);
-            if (!record || record.done || this.stopped || !this.host.allowed(record.senderId))
+            if (!record || record.done || this.stopped) return;
+            if (!this.host.allowed(record.senderId)) {
+              this.host.cancelReply?.(record.chatId, record.replyTo);
               return;
+            }
             if (record.command.type !== "thread.turn.start")
               throw new Error("Invalid Router delivery.");
             const command = record.command;
             record = await this.admit(key, record);
             const thread = await this.host.readThread(command.threadId);
-            if (!thread || thread.deletedAt || thread.archivedAt) return;
+            if (!thread || thread.deletedAt || thread.archivedAt) {
+              this.host.cancelReply?.(record.chatId, record.replyTo);
+              return;
+            }
             if (!record.replied) {
               const reply = thread.messages.find(
                 (m) => m.id === `router-${key}` || m.id === `router-failure-${key}`,

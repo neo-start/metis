@@ -54,6 +54,7 @@ const transport = vi.hoisted(() => ({
   initialContents: [] as string[],
   onStreamOpen: async () => {},
   send: vi.fn(async () => {}),
+  streamReplies: vi.fn(),
   getResource: vi.fn(),
 }));
 vi.mock("@larksuiteoapi/node-sdk", () => ({
@@ -68,18 +69,23 @@ vi.mock("@larksuiteoapi/node-sdk", () => ({
     send: transport.send,
     rawClient: { im: { v1: { messageResource: { get: transport.getResource } } } },
     stream: async (
-      _chat: string,
+      chat: string,
       input: {
         markdown: (controller: { setContent: (text: string) => Promise<void> }) => Promise<void>;
       },
+      options: { replyTo: string },
     ) => {
+      let finalText = "";
       transport.initialContents.push(config.outbound.streamInitialText);
       await transport.onStreamOpen();
       await input.markdown({
         setContent: async (text) => {
           transport.contents.push(text);
+          finalText = text;
         },
       });
+      transport.streamReplies(chat, { text: finalText }, options);
+      return { messageId: `card:${options.replyTo}` };
     },
   }),
 }));
@@ -243,6 +249,27 @@ async function setup(routerEnabled = false) {
 }
 
 describe("Feishu Router ingress and passive delivery", () => {
+  it("starts routing without waiting for the typing card network request", async () => {
+    const f = await setup(true);
+    let open!: () => void;
+    transport.onStreamOpen = () =>
+      new Promise<void>((resolve) => {
+        open = resolve;
+      });
+    try {
+      await f.receive("slow-card", "你好");
+      await vi.waitFor(() => expect(f.generate).toHaveBeenCalledTimes(1));
+      expect(transport.initialContents).toHaveLength(1);
+      expect(transport.streamReplies).not.toHaveBeenCalled();
+    } finally {
+      open();
+    }
+    await vi.waitFor(() => expect(transport.streamReplies).toHaveBeenCalledTimes(1), {
+      timeout: 3000,
+    });
+    expect(transport.initialContents).toHaveLength(1);
+  });
+
   it("passes a durable quoted input binding and refuses unknown references", async () => {
     const f = await setup(true);
     await f.receive("original", "你好");
@@ -260,7 +287,7 @@ describe("Feishu Router ingress and passive delivery", () => {
       ),
     ).toBe(true);
     await vi.waitFor(
-      () => expect(JSON.stringify(transport.send.mock.calls)).toContain("独立回复"),
+      () => expect(JSON.stringify(transport.streamReplies.mock.calls)).toContain("独立回复"),
       { timeout: 3000 },
     );
     expect(f.generate).toHaveBeenCalledTimes(3);
@@ -277,14 +304,14 @@ describe("Feishu Router ingress and passive delivery", () => {
     await f.receive("router-greeting", "你好？");
     await vi.waitFor(
       () =>
-        expect(transport.send).toHaveBeenCalledWith(
+        expect(transport.streamReplies).toHaveBeenCalledWith(
           "oc_owner",
           { text: "独立回复" },
           { replyTo: "router-greeting" },
         ),
       { timeout: 3000 },
     );
-    expect(transport.contents).toEqual([]);
+    expect(transport.contents).toContain("独立回复");
     expect(f.generate).toHaveBeenCalledTimes(1);
     const thread = (await f.runtime.runPromise(f.engine.getReadModel())).threads.find(
       (t) => t.id === first,
@@ -296,7 +323,7 @@ describe("Feishu Router ingress and passive delivery", () => {
       ...f.selection,
     });
     await f.receive("router-greeting", "你好？");
-    expect(transport.send).toHaveBeenCalledTimes(1);
+    expect(transport.streamReplies).toHaveBeenCalledTimes(1);
   });
   it("accepts progress while a classifier is blocked instead of waiting in the provider queue", async () => {
     const f = await setup(true);
@@ -309,12 +336,13 @@ describe("Feishu Router ingress and passive delivery", () => {
     );
     await f.receive("router-question", "解释一下路由器");
     await vi.waitFor(() => expect(finish).toBeDefined());
-    expect(transport.send).not.toHaveBeenCalled();
+    expect(transport.streamReplies).not.toHaveBeenCalled();
+    expect(transport.initialContents).toHaveLength(1);
     await f.receive("router-progress", "进度如何");
     await vi.waitFor(
       () =>
         expect(
-          transport.send.mock.calls.some(
+          transport.streamReplies.mock.calls.some(
             (call) => (call as unknown[])[2] && JSON.stringify(call).includes("router-progress"),
           ),
         ).toBe(true),
@@ -324,11 +352,13 @@ describe("Feishu Router ingress and passive delivery", () => {
     await vi.waitFor(
       () =>
         expect(
-          transport.send.mock.calls.some((call) => JSON.stringify(call).includes("路由器负责")),
+          transport.streamReplies.mock.calls.some((call) =>
+            JSON.stringify(call).includes("路由器负责"),
+          ),
         ).toBe(true),
       { timeout: 3000 },
     );
-    expect(transport.contents).toEqual([]);
+    expect(transport.contents).toContain("路由器负责分发消息。");
   });
 });
 

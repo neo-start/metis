@@ -2,6 +2,7 @@ import { makeCompletionRepository } from "../../agentGateway/completionRepositor
 import { readFeishuFollowup } from "../feishuRouterFollowup.ts";
 import { RouterRuntime } from "../../router/RouterRuntime.ts";
 import { FeishuRouterDelivery } from "../FeishuRouterDelivery.ts";
+import { FeishuReplyStreams } from "../FeishuReplyStreams.ts";
 import { FEISHU_RECEIVED_TEXT } from "../feishuAcknowledgement.ts";
 /**
  * FeishuBridge - talk to Metis from a Feishu private chat.
@@ -315,6 +316,9 @@ export const makeFeishuBridge = Effect.gen(function* () {
     channel.on("reconnecting", () => log.info("reconnecting"));
     channel.on("reconnected", () => log.info("reconnected"));
 
+    const replyStreams = new FeishuReplyStreams(channel, (error) =>
+      log.warn("Router reply stream failed", { error: String(error) }),
+    );
     const routerDelivery = router
       ? new FeishuRouterDelivery(path.join(config.stateDir, "feishu-router-delivery"), {
           accept: (command) => router.accept(command),
@@ -330,6 +334,10 @@ export const makeFeishuBridge = Effect.gen(function* () {
                 run(completions.hasCompletedRun(threadId, turnId)),
             }),
           allowed: (sender) => currentAllowedOpenIds(bridgeConfig).includes(sender),
+          startReply: (chatId, replyTo) => replyStreams.start(chatId, replyTo),
+          cancelReply: (chatId, replyTo) => {
+            void replyStreams.cancel(chatId, replyTo);
+          },
           send: async (chatId, text, replyTo) => {
             const markdown = bridgeConfig.publicOrigin
               ? text.replace(
@@ -338,7 +346,7 @@ export const makeFeishuBridge = Effect.gen(function* () {
                     buildThreadLink(bridgeConfig.publicOrigin, ThreadId.makeUnsafe(id)) ?? id,
                 )
               : text;
-            return channel.send(chatId, { text: markdown }, { replyTo });
+            return replyStreams.send(chatId, markdown, replyTo);
           },
         })
       : undefined;
@@ -503,6 +511,7 @@ export const makeFeishuBridge = Effect.gen(function* () {
           { replyTo: message.messageId },
         );
       } catch (cause) {
+        await replyStreams.cancel(message.chatId, message.messageId, "本次回复失败，请稍后重试。");
         log.warn("failed to handle message", {
           messageId: message.messageId,
           cause: cause instanceof Error ? cause.message : String(cause),
@@ -516,7 +525,11 @@ export const makeFeishuBridge = Effect.gen(function* () {
     });
 
     yield* Effect.addFinalizer(() =>
-      Effect.tryPromise(() => channel.disconnect()).pipe(
+      Effect.tryPromise(async () => {
+        routerDelivery?.stop();
+        await replyStreams.stop();
+        await channel.disconnect();
+      }).pipe(
         Effect.catchCause((cause) =>
           Effect.logWarning("feishu bridge disconnect failed", { cause: Cause.pretty(cause) }),
         ),

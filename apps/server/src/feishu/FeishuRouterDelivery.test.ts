@@ -212,15 +212,19 @@ it("does not admit or deliver persisted messages after allowlist revocation", as
     accept: vi.fn(async () => ({ sequence: 1, routed: true })),
     readThread: vi.fn(async () => undefined),
     allowed: () => allowed,
+    startReply: vi.fn(),
+    cancelReply: vi.fn(),
     send: vi.fn(async () => {}),
   };
   const delivery = new FeishuRouterDelivery(root, host);
   await delivery.enqueue({ chatId: "chat", senderId: "owner", replyTo: "revoked", command });
+  expect(host.startReply).toHaveBeenCalledWith("chat", "revoked");
   allowed = false;
   await delivery.flush();
   expect(host.accept).toHaveBeenCalledTimes(1);
   expect(host.readThread).not.toHaveBeenCalled();
   expect(host.send).not.toHaveBeenCalled();
+  expect(host.cancelReply).toHaveBeenCalledWith("chat", "revoked");
 });
 
 it.each([false, true])(
