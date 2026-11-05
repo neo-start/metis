@@ -17,7 +17,6 @@ import type {
   RouterGenerationResult,
 } from "../git/Services/TextGeneration.ts";
 import { providerSupportsNativeTurnSteering } from "@synara/shared/providerMetadata";
-import { presentRouterResponse } from "./RouterPresentation.ts";
 import { taskControlProgress } from "../taskControl/service.ts";
 
 type TurnStart = Extract<OrchestrationCommand, { type: "thread.turn.start" }>;
@@ -55,7 +54,7 @@ const SavedDispatch = Schema.Struct({
 });
 const hash = (text: string) => createHash("sha256").update(text).digest("hex");
 const statusQuestion =
-  /^(?:(?:现在|目前|当前)?(?:任务|工作|优化|这个任务|这项工作)?(?:进度如何|进度怎么样|做到哪了|做到哪一步了|进展如何|进展怎么样|还在吗|还在运行吗|卡住了吗|怎么样了)|status|progress|are you still (?:there|working)|how(?:'s| is) (?:it|the task) going)$/i;
+  /^(?:(?:现在|目前|当前)?(?:任务|工作|优化|这个任务|这项工作)?(?:进度如何|进度怎么样|做到哪了|做到哪一步了|进展如何|进展怎么样|还在吗|还在运行吗|卡住了吗|怎么样了|查好了吗|查完了吗|做好了吗|完成了吗)|status|progress|are you still (?:there|working)|how(?:'s| is) (?:it|the task) going)$/i;
 export function isRouterStatusQuestion(text: string) {
   const normalized = text.trim().replace(/[？?！!。.]$/u, "");
   // Match the whole utterance: a status question plus an action must not lose the action.
@@ -468,24 +467,6 @@ export class AgentRouter {
         : host.createWorker
           ? "尚无已启动任务；已受理消息可能仍在路由或创建中。"
           : routerStatusReply(thread);
-    const present = (mode: "status" | "acknowledgement", facts: unknown, fallback: string) =>
-      presentRouterResponse(
-        host.generate,
-        {
-          cwd: host.generationCwd,
-          modelSelection: thread.modelSelection,
-          ...(command.providerOptions ? { providerOptions: command.providerOptions } : {}),
-          responseMode: mode,
-          message: command.message.text,
-          taskContext: JSON.stringify({
-            facts,
-            conversation: thread.messages
-              .slice(-8)
-              .map(({ role, text }) => ({ role, text: text.slice(-2000) })),
-          }),
-        },
-        fallback,
-      );
     // Preserve instant progress while an earlier classifier/creation is still pending.
     if (isRouterStatusQuestion(command.message.text)) return [reply(status())];
     if (isRouterCancelRequest(command.message.text)) {
@@ -556,15 +537,7 @@ export class AgentRouter {
           ? {
               route: "steer",
               targetTaskId: referencedTask?.id ?? explicit![1],
-              reply: await present(
-                "acknowledgement",
-                {
-                  action: "supplement",
-                  task:
-                    referencedTask?.title ?? tasks.find((task) => task.id === explicit?.[1])?.title,
-                },
-                "明白，我会按这条补充继续处理。",
-              ),
+              reply: "明白，我会按这条补充继续处理。",
             }
           : await host.generate({
               cwd: host.generationCwd,

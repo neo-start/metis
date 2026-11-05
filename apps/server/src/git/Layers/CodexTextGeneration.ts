@@ -299,6 +299,8 @@ const makeCodexTextGeneration = Effect.gen(function* () {
     providerOptions?: BranchNameGenerationInput["providerOptions"];
   }): Effect.Effect<S["Type"], TextGenerationError, S["DecodingServices"]> =>
     Effect.gen(function* () {
+      const startedAt = Date.now();
+      const timings: Record<string, number> = {};
       const codexBinaryPath = resolveCodexBinaryPath(providerOptions);
       const resolvedCodexHomePath = resolveCodexHomePath(codexHomePath, providerOptions);
       const schemaPath = yield* writeTempFile(
@@ -335,13 +337,16 @@ const makeCodexTextGeneration = Effect.gen(function* () {
         });
 
       const runCodexCommand = Effect.gen(function* () {
+        timings.preparationMs = Date.now() - startedAt;
         if (!(yield* workingDirectoryExists)) {
           return yield* missingWorkingDirectoryError();
         }
 
+        const environmentStartedAt = Date.now();
         const env = yield* Effect.promise(() =>
           buildCodexProcessEnv({ homePath: isolatedCodexHome.homePath }),
         );
+        timings.environmentMs = Date.now() - environmentStartedAt;
         const args = [
           "exec",
           "--ephemeral",
@@ -372,6 +377,7 @@ const makeCodexTextGeneration = Effect.gen(function* () {
           },
         });
 
+        const spawnStartedAt = Date.now();
         const child = yield* commandSpawner
           .spawn(command)
           .pipe(
@@ -393,6 +399,8 @@ const makeCodexTextGeneration = Effect.gen(function* () {
             ),
           );
 
+        timings.spawnMs = Date.now() - spawnStartedAt;
+        const processStartedAt = Date.now();
         const [stdout, stderr, exitCode] = yield* Effect.all(
           [
             readStreamAsString(operation, child.stdout),
@@ -412,6 +420,7 @@ const makeCodexTextGeneration = Effect.gen(function* () {
           { concurrency: "unbounded" },
         );
 
+        timings.processMs = Date.now() - processStartedAt;
         if (exitCode !== 0) {
           const stderrDetail = stderr.trim();
           const stdoutDetail = stdout.trim();
@@ -473,7 +482,20 @@ const makeCodexTextGeneration = Effect.gen(function* () {
             ),
           ),
         );
-      }).pipe(Effect.ensuring(cleanup));
+      }).pipe(
+        Effect.ensuring(cleanup),
+        Effect.ensuring(
+          operation === "routeMessage"
+            ? Effect.suspend(() =>
+                Effect.logInfo("Router Codex request timings", {
+                  elapsedMs: Date.now() - startedAt,
+                  promptChars: prompt.length,
+                  ...timings,
+                }),
+              )
+            : Effect.void,
+        ),
+      );
     });
 
   const generateCommitMessage: TextGenerationShape["generateCommitMessage"] = (input) => {

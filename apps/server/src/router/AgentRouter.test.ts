@@ -383,6 +383,9 @@ describe("AgentRouter above the real orchestration engine", () => {
 it("recognizes only whole progress/cancellation utterances", () => {
   expect(isRouterStatusQuestion("现在做到哪了？")).toBe(true);
   expect(isRouterStatusQuestion("优化进展如何？")).toBe(true);
+  expect(isRouterStatusQuestion("查好了吗")).toBe(true);
+  expect(isRouterStatusQuestion("当前任务完成了吗？")).toBe(true);
+  expect(isRouterStatusQuestion("查好了吗？然后部署")).toBe(false);
   expect(isRouterStatusQuestion("当前任务进展怎么样？")).toBe(true);
   expect(isRouterStatusQuestion("进度如何，然后删除文件")).toBe(false);
   expect(isRouterStatusQuestion("优化进展如何？然后停止任务")).toBe(false);
@@ -500,8 +503,7 @@ describe("durable Router workers", () => {
       true,
     );
     expect(f.ids).toHaveLength(2);
-    expect(f.generate).toHaveBeenCalledTimes(2);
-    expect(f.generate.mock.lastCall?.[0].responseMode).toBe("acknowledgement");
+    expect(f.generate).toHaveBeenCalledTimes(1);
     await restarted.dispatch(
       {
         ...f.command("继续修改", "quote-followup"),
@@ -731,8 +733,7 @@ it("pins an explicit correction to task A even when generation would pick B and 
     },
     f.host,
   );
-  expect(f.generate).toHaveBeenCalledTimes(1);
-  expect(f.generate.mock.lastCall?.[0].responseMode).toBe("acknowledgement");
+  expect(f.generate).not.toHaveBeenCalled();
   expect(
     (await f.readThread(first!)).messages.some((message) => message.text.includes("修改成中文")),
   ).toBe(true);

@@ -1,7 +1,7 @@
 import { it } from "@effect/vitest";
 import { Effect, Layer, Option } from "effect";
-import { expect, vi } from "vitest";
-import { ThreadId, type OrchestrationThread, type OrchestrationCommand } from "@synara/contracts";
+import { expect } from "vitest";
+import { ThreadId, type OrchestrationCommand } from "@synara/contracts";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
 import { AgentGatewayOperationRepositoryLive } from "./Layers/AgentGatewayOperationRepository.ts";
@@ -249,100 +249,94 @@ layer("gateway completion outbox", (it) => {
       }),
   );
 
-  it.effect("freezes generated completion prose with the exact run before delivery retries", () =>
-    Effect.gen(function* () {
-      const id = "natural-completion";
-      const repository = yield* reserve(id);
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`INSERT INTO provider_runtime_events
+  it.effect(
+    "delivers the full exact-run answer without generation and freezes it across retries",
+    () =>
+      Effect.gen(function* () {
+        const id = "natural-completion";
+        const repository = yield* reserve(id);
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO provider_runtime_events
         (event_id, thread_id, turn_id, event_type, event_json, persisted_at)
         VALUES (${id}, ${id}, 'initial-run', 'turn.completed', '{"payload":{"state":"completed"}}', ${now})`;
-      yield* sql`UPDATE provider_runtime_event_consumers SET last_acked_sequence = (SELECT MAX(sequence) FROM provider_runtime_events)`;
-      const child = {
-        id,
-        creationSource: "router",
-        title: "MCP",
-        modelSelection: { provider: "codex", model: "test-model" },
-        latestTurn: { turnId: "later-run" },
-        messages: [
-          { id: `${id}:initial`, role: "user", text: "补上 MCP 直聊" },
-          {
-            role: "assistant",
-            turnId: "initial-run",
-            text: "Added endpoint, tests passed; not deployed",
-          },
-          { role: "assistant", turnId: "later-run", text: "Unrelated later result" },
-        ],
-      };
-      const source = {
-        id: "parent",
-        archivedAt: null,
-        messages: [],
-        modelSelection: child.modelSelection,
-      };
-      const presentRouterResult = vi.fn(
-        (_source: OrchestrationThread, request: string, result: { summary: string | null }) => {
-          expect(request).toBe("补上 MCP 直聊");
-          expect(result.summary).toBe("Added endpoint, tests passed; not deployed");
-          return Effect.succeed("MCP 直聊入口已补上，相关测试通过，尚未部署。");
-        },
-      );
-      const receipts = new Map<string, string>();
-      const delivered: OrchestrationCommand[] = [];
-      let lost = true;
-      const dependencies = {
-        repository,
-        presentRouterResult,
-        snapshotQuery: {
-          getThreadShellById: (threadId: string) =>
-            Effect.succeed(Option.some(threadId === id ? child : source)),
-          getThreadDetailById: (threadId: string) =>
-            Effect.succeed(Option.some(threadId === id ? child : source)),
-        } as unknown as ProjectionSnapshotQueryShape,
-        projectionTurns: {
-          listByThreadId: () =>
-            Effect.succeed([
-              {
-                pendingMessageId: `${id}:initial`,
-                turnId: "initial-run",
-                state: "completed",
-                completedAt: now,
-              },
-            ]),
-        } as unknown as ProjectionTurnRepositoryShape,
-        orchestrationEngine: {
-          dispatch: (command: OrchestrationCommand) =>
-            Effect.suspend(() => {
-              const fingerprint = fingerprintOrchestrationCommand(command).value;
-              if (receipts.has(command.commandId))
-                expect(receipts.get(command.commandId)).toBe(fingerprint);
-              else {
-                receipts.set(command.commandId, fingerprint);
-                delivered.push(command);
-              }
-              if (command.type === "thread.messages.import" && lost) {
-                lost = false;
-                return Effect.fail(new Error("lost receipt"));
-              }
-              return Effect.succeed({ sequence: receipts.size });
-            }),
-        } as unknown as OrchestrationEngineShape,
-      };
-      yield* deliverGatewayCompletions(dependencies);
-      expect(yield* repository.pending()).toHaveLength(1);
-      expect(JSON.parse((yield* repository.pending())[0]!.resultJson!).userReply).toContain(
-        "尚未部署",
-      );
-      yield* deliverGatewayCompletions({
-        ...dependencies,
-        repository: yield* makeCompletionRepository,
-      });
-      expect(presentRouterResult).toHaveBeenCalledTimes(1);
-      const messages = delivered.filter((command) => command.type === "thread.messages.import");
-      expect(messages).toHaveLength(1);
-      expect(messages[0]?.messages[0]?.text).toBe("MCP 直聊入口已补上，相关测试通过，尚未部署。");
-      expect(yield* repository.pending()).toHaveLength(0);
-    }),
+        yield* sql`UPDATE provider_runtime_event_consumers SET last_acked_sequence = (SELECT MAX(sequence) FROM provider_runtime_events)`;
+        const child = {
+          id,
+          creationSource: "router",
+          title: "MCP",
+          modelSelection: { provider: "codex", model: "test-model" },
+          latestTurn: { turnId: "later-run" },
+          messages: [
+            { id: `${id}:initial`, role: "user", text: "补上 MCP 直聊" },
+            {
+              role: "assistant",
+              turnId: "initial-run",
+              text: "Added endpoint. " + "Details. ".repeat(300) + "Tests passed; not deployed",
+            },
+            { role: "assistant", turnId: "later-run", text: "Unrelated later result" },
+          ],
+        };
+        const source = {
+          id: "parent",
+          archivedAt: null,
+          messages: [],
+          modelSelection: child.modelSelection,
+        };
+        const receipts = new Map<string, string>();
+        const delivered: OrchestrationCommand[] = [];
+        let lost = true;
+        const dependencies = {
+          repository,
+          snapshotQuery: {
+            getThreadShellById: (threadId: string) =>
+              Effect.succeed(Option.some(threadId === id ? child : source)),
+            getThreadDetailById: (threadId: string) =>
+              Effect.succeed(Option.some(threadId === id ? child : source)),
+          } as unknown as ProjectionSnapshotQueryShape,
+          projectionTurns: {
+            listByThreadId: () =>
+              Effect.succeed([
+                {
+                  pendingMessageId: `${id}:initial`,
+                  turnId: "initial-run",
+                  state: "completed",
+                  completedAt: now,
+                },
+              ]),
+          } as unknown as ProjectionTurnRepositoryShape,
+          orchestrationEngine: {
+            dispatch: (command: OrchestrationCommand) =>
+              Effect.suspend(() => {
+                const fingerprint = fingerprintOrchestrationCommand(command).value;
+                if (receipts.has(command.commandId))
+                  expect(receipts.get(command.commandId)).toBe(fingerprint);
+                else {
+                  receipts.set(command.commandId, fingerprint);
+                  delivered.push(command);
+                }
+                if (command.type === "thread.messages.import" && lost) {
+                  lost = false;
+                  return Effect.fail(new Error("lost receipt"));
+                }
+                return Effect.succeed({ sequence: receipts.size });
+              }),
+          } as unknown as OrchestrationEngineShape,
+        };
+        yield* deliverGatewayCompletions(dependencies);
+        expect(yield* repository.pending()).toHaveLength(1);
+        expect(JSON.parse((yield* repository.pending())[0]!.resultJson!).userReply).toContain(
+          "not deployed",
+        );
+        yield* deliverGatewayCompletions({
+          ...dependencies,
+          repository: yield* makeCompletionRepository,
+        });
+        const messages = delivered.filter((command) => command.type === "thread.messages.import");
+        expect(messages).toHaveLength(1);
+        expect(messages[0]?.messages[0]?.text).toBe(child.messages[1]!.text);
+        expect(messages[0]?.messages[0]?.text).not.toContain("Unrelated later result");
+        expect(yield* repository.pending()).toHaveLength(0);
+      }),
   );
 
   it.effect(

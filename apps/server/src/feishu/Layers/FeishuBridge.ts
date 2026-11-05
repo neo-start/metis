@@ -320,7 +320,6 @@ export const makeFeishuBridge = Effect.gen(function* () {
           readThread: readDetail,
           readFollowup: (workerId, command) =>
             readFeishuFollowup(workerId, command, {
-              presentResult: (result) => router.presentResult(command, result),
               readThread: readDetail,
               turns: (threadId) => run(turnRepository.listByThreadId({ threadId })),
               isOutputSettled: (threadId) => run(completions.isOutputSettled(threadId)),

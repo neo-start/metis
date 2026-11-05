@@ -37,8 +37,8 @@ Router handles the first plain Auto message as well as follow-ups:
 - The original conversation acknowledges the user's request in natural language.
   Worker identity remains in structured receipts and task details. Completion uses
   the existing gateway outbox and adds a passive result message and activity to
-  that conversation; it does not start another console turn. Detailed results
-  remain in the worker transcript.
+  that conversation; it does not start another console turn or model rewrite. The
+  exact run’s full final answer is preserved, including evidence and limitations.
 
 `新任务：…` or `new task: …` explicitly starts independent work without a classifier.
 Untargeted plain requests longer than 16,000 characters also go directly to a worker. For
@@ -51,7 +51,7 @@ available without generation.
 ## Task progress and control
 
 Whole-message status questions such as `现在做到哪了？`, `优化进展如何？`,
-`当前任务进展怎么样？` or `status` read durable state
+`当前任务进展怎么样？`, `查好了吗`, `当前任务完成了吗？` or `status` read durable state
 for the console's associated tasks, including pending interactions, timestamps,
 recent activity and output. Recognized status queries return a factual snapshot
 directly, without provider startup or model generation, even when another request
@@ -248,25 +248,32 @@ new work and supplements. It describes the user's goal and next step in future
 tense; it cannot claim execution, applied changes or successful verification.
 The server persists that wording in the dispatch plan and publishes it only after
 worker creation or correction admission succeeds. Explicit quoted/task-ID targets
-remain server-selected; a presentation-only call cannot redirect them. Explicit
+remain server-selected and are dispatched immediately with a fixed acknowledgement;
+there is no model call for either target selection or confirmation wording. Explicit
 new-task commands and oversized requests retain a generation-free admission path
 with a short fallback acknowledgement.
 
-Status and completion presentation use the existing provider/model and tool-free
-Router generation path, with the same 30-second timeout. Presentation output must
-be a nonempty bounded `reply` without a target. Invalid output or generation failure
-falls back to recorded facts. There are no generation calls for every worker event.
-A completed provider turn is not treated as proof the user's objective was met;
-result instructions preserve incomplete work, failed checks, errors and artifact
-links. These are model instructions, not a guarantee against semantic mistakes.
+Recognized status questions return recorded facts directly. Ordinary semantic routing
+still uses one provider/model call; it may take seconds and is not covered by the
+subsecond status-query benchmark. The compact routing prompt omits the former
+presentation-only instructions while preserving target ownership and uncertainty rules.
 
-Initial Router results are rewritten once using the source conversation and exact
-initial-run evidence, then frozen with the gateway outbox result before dispatch.
-Up to four outbox entries may be processed concurrently so one slow presentation
-need not block every other result. Feishu follow-up results use their exact bound
-turn and are frozen in the transport delivery record before sending. Retrying a
+Initial Router results forward the exact initial run's full final answer without a
+second model call. The compact 2,000-character tool summary remains available in
+outbox evidence but does not truncate the user-facing reply. Errors and interruptions
+retain deterministic status text; a missing final answer never becomes a success
+claim. The answer is frozen in the outbox before dispatch. Feishu follow-up results
+likewise forward their exact bound turn and are frozen before sending. Retrying a
 saved result does not regenerate it. Legacy saved results/plans retain their original
 wording to preserve engine command fingerprints on replay.
+
+Codex requests log preparation, environment setup, process spawn, process runtime,
+total elapsed time and prompt character count without prompt text or credentials.
+Process runtime includes CLI initialization, network/model waiting and generation;
+it is not a measurement of model inference alone. This instrumentation is separate
+from Router plan/queue/execution timings. Ordinary chat, new work, explicit follow-up
+and final result delivery must be measured separately; do not extrapolate shortcut
+status-query timings to all of them.
 
 New Router receipts carry a presentation version and source-scoped worker/follow-up
 binding, persisted before the conversational acknowledgement. Feishu reads those
@@ -278,6 +285,6 @@ execution or approval authority.
 
 Focused backend tests cover generated acknowledgements after successful dispatch,
 failed creation without false acceptance, binding visibility before publication,
-explicit-target immutability, status fallbacks, exact-run result presentation and
+explicit-target immutability, status fallbacks, full exact-run result delivery and
 frozen retries, and both structured and legacy Feishu delivery. No live-model or
 frontend verification is implied by these tests.
