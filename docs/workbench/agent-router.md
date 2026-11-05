@@ -120,6 +120,13 @@ turns cannot replace them. Recovery preserves the original
 thread across controller resets and rechecks the sender allowlist. Confirmed sends
 are deduplicated; a lost remote send acknowledgement may cause a duplicate reply.
 
+Native steering now persists the provider-acknowledged turn on the user message,
+using the existing bind-turn command after successful delivery. It retains
+`startsNewTurn: false`; the association is to the existing turn, not a new transcript
+boundary. Without that association, a running correction could affect the result
+while its Feishu reply remained pending forever. This fixes future accepted steers;
+legacy unbound corrections are not inferred from the worker's latest turn.
+
 Independent generation uses the conversation's provider/model, currently through
 Codex (including secondary, tertiary and quaternary accounts), OpenCode, Cursor and Droid channels, with a 30-second budget including
 startup. Codex routing uses low reasoning effort independently of worker settings;

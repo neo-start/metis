@@ -3807,11 +3807,11 @@ const make = Effect.gen(function* () {
         ),
         Effect.ensuring(Effect.sync(() => editResendTurnStartKeys.delete(editResendKey))),
       );
-      // A requested steer can still become a separate queued turn (for
-      // providers without native steering, or if the live turn already
-      // settled). Persist that effective boundary while leaving native steer
-      // continuations unbound to a new turn.
-      if (startedTurn && event.payload.dispatchMode === "steer" && !isNativeSteer) {
+      // Persist the provider-acknowledged turn for both native continuations and
+      // steers promoted to a separate queued turn. startsNewTurn still controls
+      // the transcript boundary; a native continuation needs its existing turn
+      // binding so durable follow-up delivery can find the exact result.
+      if (startedTurn && event.payload.dispatchMode === "steer") {
         yield* orchestrationEngine.dispatch({
           type: "thread.message.user.bind-turn",
           commandId: CommandId.makeUnsafe(

@@ -143,3 +143,9 @@ Router task association reuses the local Router inbox/receipts and Feishu delive
 records at `43c55e493`, plus the SDK normalized `replyToMessageId` and send result
 message IDs. T3 orchestration at `f5ef0ddb90a8c36584e181b1913e7b8a5df30ffc`
 was reviewed; no task-association implementation was copied.
+
+Native-steer result binding (2026-11-05) extends the existing
+`ProviderCommandReactor.ts` and `decider.ts` bind-turn command at local commit
+`74be62f6e`. Reviewed Synara `ProviderCommandReactor.ts` at
+`ec3b1f6ef9c2f656f26dd9711339fe1265d8cb5c` and T3 orchestration at
+`f5ef0ddb90a8c36584e181b1913e7b8a5df30ffc`; no additional upstream source copied.

@@ -12059,73 +12059,112 @@ describe("ProviderCommandReactor", () => {
     });
   });
 
-  it("steers Debug turns immediately with one prompt prefix", async () => {
-    const harness = await createHarness();
-    const now = new Date().toISOString();
-
-    harness.setRuntimeSessionTurnState({
-      threadId: "thread-1",
-      status: "running",
-      activeTurnId: asTurnId("turn-running"),
-    });
-    await Effect.runPromise(
-      harness.engine.dispatch({
-        type: "thread.session.set",
-        commandId: CommandId.makeUnsafe("cmd-session-running-steer-codex"),
-        threadId: ThreadId.makeUnsafe("thread-1"),
-        session: {
+  it.each([false, true])(
+    "binds native Debug steering with Router protection=%s",
+    async (routerProtected) => {
+      const harness = await createHarness();
+      const now = new Date().toISOString();
+      await Effect.runPromise(
+        harness.engine.dispatch({
+          type: "thread.interaction-mode.set",
+          commandId: CommandId.makeUnsafe("cmd-native-steer-debug"),
           threadId: ThreadId.makeUnsafe("thread-1"),
-          status: "running",
-          providerName: "codex",
+          interactionMode: "debug",
+          createdAt: now,
+        }),
+      );
+
+      harness.setRuntimeSessionTurnState({
+        threadId: "thread-1",
+        status: "running",
+        activeTurnId: asTurnId("turn-running"),
+      });
+      await Effect.runPromise(
+        harness.engine.dispatch({
+          type: "thread.session.set",
+          commandId: CommandId.makeUnsafe("cmd-session-running-steer-codex"),
+          threadId: ThreadId.makeUnsafe("thread-1"),
+          session: {
+            threadId: ThreadId.makeUnsafe("thread-1"),
+            status: "running",
+            providerName: "codex",
+            runtimeMode: "approval-required",
+            activeTurnId: asTurnId("turn-running"),
+            lastError: null,
+            updatedAt: now,
+          },
+          createdAt: now,
+        }),
+      );
+
+      harness.sendTurn.mockClear();
+      harness.steerTurn.mockClear();
+      let acceptSteer!: () => void;
+      const accepted = new Promise<void>((resolve) => {
+        acceptSteer = resolve;
+      });
+      harness.steerTurn.mockImplementation(() =>
+        Effect.promise(async () => {
+          await accepted;
+          return {
+            threadId: ThreadId.makeUnsafe("thread-1"),
+            turnId: asTurnId("turn-running"),
+          };
+        }),
+      );
+      harness.interruptTurn.mockClear();
+
+      await Effect.runPromise(
+        harness.engine.dispatch({
+          type: "thread.turn.start",
+          commandId: CommandId.makeUnsafe("cmd-turn-steer-codex"),
+          ...(routerProtected ? { routerTurnId: asTurnId("turn-running") } : {}),
+          threadId: ThreadId.makeUnsafe("thread-1"),
+          message: {
+            messageId: asMessageId("msg-steer-codex"),
+            role: "user",
+            text: "pivot now",
+            attachments: [],
+          },
+          dispatchMode: "steer",
           runtimeMode: "approval-required",
-          activeTurnId: asTurnId("turn-running"),
-          lastError: null,
-          updatedAt: now,
-        },
-        createdAt: now,
-      }),
-    );
+          interactionMode: "debug",
+          createdAt: now,
+        }),
+      );
 
-    harness.sendTurn.mockClear();
-    harness.steerTurn.mockClear();
-    harness.interruptTurn.mockClear();
-
-    await Effect.runPromise(
-      harness.engine.dispatch({
-        type: "thread.turn.start",
-        commandId: CommandId.makeUnsafe("cmd-turn-steer-codex"),
+      await waitFor(() => harness.steerTurn.mock.calls.length === 1);
+      const beforeAcceptance = (
+        await Effect.runPromise(harness.engine.getReadModel())
+      ).threads[0]?.messages.find((entry) => entry.id === "msg-steer-codex");
+      expect(beforeAcceptance?.turnId).toBeNull();
+      acceptSteer();
+      await harness.drain();
+      expect(harness.sendTurn).not.toHaveBeenCalled();
+      expect(harness.interruptTurn).not.toHaveBeenCalled();
+      expect(harness.steerTurn.mock.calls[0]?.[0]).toMatchObject({
         threadId: ThreadId.makeUnsafe("thread-1"),
-        message: {
-          messageId: asMessageId("msg-steer-codex"),
-          role: "user",
-          text: "pivot now",
-          attachments: [],
-        },
-        dispatchMode: "steer",
-        runtimeMode: "approval-required",
         interactionMode: "debug",
-        createdAt: now,
-      }),
-    );
-
-    await waitFor(() => harness.steerTurn.mock.calls.length === 1);
-    await harness.drain();
-    expect(harness.sendTurn).not.toHaveBeenCalled();
-    expect(harness.interruptTurn).not.toHaveBeenCalled();
-    expect(harness.steerTurn.mock.calls[0]?.[0]).toMatchObject({
-      threadId: ThreadId.makeUnsafe("thread-1"),
-      interactionMode: "debug",
-      deliveryId: "command:cmd-turn-steer-codex",
-    });
-    const steerInput = harness.steerTurn.mock.calls[0]?.[0] as { readonly input?: string };
-    expect(steerInput.input).toContain("pivot now");
-    expect(steerInput.input?.split(PROVIDER_DEBUG_MODE_PROMPT_PREFIX)).toHaveLength(2);
-    const message = (
-      await Effect.runPromise(harness.engine.getReadModel())
-    ).threads[0]?.messages.find((entry) => entry.id === "msg-steer-codex");
-    expect(message?.turnId).toBeNull();
-    expect(message?.startsNewTurn).toBe(false);
-  });
+        deliveryId: "command:cmd-turn-steer-codex",
+      });
+      const steerInput = harness.steerTurn.mock.calls[0]?.[0] as { readonly input?: string };
+      expect(steerInput.input).toContain("pivot now");
+      expect(steerInput.input?.split(PROVIDER_DEBUG_MODE_PROMPT_PREFIX)).toHaveLength(2);
+      const message = (
+        await Effect.runPromise(harness.engine.getReadModel())
+      ).threads[0]?.messages.find((entry) => entry.id === "msg-steer-codex");
+      expect(message?.turnId).toBe("turn-running");
+      expect(message?.startsNewTurn).toBe(false);
+      const rows = await Effect.runPromise(
+        harness.sql<{ readonly turnId: string | null; readonly startsNewTurn: number | null }>`
+        SELECT turn_id AS "turnId", starts_new_turn AS "startsNewTurn"
+        FROM projection_thread_messages
+        WHERE thread_id = 'thread-1' AND message_id = 'msg-steer-codex'
+      `,
+      );
+      expect(rows).toEqual([{ turnId: "turn-running", startsNewTurn: 0 }]);
+    },
+  );
 
   it.each([false, true])(
     "handles a settled codex steer with Router protection=%s",
