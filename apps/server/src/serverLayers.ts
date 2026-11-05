@@ -216,6 +216,7 @@ export function makeServerRuntimeServicesLayer(
     Layer.provideMerge(runtimeServicesLayer),
   );
   const agentGatewayLayer = AgentGatewayLive.pipe(
+    Layer.provideMerge(TextGenerationLayerLive),
     Layer.provideMerge(metisControllerLayer),
     Layer.provideMerge(peerServiceLayer),
     Layer.provideMerge(metisMemoryLayer),

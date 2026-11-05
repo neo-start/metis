@@ -149,3 +149,11 @@ Native-steer result binding (2026-11-05) extends the existing
 `74be62f6e`. Reviewed Synara `ProviderCommandReactor.ts` at
 `ec3b1f6ef9c2f656f26dd9711339fe1265d8cb5c` and T3 orchestration at
 `f5ef0ddb90a8c36584e181b1913e7b8a5df30ffc`; no additional upstream source copied.
+
+Router conversational presentation (2026-11-05) extends the local isolated
+`routeMessage` channel, dispatch receipts, completion outbox and Feishu delivery
+records at `f001715c7`. Reviewed Synara's text-generation service at
+`eaa61eded31b6755d4f30ba8eabc5d905cf817cb` and T3's
+`apps/server/src/textGeneration/TextGenerationPrompts.ts` at
+`f5ef0ddb90a8c36584e181b1913e7b8a5df30ffc`. No additional upstream code copied;
+existing licenses and provider execution boundaries remain intact.

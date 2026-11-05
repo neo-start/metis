@@ -1,3 +1,8 @@
+import path from "node:path";
+import { TextGeneration } from "../../git/Services/TextGeneration.ts";
+import { generateRouterMessage } from "../../router/routerGeneration.ts";
+import { routerResultInput, routerResultFallback } from "../../router/RouterPresentation.ts";
+import { RouterDecision } from "../../git/routerPrompt.ts";
 import { GatewayToolError } from "../toolRuntime.ts";
 import { makeThoughtTools } from "../thoughtTools.ts";
 import { MetisControllerService } from "../../metis/MetisControllerService.ts";
@@ -158,6 +163,7 @@ export const makeAgentGateway = Effect.gen(function* () {
   const providerRuntimeEvents = yield* ProviderRuntimeEventRepository;
   const diagnostics = yield* ThreadDiagnosticsQuery;
   const serverConfig = yield* ServerConfig;
+  const routerTextGeneration = Option.getOrUndefined(yield* Effect.serviceOption(TextGeneration));
   const browserAutomationHost = Option.getOrElse(
     yield* Effect.serviceOption(BrowserAutomationHost),
     () => makeBrowserAutomationHost({}),
@@ -212,6 +218,26 @@ export const makeAgentGateway = Effect.gen(function* () {
   yield* Effect.forkScoped(
     Effect.forever(
       deliverGatewayCompletions({
+        presentRouterResult: (source, request, result) =>
+          routerTextGeneration
+            ? generateRouterMessage(
+                routerTextGeneration,
+                routerResultInput(
+                  path.join(serverConfig.stateDir, "router", "generation"),
+                  source,
+                  request,
+                  result,
+                ),
+              ).pipe(
+                Effect.flatMap((response) => Schema.decodeUnknownEffect(RouterDecision)(response)),
+                Effect.map((response) =>
+                  response.route === "reply" && !response.targetTaskId && response.reply.trim()
+                    ? response.reply.trim()
+                    : routerResultFallback(result),
+                ),
+                Effect.catch(() => Effect.succeed(routerResultFallback(result))),
+              )
+            : Effect.succeed(routerResultFallback(result)),
         repository: operationRepository.completions,
         snapshotQuery,
         projectionTurns,

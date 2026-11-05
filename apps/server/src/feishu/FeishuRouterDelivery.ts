@@ -32,6 +32,9 @@ export class FeishuRouterDelivery {
     private readonly host: {
       accept(command: TurnStart): Promise<unknown>;
       readThread(id: ThreadId): Promise<OrchestrationThread | undefined>;
+      readDelivery?(
+        command: TurnStart,
+      ): Promise<{ workerId?: string | undefined; followup: boolean } | undefined>;
       readFollowup?(workerId: string, command: TurnStart): Promise<string | undefined>;
       allowed(senderId: string): boolean;
       send(
@@ -139,18 +142,22 @@ export class FeishuRouterDelivery {
                 (m) => m.id === `router-${key}` || m.id === `router-failure-${key}`,
               );
               if (!reply || this.stopped || !this.host.allowed(record.senderId)) return;
-              const sent = await this.host.send(record.chatId, reply.text, record.replyTo);
+              const binding = await this.host.readDelivery?.(command);
+              // Legacy receipts still use their original templates. New receipts never parse prose.
               const followupId = reply.text.match(
                 /^(?:Router[：:]\s*)?(?:修改已加入任务 |已向任务 )([a-zA-Z0-9_-]+)(?: 的队列。| 提交修改，)/u,
               )?.[1];
-              const workerId = /^(?:Router[：:]\s*)?已创建独立任务/u.test(reply.text)
+              const legacyWorkerId = /^(?:Router[：:]\s*)?已创建独立任务/u.test(reply.text)
                 ? reply.text.match(/\/tasks\?thread=([a-zA-Z0-9_-]+)/u)?.[1]
                 : followupId;
+              const workerId = binding ? binding.workerId : legacyWorkerId;
+              const followup = binding ? binding.followup : Boolean(followupId);
+              const sent = await this.host.send(record.chatId, reply.text, record.replyTo);
               record = {
                 ...record,
                 replied: true,
                 sentMessageIds: sent ? [sent.messageId, ...(sent.chunkIds ?? [])] : [],
-                ...(workerId ? { workerId, followup: Boolean(followupId) } : { done: true }),
+                ...(workerId ? { workerId, followup } : { done: true }),
               };
               await this.save(key, record);
             }

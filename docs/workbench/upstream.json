@@ -307,6 +307,20 @@
         "apps/server/src/feishu/FeishuRouterDelivery.ts"
       ],
       "adaptations": "Retain source-scoped worker bindings in existing durable receipts; resolve earlier in-flight requests and SDK quoted reply IDs; reject ambiguous implicit targets. No separate task store or T3 code copied."
+    },
+    "conversationPresentation": {
+      "localBaseCommit": "f001715c7",
+      "sources": [
+        "apps/server/src/git/routerPrompt.ts",
+        "apps/server/src/router/AgentRouter.ts",
+        "apps/server/src/router/RouterInbox.ts",
+        "apps/server/src/agentGateway/completionDelivery.ts",
+        "apps/server/src/feishu/FeishuRouterDelivery.ts"
+      ],
+      "reviewedSynaraCommit": "eaa61eded31b6755d4f30ba8eabc5d905cf817cb",
+      "reviewedT3Commit": "f5ef0ddb90a8c36584e181b1913e7b8a5df30ffc",
+      "reviewedT3Source": "apps/server/src/textGeneration/TextGenerationPrompts.ts",
+      "adaptations": "Reuse local isolated routeMessage generation, durable dispatch receipts, exact-turn completion outbox and Feishu delivery records for conversational acknowledgements and results. Separate transport binding from prose; preserve legacy replay fingerprints. No T3 source copied or new provider/runtime boundary."
     }
   }
 }

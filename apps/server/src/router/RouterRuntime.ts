@@ -1,8 +1,8 @@
-import { mkdir as mkdirRouterDirectory } from "node:fs/promises";
 import { join as joinRouterPath } from "node:path";
 import { Effect, Layer, Option, ServiceMap } from "effect";
 import type { OrchestrationCommand, ThreadId } from "@synara/contracts";
 import { RouterInbox } from "./RouterInbox.ts";
+import { generateRouterMessage } from "./routerGeneration.ts";
 import { AgentRouter } from "./AgentRouter.ts";
 import { AgentGateway } from "../agentGateway/Services/AgentGateway.ts";
 import { ServerConfig } from "../config.ts";
@@ -54,17 +54,14 @@ export const makeRouterRuntime = Effect.gen(function* () {
       });
     },
     generate: async (input: import("../git/Services/TextGeneration.ts").RouterGenerationInput) => {
-      if (!textGeneration.routeMessage) throw new Error("Router generation unavailable.");
-      await mkdirRouterDirectory(routerGenerationCwd, { recursive: true, mode: 0o700 });
       const startedAt = Date.now();
       return Effect.runPromise(
-        textGeneration.routeMessage(input).pipe(
-          Effect.timeout("30 seconds"),
+        generateRouterMessage(textGeneration, input).pipe(
           Effect.tap(() =>
             Effect.logInfo("Router generation completed", { elapsedMs: Date.now() - startedAt }),
           ),
           Effect.tapError((error) =>
-            Effect.logWarning("Router generation failed", { errorType: error._tag }),
+            Effect.logWarning("Router generation failed", { error: String(error) }),
           ),
         ),
         { signal: routerAbort.signal },

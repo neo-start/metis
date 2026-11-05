@@ -1,4 +1,5 @@
 import { ThreadId, type OrchestrationCommand, type OrchestrationThread } from "@synara/contracts";
+import { routerResultFallback, type RouterResult } from "../router/RouterPresentation.ts";
 import type { ProjectionTurn } from "../persistence/Services/ProjectionTurns.ts";
 
 /** Resolve this correction's durable turn, never the worker's latest unrelated reply. */
@@ -6,6 +7,7 @@ export async function readFeishuFollowup(
   workerId: string,
   command: Extract<OrchestrationCommand, { type: "thread.turn.start" }>,
   host: {
+    presentResult?(result: RouterResult): Promise<string>;
     readThread(id: ThreadId): Promise<OrchestrationThread | undefined>;
     turns(id: ThreadId): Promise<ReadonlyArray<ProjectionTurn>>;
     isOutputSettled(id: string): Promise<boolean>;
@@ -38,5 +40,13 @@ export async function readFeishuFollowup(
     (message) =>
       message.role === "assistant" && message.turnId === turn.turnId && !message.streaming,
   );
-  return `任务 [${id}](/tasks?thread=${encodeURIComponent(id)}) ${turn.state}。\n${answer?.text || "本轮没有最终回复，请打开任务查看详情。"}`;
+  const result: RouterResult = {
+    status: turn.state,
+    summary: answer?.text ?? null,
+    error:
+      turn.state === "error" && detail.latestTurn?.turnId === turn.turnId
+        ? (detail.session?.lastError ?? null)
+        : null,
+  };
+  return host.presentResult ? host.presentResult(result) : routerResultFallback(result);
 }

@@ -5,6 +5,12 @@ import { CommandId, MessageId, OrchestrationCommand } from "@synara/contracts";
 import { Effect, Schema } from "effect";
 import { writeFileStringAtomically } from "../atomicWrite.ts";
 import { fingerprintOrchestrationCommand } from "../orchestration/commandFingerprint.ts";
+import {
+  presentRouterResponse,
+  routerResultInput,
+  routerResultFallback,
+  type RouterResult,
+} from "./RouterPresentation.ts";
 import { AgentRouter, type AgentRouterHost } from "./AgentRouter.ts";
 
 type TurnStart = Extract<OrchestrationCommand, { type: "thread.turn.start" }>;
@@ -28,6 +34,22 @@ export class RouterInbox {
     private readonly router: AgentRouter,
     private readonly host: AgentRouterHost,
   ) {}
+
+  readDelivery(command: TurnStart) {
+    return this.router.readDelivery(command);
+  }
+
+  async presentResult(command: TurnStart, result: RouterResult) {
+    const fallback = routerResultFallback(result);
+    if (this.stopped) return fallback;
+    const source = await this.host.readThread(command.threadId);
+    if (!source || source.deletedAt || source.archivedAt) return fallback;
+    return presentRouterResponse(
+      this.host.generate,
+      routerResultInput(this.host.generationCwd, source, command.message.text, result),
+      fallback,
+    );
+  }
 
   stop() {
     this.stopped = true;

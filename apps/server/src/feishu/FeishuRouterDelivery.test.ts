@@ -151,3 +151,50 @@ it("does not admit or deliver persisted messages after allowlist revocation", as
   expect(host.readThread).not.toHaveBeenCalled();
   expect(host.send).not.toHaveBeenCalled();
 });
+
+it.each([false, true])(
+  "delivers natural replies using structured bindings (followup=%s)",
+  async (followup) => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "feishu-natural-"));
+    roots.push(root);
+    const command = {
+      type: "thread.turn.start",
+      commandId: CommandId.makeUnsafe("natural"),
+      threadId: ThreadId.makeUnsafe("source"),
+      message: {
+        messageId: MessageId.makeUnsafe("input"),
+        role: "user",
+        text: "补上 MCP 入口",
+        attachments: [],
+      },
+      runtimeMode: "approval-required",
+      interactionMode: "default",
+      createdAt: new Date().toISOString(),
+    } as Extract<OrchestrationCommand, { type: "thread.turn.start" }>;
+    const key = createHash("sha256").update(command.commandId).digest("hex");
+    const messages = [
+      { id: `router-${key}`, text: "我来补上 MCP 入口。" },
+      { id: "router-completion:worker", text: "入口已补上，接口检查通过。" },
+    ];
+    const host = {
+      accept: vi.fn(async () => ({})),
+      allowed: () => true,
+      readThread: async () => ({ messages }) as unknown as OrchestrationThread,
+      readDelivery: vi.fn(async () => ({ workerId: "worker", followup })),
+      readFollowup: vi.fn(async () => "补充要求已处理，检查通过。"),
+      send: vi.fn(async () => ({ messageId: "reply" })),
+    };
+    const delivery = new FeishuRouterDelivery(root, host);
+    await delivery.enqueue({ chatId: "chat", senderId: "owner", replyTo: "input", command });
+    await delivery.flush();
+    expect(host.send).toHaveBeenNthCalledWith(1, "chat", "我来补上 MCP 入口。", "input");
+    expect(host.send).toHaveBeenLastCalledWith(
+      "chat",
+      followup ? "补充要求已处理，检查通过。" : "入口已补上，接口检查通过。",
+      "input",
+    );
+    await new FeishuRouterDelivery(root, host).flush();
+    expect(host.send).toHaveBeenCalledTimes(2);
+    expect(host.readFollowup).toHaveBeenCalledTimes(followup ? 1 : 0);
+  },
+);

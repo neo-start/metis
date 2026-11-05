@@ -230,9 +230,7 @@ describe("Feishu Router ingress and passive delivery", () => {
     ).toBe(true);
     await vi.waitFor(
       () =>
-        expect(JSON.stringify(transport.send.mock.calls)).toContain(
-          "引用的消息没有可确认的关联任务",
-        ),
+        expect(JSON.stringify(transport.send.mock.calls)).toContain("我还无法确认你引用的是哪件事"),
       { timeout: 3000 },
     );
     expect(f.generate).not.toHaveBeenCalled();

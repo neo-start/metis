@@ -316,9 +316,11 @@ export const makeFeishuBridge = Effect.gen(function* () {
     const routerDelivery = router
       ? new FeishuRouterDelivery(path.join(config.stateDir, "feishu-router-delivery"), {
           accept: (command) => router.accept(command),
+          readDelivery: (command) => router.readDelivery(command),
           readThread: readDetail,
           readFollowup: (workerId, command) =>
             readFeishuFollowup(workerId, command, {
+              presentResult: (result) => router.presentResult(command, result),
               readThread: readDetail,
               turns: (threadId) => run(turnRepository.listByThreadId({ threadId })),
               isOutputSettled: (threadId) => run(completions.isOutputSettled(threadId)),

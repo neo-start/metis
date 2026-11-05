@@ -17,6 +17,7 @@ import type {
   RouterGenerationResult,
 } from "../git/Services/TextGeneration.ts";
 import { providerSupportsNativeTurnSteering } from "@synara/shared/providerMetadata";
+import { presentRouterResponse } from "./RouterPresentation.ts";
 import { taskControlProgress } from "../taskControl/service.ts";
 
 type TurnStart = Extract<OrchestrationCommand, { type: "thread.turn.start" }>;
@@ -36,10 +37,13 @@ const WorkerPlan = Schema.Struct({
   type: Schema.Literal("router.worker.create"),
   command: OrchestrationCommand,
   sourceContext: Schema.optional(Schema.String),
+  reply: Schema.optional(Schema.String),
 });
 const PlannedCommand = Schema.Union([OrchestrationCommand, WorkerPlan]);
 type PlannedCommand = typeof PlannedCommand.Type;
 const SavedDispatch = Schema.Struct({
+  presentationVersion: Schema.optional(Schema.Literal(1)),
+  followup: Schema.optional(Schema.Boolean),
   fingerprint: Schema.String,
   commands: Schema.Array(PlannedCommand),
   resultSequence: Schema.optional(Schema.Number),
@@ -112,6 +116,27 @@ export class AgentRouter {
   private readonly lanes = new Map<string, Promise<unknown>>();
   constructor(private readonly stateRoot: string) {}
 
+  /** Server-owned transport metadata, independent of user-visible wording. */
+  async readDelivery(command: TurnStart) {
+    try {
+      const receipt = Schema.decodeUnknownSync(SavedDispatch)(
+        JSON.parse(
+          await readFile(path.join(this.stateRoot, `${hash(command.commandId)}.json`), "utf8"),
+        ),
+      );
+      if (
+        receipt.fingerprint !== fingerprintOrchestrationCommand(command).value ||
+        receipt.sourceThreadId !== command.threadId ||
+        receipt.presentationVersion !== 1
+      )
+        return;
+      return { workerId: receipt.workerId, followup: receipt.followup ?? false };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+      throw error;
+    }
+  }
+
   dispatch(command: TurnStart, host: AgentRouterHost): Promise<DispatchResult> {
     const fingerprint = fingerprintOrchestrationCommand(command).value;
     const key = hash(command.commandId);
@@ -164,7 +189,7 @@ export class AgentRouter {
     }
     if (!saved) {
       const commands = await this.plan(command, thread, host, key, predecessors);
-      saved = { fingerprint, commands };
+      saved = { fingerprint, commands, presentationVersion: 1, sourceThreadId: command.threadId };
       await Effect.runPromise(
         writeFileStringAtomically({ filePath, contents: JSON.stringify(saved) }),
       );
@@ -176,8 +201,19 @@ export class AgentRouter {
     for (const planned of saved.commands) {
       if (planned.type !== "router.worker.create") {
         result = await host.dispatch(planned);
-        if (planned.type === "thread.turn.start" && planned.threadId !== command.threadId)
+        if (planned.type === "thread.turn.start" && planned.threadId !== command.threadId) {
           workerBinding = planned.threadId;
+          // Save the acknowledged binding before publishing the conversational reply.
+          saved = {
+            ...saved,
+            workerId: workerBinding,
+            followup: true,
+            sourceThreadId: command.threadId,
+          };
+          await Effect.runPromise(
+            writeFileStringAtomically({ filePath, contents: JSON.stringify(saved) }),
+          );
+        }
         continue;
       }
       if (!host.createWorker || planned.command.type !== "thread.turn.start")
@@ -197,7 +233,11 @@ export class AgentRouter {
           {
             messageId: MessageId.makeUnsafe(`router-${key}`),
             role: "assistant",
-            text: `已创建独立任务 [${workerId}](/tasks?thread=${encodeURIComponent(workerId)})。可继续在这里聊天；打开任务可查看进度、修改要求或取消。任务完成后会通知此会话。`,
+            text:
+              planned.reply ??
+              (saved.presentationVersion === 1
+                ? "我会按你的要求处理，有结果后在这里告诉你。"
+                : `已创建独立任务 [${workerId}](/tasks?thread=${encodeURIComponent(workerId)})。可继续在这里聊天；打开任务可查看进度、修改要求或取消。任务完成后会通知此会话。`),
             createdAt: command.createdAt,
             updatedAt: command.createdAt,
           },
@@ -210,6 +250,8 @@ export class AgentRouter {
         filePath,
         contents: JSON.stringify({
           fingerprint,
+          presentationVersion: saved.presentationVersion,
+          followup: saved.followup,
           commands: [],
           resultSequence: result.sequence,
           workerId: workerBinding,
@@ -229,7 +271,8 @@ export class AgentRouter {
   ): Promise<ReadonlyArray<PlannedCommand>> {
     const { routingMode: _, routerSourceCommandId: _sourceReference, ...workerCommand } = command;
     const { providerOptions: _workerOptions, ...correctionCommand } = workerCommand;
-    const workerPlan = (): PlannedCommand => ({
+    const workerPlan = (response?: string): PlannedCommand => ({
+      ...(response?.trim() ? { reply: response.trim() } : {}),
       type: "router.worker.create",
       command: workerCommand,
       sourceContext: JSON.stringify({
@@ -306,25 +349,44 @@ export class AgentRouter {
     ) {
       referencedTask = await resolveRequest(command.routerSourceCommandId);
       if (!referencedTask)
-        return [reply("引用的消息没有可确认的关联任务，请指定任务 ID；这条消息尚未追加。")];
+        return [reply("我还无法确认你引用的是哪件事，这条补充尚未追加。请说一下要修改的内容。")];
       tasks.splice(0, tasks.length, referencedTask);
     }
     const status = () =>
       tasks.length
-        ? tasks
-            .map(
-              (task) =>
-                `[${task.title}](/tasks?thread=${encodeURIComponent(task.id)}) · ${task.id}\n${routerStatusReply(task)}`,
-            )
-            .join("\n\n")
+        ? tasks.map((task) => `${task.title}\n${routerStatusReply(task)}`).join("\n\n")
         : host.createWorker
           ? "尚无已启动任务；已受理消息可能仍在路由或创建中。"
           : routerStatusReply(thread);
-    if (isRouterStatusQuestion(command.message.text)) return [reply(status())];
+    const present = (mode: "status" | "acknowledgement", facts: unknown, fallback: string) =>
+      presentRouterResponse(
+        host.generate,
+        {
+          cwd: host.generationCwd,
+          modelSelection: thread.modelSelection,
+          ...(command.providerOptions ? { providerOptions: command.providerOptions } : {}),
+          responseMode: mode,
+          message: command.message.text,
+          taskContext: JSON.stringify({
+            facts,
+            conversation: thread.messages
+              .slice(-8)
+              .map(({ role, text }) => ({ role, text: text.slice(-2000) })),
+          }),
+        },
+        fallback,
+      );
+    // Preserve instant progress while an earlier classifier/creation is still pending.
+    if (isRouterStatusQuestion(command.message.text))
+      return [reply(predecessors.length ? status() : await present("status", status(), status()))];
     if (isRouterCancelRequest(command.message.text)) {
       const active = tasks.filter(routerHasActiveTurn);
       if (active.length > 1)
-        return [reply("有多个运行中任务，请打开需要停止的任务，或发送 `任务 <任务ID> 停止`。")];
+        return [
+          reply(
+            `你想停止哪件事：${active.map((task) => task.title).join("、")}？可以引用对应的消息，再说“停止”。`,
+          ),
+        ];
       const target = active[0];
       const turnId = target?.session?.activeTurnId;
       if (!target || !turnId) return [reply("当前没有可确认的运行中任务，未发送取消指令。")];
@@ -360,10 +422,13 @@ export class AgentRouter {
             turnId: target.session.activeTurnId,
             createdAt: command.createdAt,
           },
-          reply(`已请求停止任务 ${target.id}，等待执行器确认。`),
+          reply(`已请求停止“${target.title}”，正在等待停止确认。`),
         ];
       }
-      if (isRouterStatusQuestion(explicit[2]!)) return [reply(routerStatusReply(target))];
+      if (isRouterStatusQuestion(explicit[2]!))
+        return [
+          reply(await present("status", routerStatusReply(target), routerStatusReply(target))),
+        ];
     }
     if (!explicit && host.createWorker && command.message.text.length > 16000)
       return [workerPlan()];
@@ -382,7 +447,19 @@ export class AgentRouter {
     try {
       decision = Schema.decodeUnknownSync(RouterDecision)(
         referencedTask || explicit
-          ? { route: "steer", targetTaskId: referencedTask?.id ?? explicit![1], reply: "" }
+          ? {
+              route: "steer",
+              targetTaskId: referencedTask?.id ?? explicit![1],
+              reply: await present(
+                "acknowledgement",
+                {
+                  action: "supplement",
+                  task:
+                    referencedTask?.title ?? tasks.find((task) => task.id === explicit?.[1])?.title,
+                },
+                "明白，我会按这条补充继续处理。",
+              ),
+            }
           : await host.generate({
               cwd: host.generationCwd,
               message: command.message.text,
@@ -404,6 +481,10 @@ export class AgentRouter {
                     .findLast((m) => m.role === "user")
                     ?.text.slice(0, 1000),
                   state: task.session?.status,
+                  pendingInteractions: taskControlProgress(task).pendingInteractions.length,
+                  pendingUserInputs: taskControlProgress(task).asyncUserInputs.length,
+                  latestActivity: task.activities.at(-1)?.summary.slice(0, 500),
+                  updatedAt: task.session?.updatedAt ?? task.updatedAt,
                   latestTurn: task.latestTurn,
                   latestOutput: task.messages
                     .findLast((m) => m.role === "assistant")
@@ -428,7 +509,7 @@ export class AgentRouter {
     const current = await host.readThread(command.threadId);
     if (!current || current.deletedAt || current.archivedAt || current.sidechatExpiredAt)
       throw new Error("Router target conversation is unavailable.");
-    if (decision.route === "status") return [reply(status())];
+    if (decision.route === "status") return [reply(decision.reply.trim() || status())];
     if (decision.route === "reply" && decision.reply.trim()) return [reply(decision.reply.trim())];
     if (decision.route === "steer") {
       const selectedPending = predecessors.find(
@@ -438,7 +519,7 @@ export class AgentRouter {
       if (selectedPending) {
         const resolved = await resolveRequest(selectedPending.command.commandId);
         if (!resolved)
-          return [reply("前一条消息尚未形成可确认的任务，请指定任务 ID；这条补充尚未追加。")];
+          return [reply("前一条请求还没有成功安排，这条补充尚未追加。请说明要继续处理的内容。")];
         if (!tasks.some((task) => task.id === resolved.id)) tasks.push(resolved);
         decision = { ...decision, targetTaskId: resolved.id };
       }
@@ -476,9 +557,10 @@ export class AgentRouter {
           ...(steer ? { routerTurnId: target.session!.activeTurnId! } : {}),
         },
         reply(
-          steer
-            ? `已向任务 ${target.id} 提交修改，等待执行器接收。这不代表修改已经完成。`
-            : `修改已加入任务 ${target.id} 的队列。`,
+          decision.reply.trim() ||
+            (steer
+              ? "明白，我会按这条补充继续处理。"
+              : "收到这条补充，我会在当前这一步结束后继续处理。"),
           false,
         ),
       ];
@@ -490,14 +572,14 @@ export class AgentRouter {
             "独立响应通道暂时不可用或超时，消息未交给执行器。请重试；明确的新任务可用「新任务：…」直接提交。",
           ),
         ];
-      return [workerPlan()];
+      return [workerPlan(decision.reply)];
     }
     return [
       { ...workerCommand, dispatchMode: "queue" },
       reply(
         failed
           ? "独立响应通道暂时不可用或超时，这条消息已交给任务队列。"
-          : "这条消息需要任务执行，已交给任务队列。",
+          : decision.reply.trim() || "我会按你的要求继续处理。",
         false,
       ),
     ];

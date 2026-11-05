@@ -277,7 +277,7 @@ describe("AgentRouter above the real orchestration engine", () => {
     await new AgentRouter(path.join(f.root, "receipts")).dispatch(input, host);
     expect(f.generate).toHaveBeenCalledTimes(1);
     expect((await f.readThread()).messages.filter((m) => m.role === "user")).toHaveLength(1);
-    expect((await f.readThread()).messages.at(-1)?.text).toContain("不代表修改已经完成");
+    expect((await f.readThread()).messages.at(-1)?.text).toContain("我会按这条补充继续处理");
   });
 
   it("does not redirect a replacement run when the original finishes during classification", async () => {
@@ -496,7 +496,8 @@ describe("durable Router workers", () => {
       true,
     );
     expect(f.ids).toHaveLength(2);
-    expect(f.generate).toHaveBeenCalledTimes(1);
+    expect(f.generate).toHaveBeenCalledTimes(2);
+    expect(f.generate.mock.lastCall?.[0].responseMode).toBe("acknowledgement");
     await restarted.dispatch(
       {
         ...f.command("继续修改", "quote-followup"),
@@ -579,7 +580,9 @@ describe("durable Router workers", () => {
     await vi.waitFor(() => expect(finish).toBeDefined());
     await f.inbox.accept(f.command("进度如何", "status"));
     await vi.waitFor(async () =>
-      expect((await f.readThread()).messages.some((m) => m.text.includes(first))).toBe(true),
+      expect((await f.readThread()).messages.some((m) => m.text.includes("任务仍在运行"))).toBe(
+        true,
+      ),
     );
     finish!({ route: "reply", reply: "队列保存待处理消息。" });
     await vi.waitFor(async () =>
@@ -597,7 +600,7 @@ describe("durable Router workers", () => {
     await vi.waitFor(() => expect(f.ids).toHaveLength(2));
     await f.inbox.accept(f.command("停止", "ambiguous"));
     await vi.waitFor(async () =>
-      expect((await f.readThread()).messages.some((m) => m.text.includes("多个运行中任务"))).toBe(
+      expect((await f.readThread()).messages.some((m) => m.text.includes("你想停止哪件事"))).toBe(
         true,
       ),
     );
@@ -724,7 +727,8 @@ it("pins an explicit correction to task A even when generation would pick B and 
     },
     f.host,
   );
-  expect(f.generate).not.toHaveBeenCalled();
+  expect(f.generate).toHaveBeenCalledTimes(1);
+  expect(f.generate.mock.lastCall?.[0].responseMode).toBe("acknowledgement");
   expect(
     (await f.readThread(first!)).messages.some((message) => message.text.includes("修改成中文")),
   ).toBe(true);
@@ -733,4 +737,79 @@ it("pins an explicit correction to task A even when generation would pick B and 
   ).toBe(false);
   expect((await f.readThread(first!)).runtimeMode).toBe("approval-required");
   expect(f.ids).toHaveLength(2);
+});
+
+it("publishes a generated acknowledgement only after creation and persists its binding before publication", async () => {
+  const f = await workerFixture();
+  const input = f.command("给 MCP 加上直聊入口", "natural");
+  const response = "我来补上 MCP 的直聊入口，先检查现有接口和会话处理方式。";
+  f.generate.mockResolvedValue({ route: "queue", reply: response });
+  const originalDispatch = f.host.dispatch;
+  let lost = true;
+  f.host.dispatch = async (command) => {
+    if (command.type === "thread.messages.import") {
+      expect(f.ids).toHaveLength(1);
+      expect(await f.inbox.readDelivery(input)).toEqual({ workerId: f.ids[0], followup: false });
+      expect(command.messages.at(-1)?.text).toBe(response);
+      const result = await originalDispatch(command);
+      if (lost) {
+        lost = false;
+        throw new Error("lost acknowledgement");
+      }
+      return result;
+    }
+    return originalDispatch(command);
+  };
+  await expect(f.router.dispatch(input, f.host)).rejects.toThrow("lost acknowledgement");
+  const recovered = new AgentRouter(path.join(f.root, "receipts"));
+  await recovered.dispatch(input, f.host);
+  expect(f.generate).toHaveBeenCalledTimes(1);
+  expect(f.ids).toHaveLength(1);
+  expect((await f.readThread()).messages.filter((m) => m.text === response)).toHaveLength(1);
+  expect(await recovered.readDelivery(input)).toEqual({ workerId: f.ids[0], followup: false });
+  expect(
+    await recovered.readDelivery({ ...input, message: { ...input.message, text: "different" } }),
+  ).toBeUndefined();
+});
+
+it("never publishes generated acceptance when worker creation fails", async () => {
+  const f = await workerFixture();
+  f.generate.mockResolvedValue({ route: "queue", reply: "我来补上接口。" });
+  f.host.createWorker = async () => {
+    throw new Error("creation failed");
+  };
+  await expect(f.router.dispatch(f.command("增加接口"), f.host)).rejects.toThrow("creation failed");
+  expect((await f.readThread()).messages.some((m) => m.role === "assistant")).toBe(false);
+});
+
+it("keeps a generated supplement scoped to its worker and saves the binding before replying", async () => {
+  const f = await workerFixture();
+  await f.router.dispatch(f.command("新任务：MCP", "initial"), f.host);
+  const input = f.command("本机有连接跳板机", "supplement");
+  const response = "明白，我会通过本机的跳板机连接继续排查。";
+  f.generate.mockResolvedValue({ route: "steer", targetTaskId: f.ids[0]!, reply: response });
+  const dispatch = f.host.dispatch;
+  f.host.dispatch = async (command) => {
+    if (command.type === "thread.messages.import") {
+      expect(await f.inbox.readDelivery(input)).toEqual({ workerId: f.ids[0], followup: true });
+    }
+    return dispatch(command);
+  };
+  await f.router.dispatch(input, f.host);
+  expect((await f.readThread()).messages.at(-1)?.text).toBe(response);
+  expect((await f.readThread(f.ids[0]!)).messages.at(-1)?.text).toBe(input.message.text);
+});
+
+it("answers progress from recorded facts without allowing presentation to create work", async () => {
+  const f = await workerFixture();
+  await f.router.dispatch(f.command("新任务：MCP", "initial"), f.host);
+  f.generate.mockResolvedValueOnce({ route: "reply", reply: "MCP 接口还在处理中。" });
+  await f.router.dispatch(f.command("进度如何", "progress"), f.host);
+  expect(f.generate.mock.lastCall?.[0].responseMode).toBe("status");
+  expect(f.generate.mock.lastCall?.[0].taskContext).toContain("任务仍在运行");
+  expect((await f.readThread()).messages.at(-1)?.text).toBe("MCP 接口还在处理中。");
+  f.generate.mockResolvedValueOnce({ route: "queue", reply: "create another task" });
+  await f.router.dispatch(f.command("进度如何", "progress-again"), f.host);
+  expect(f.ids).toHaveLength(1);
+  expect((await f.readThread()).messages.at(-1)?.text).toContain("任务仍在运行");
 });

@@ -33,9 +33,7 @@ function fixture() {
 
 it("binds a follow-up to its own completed turn despite later replies", async () => {
   const { command, host } = fixture();
-  expect(await readFeishuFollowup("worker", command, host)).toBe(
-    "任务 [worker](/tasks?thread=worker) completed。\ncorrect result",
-  );
+  expect(await readFeishuFollowup("worker", command, host)).toBe("correct result");
 });
 
 it.each(["running", "pending", "unsettled", "missing-terminal", "wrong-owner", "missing-input"])(
@@ -69,6 +67,8 @@ it.each(["error", "interrupted"] as const)(
     const { command, turn, host } = fixture();
     host.turns.mockResolvedValue([{ ...turn, state }]);
     host.hasCompletedRun.mockResolvedValue(false);
-    expect(await readFeishuFollowup("worker", command, host)).toContain(`) ${state}。`);
+    expect(await readFeishuFollowup("worker", command, host)).toContain(
+      state === "error" ? "尚未确认完成" : "已中断",
+    );
   },
 );

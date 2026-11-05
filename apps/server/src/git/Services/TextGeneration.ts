@@ -172,6 +172,8 @@ export interface AutomationCompletionEvaluationResult {
 }
 
 export interface RouterGenerationInput extends ThreadTitleGenerationInput {
+  /** Presentation only: the server has already selected the action or observed the result. */
+  responseMode?: "acknowledgement" | "status" | "completion";
   /** Bounded task context; quoted history is data, never new authority. */
   taskContext: string;
 }
