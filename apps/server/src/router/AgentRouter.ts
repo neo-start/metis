@@ -43,6 +43,8 @@ const SavedDispatch = Schema.Struct({
   fingerprint: Schema.String,
   commands: Schema.Array(PlannedCommand),
   resultSequence: Schema.optional(Schema.Number),
+  workerId: Schema.optional(ThreadId),
+  sourceThreadId: Schema.optional(ThreadId),
 });
 const hash = (text: string) => createHash("sha256").update(text).digest("hex");
 const statusQuestion =
@@ -105,7 +107,7 @@ export function routerStatusReply(thread: OrchestrationThread) {
 export class AgentRouter {
   private readonly requests = new Map<
     string,
-    { fingerprint: string; result: Promise<DispatchResult> }
+    { fingerprint: string; command: TurnStart; result: Promise<DispatchResult> }
   >();
   private readonly lanes = new Map<string, Promise<unknown>>();
   constructor(private readonly stateRoot: string) {}
@@ -124,9 +126,12 @@ export class AgentRouter {
     // Only task-changing effects wait for earlier requests in the conversation.
     const priority = isRouterPriorityRequest(command.message.text);
     const previous = priority ? undefined : this.lanes.get(command.threadId);
-    const result = this.run(command, fingerprint, key, host, previous);
+    const predecessors = [...this.requests.values()].filter(
+      (entry) => entry.command.threadId === command.threadId,
+    );
+    const result = this.run(command, fingerprint, key, host, previous, predecessors);
     const lane = Promise.allSettled([previous, result]);
-    this.requests.set(key, { fingerprint, result });
+    this.requests.set(key, { fingerprint, command, result });
     if (!priority) this.lanes.set(command.threadId, lane);
     void result.finally(() => this.requests.delete(key)).catch(() => undefined);
     void lane.then(() => {
@@ -141,6 +146,7 @@ export class AgentRouter {
     key: string,
     host: AgentRouterHost,
     previous?: Promise<unknown>,
+    predecessors: Array<{ command: TurnStart; result: Promise<DispatchResult> }> = [],
   ): Promise<DispatchResult> {
     const filePath = path.join(this.stateRoot, `${key}.json`);
     let saved: typeof SavedDispatch.Type | undefined;
@@ -157,7 +163,7 @@ export class AgentRouter {
       throw new Error("Router target conversation is unavailable.");
     }
     if (!saved) {
-      const commands = await this.plan(command, thread, host, key);
+      const commands = await this.plan(command, thread, host, key, predecessors);
       saved = { fingerprint, commands };
       await Effect.runPromise(
         writeFileStringAtomically({ filePath, contents: JSON.stringify(saved) }),
@@ -165,15 +171,23 @@ export class AgentRouter {
     }
     if (saved.commands.some((planned) => planned.type !== "thread.messages.import"))
       await previous?.catch(() => undefined);
+    let workerBinding = saved.workerId;
     let result: DispatchResult = { sequence: 0 };
     for (const planned of saved.commands) {
       if (planned.type !== "router.worker.create") {
         result = await host.dispatch(planned);
+        if (planned.type === "thread.turn.start" && planned.threadId !== command.threadId)
+          workerBinding = planned.threadId;
         continue;
       }
       if (!host.createWorker || planned.command.type !== "thread.turn.start")
         throw new Error("Router worker service unavailable.");
       const workerId = await host.createWorker(planned.command, planned.sourceContext);
+      workerBinding = workerId;
+      saved = { ...saved, workerId, sourceThreadId: command.threadId };
+      await Effect.runPromise(
+        writeFileStringAtomically({ filePath, contents: JSON.stringify(saved) }),
+      );
       result = await host.dispatch({
         type: "thread.messages.import",
         commandId: CommandId.makeUnsafe(`router-worker-reply-${key}`),
@@ -194,7 +208,13 @@ export class AgentRouter {
     await Effect.runPromise(
       writeFileStringAtomically({
         filePath,
-        contents: JSON.stringify({ fingerprint, commands: [], resultSequence: result.sequence }),
+        contents: JSON.stringify({
+          fingerprint,
+          commands: [],
+          resultSequence: result.sequence,
+          workerId: workerBinding,
+          sourceThreadId: command.threadId,
+        }),
       }),
     );
     return result;
@@ -205,8 +225,9 @@ export class AgentRouter {
     thread: OrchestrationThread,
     host: AgentRouterHost,
     key: string,
+    predecessors: Array<{ command: TurnStart; result: Promise<DispatchResult> }>,
   ): Promise<ReadonlyArray<PlannedCommand>> {
-    const { routingMode: _, ...workerCommand } = command;
+    const { routingMode: _, routerSourceCommandId: _sourceReference, ...workerCommand } = command;
     const { providerOptions: _workerOptions, ...correctionCommand } = workerCommand;
     const workerPlan = (): PlannedCommand => ({
       type: "router.worker.create",
@@ -248,6 +269,7 @@ export class AgentRouter {
     });
     if (!canRouteTurn(command)) return [workerCommand];
     if (
+      !command.routerSourceCommandId &&
       /^(?:你好|您好|在吗|在不在|hello|hi|hey)[？?！!。\s]*$/iu.test(command.message.text.trim())
     ) {
       return [reply("我在，收到你的消息了。")];
@@ -256,6 +278,37 @@ export class AgentRouter {
     const tasks = [...(routerHasActiveTurn(thread) ? [thread] : []), ...workers].filter(
       (task) => !task.deletedAt && !task.archivedAt,
     );
+    const resolveRequest = async (id: string) => {
+      const pending = predecessors.find((entry) => entry.command.commandId === id);
+      if (pending) await pending.result.catch(() => undefined);
+      try {
+        const receipt = Schema.decodeUnknownSync(SavedDispatch)(
+          JSON.parse(await readFile(path.join(this.stateRoot, `${hash(id)}.json`), "utf8")),
+        );
+        if (receipt.sourceThreadId !== thread.id || !receipt.workerId) return;
+        const owned = host.listWorkers ? await host.listWorkers(thread.id) : [];
+        return owned.find(
+          (task) =>
+            task.id === receipt.workerId &&
+            !task.deletedAt &&
+            !task.archivedAt &&
+            !task.sidechatExpiredAt,
+        );
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+        throw error;
+      }
+    };
+    let referencedTask: OrchestrationThread | undefined;
+    if (
+      command.routerSourceCommandId &&
+      !/^(?:新任务[：:]|new task:)/iu.test(command.message.text.trim())
+    ) {
+      referencedTask = await resolveRequest(command.routerSourceCommandId);
+      if (!referencedTask)
+        return [reply("Router：引用的消息没有可确认的关联任务，请指定任务 ID；这条消息尚未追加。")];
+      tasks.splice(0, tasks.length, referencedTask);
+    }
     const status = () =>
       tasks.length
         ? tasks
@@ -289,7 +342,11 @@ export class AgentRouter {
         reply("Router：已请求停止当前任务，正在等待执行器确认。已发生的操作不会因此撤销。"),
       ];
     }
-    if (host.createWorker && /^(?:新任务[：:]|new task:)/iu.test(command.message.text.trim()))
+    if (
+      !referencedTask &&
+      host.createWorker &&
+      /^(?:新任务[：:]|new task:)/iu.test(command.message.text.trim())
+    )
       return [workerPlan()];
     const explicit = /^(?:任务|task)\s+(\S+)\s+([\s\S]+)$/iu.exec(command.message.text.trim());
     if (explicit) {
@@ -327,17 +384,27 @@ export class AgentRouter {
     let failed = false;
     try {
       decision = Schema.decodeUnknownSync(RouterDecision)(
-        explicit
-          ? { route: "steer", targetTaskId: explicit[1], reply: "" }
+        referencedTask || explicit
+          ? { route: "steer", targetTaskId: referencedTask?.id ?? explicit![1], reply: "" }
           : await host.generate({
               cwd: host.generationCwd,
               message: command.message.text,
               modelSelection: thread.modelSelection,
               ...(command.providerOptions ? { providerOptions: command.providerOptions } : {}),
               taskContext: JSON.stringify({
+                pendingRequests: predecessors.map((entry) => ({
+                  id: `pending:${entry.command.commandId}`,
+                  request: entry.command.message.text.slice(0, 2000),
+                })),
                 tasks: tasks.slice(-20).map((task) => ({
                   id: task.id,
                   title: task.title,
+                  originalRequest: task.messages
+                    .find((m) => m.role === "user")
+                    ?.text.slice(0, 2000),
+                  latestInput: task.messages
+                    .findLast((m) => m.role === "user")
+                    ?.text.slice(0, 1000),
                   state: task.session?.status,
                   latestTurn: task.latestTurn,
                   latestOutput: task.messages
@@ -367,6 +434,32 @@ export class AgentRouter {
     if (decision.route === "reply" && decision.reply.trim())
       return [reply(`Router：\n${decision.reply.trim()}`)];
     if (decision.route === "steer") {
+      const selectedPending = predecessors.find(
+        (entry) => `pending:${entry.command.commandId}` === decision.targetTaskId,
+      );
+      const activeCandidates =
+        tasks.length +
+        predecessors.filter(
+          (entry) =>
+            !tasks.some((task) =>
+              task.messages.some((m) => m.id === entry.command.message.messageId),
+            ),
+        ).length;
+      if (!explicit && !referencedTask && activeCandidates > 1)
+        return [
+          reply(
+            "Router：这条补充可能对应多个任务，请用 `任务 <任务ID> 要求` 或引用对应任务消息；尚未追加到任何任务。",
+          ),
+        ];
+      if (selectedPending) {
+        const resolved = await resolveRequest(selectedPending.command.commandId);
+        if (!resolved)
+          return [
+            reply("Router：前一条消息尚未形成可确认的任务，请指定任务 ID；这条补充尚未追加。"),
+          ];
+        if (!tasks.some((task) => task.id === resolved.id)) tasks.push(resolved);
+        decision = { ...decision, targetTaskId: resolved.id };
+      }
       const target = decision.targetTaskId
         ? tasks.find((task) => task.id === decision.targetTaskId)
         : tasks.length === 1

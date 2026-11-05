@@ -17,7 +17,11 @@ Choose reply ONLY for a self-contained conversational or conceptual question you
 from the supplied context and stable knowledge without research, files, tools or changing the task.
 Answer concisely in the user's language. Do not claim to have performed work or know unseen results.
 Choose steer ONLY for an unambiguous correction or added constraint to an existing task.
-Set targetTaskId to an empty string unless steering a task. For steering, use an EXACT id from the supplied tasks. Never invent an id. If several tasks exist
+Pending requests are earlier messages still being classified or creating a worker.
+For a clear supplement to one pending request, choose steer and its exact pending: ID.
+Never create a new worker for an ambiguous supplement; ask which task the user means.
+If multiple active tasks or pending requests could match, ask for a task ID or quoted reply.
+Set targetTaskId to an empty string unless steering a task. For steering, use an EXACT id from the supplied tasks or pendingRequests. Never invent an id. If several tasks exist
 and the target is ambiguous, choose reply and ask the user to name the task. A completed task can
 receive an explicit continuation, but do not assume a new request continues the latest task.
 Choose queue for NEW independent work, mixed questions and actions,

@@ -372,8 +372,10 @@ describe("AgentRouter above the real orchestration engine", () => {
     const decoded = Schema.decodeUnknownSync(ClientOrchestrationCommand)({
       ...f.command("hello"),
       routerTurnId: "spoofed",
+      routerSourceCommandId: "spoofed",
     });
     expect(decoded).not.toHaveProperty("routerTurnId");
+    expect(decoded).not.toHaveProperty("routerSourceCommandId");
   });
 });
 
@@ -434,6 +436,114 @@ async function workerFixture() {
 }
 
 describe("durable Router workers", () => {
+  it("binds an immediate supplement to a pending creation without creating another worker", async () => {
+    const f = await workerFixture();
+    let finish!: (value: RouterGenerationResult) => void;
+    f.generate.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const first = f.router.dispatch(f.command("帮我改页面", "page"), f.host);
+    await vi.waitFor(() => expect(f.generate).toHaveBeenCalledTimes(1));
+    f.generate.mockResolvedValueOnce({ route: "steer", targetTaskId: "pending:page", reply: "" });
+    const followup = f.router.dispatch(f.command("背景用蓝色", "blue"), f.host);
+    await vi.waitFor(() => expect(f.generate).toHaveBeenCalledTimes(2));
+    expect(JSON.parse(f.generate.mock.calls[1]![0].taskContext).pendingRequests[0].id).toBe(
+      "pending:page",
+    );
+    finish({ route: "queue", reply: "" });
+    await Promise.all([first, followup]);
+    expect(f.ids).toHaveLength(1);
+    expect((await f.readThread(f.ids[0]!)).messages.some((m) => m.text === "背景用蓝色")).toBe(
+      true,
+    );
+  });
+
+  it("requires a target among multiple workers but resolves quoted bindings after restart", async () => {
+    const f = await workerFixture();
+    await f.router.dispatch(f.command("新任务：页面 A", "a"), f.host);
+    await f.router.dispatch(f.command("新任务：页面 B", "b"), f.host);
+    f.generate.mockResolvedValueOnce({ route: "steer", targetTaskId: f.ids[0]!, reply: "" });
+    await f.router.dispatch(f.command("背景用蓝色", "ambiguous"), f.host);
+    expect((await f.readThread()).messages.at(-1)?.text).toContain("多个任务");
+    expect((await f.readThread(f.ids[0]!)).messages.some((m) => m.text === "背景用蓝色")).toBe(
+      false,
+    );
+    const restarted = new AgentRouter(path.join(f.root, "receipts"));
+    await restarted.dispatch(
+      { ...f.command("背景用蓝色", "quoted"), routerSourceCommandId: CommandId.makeUnsafe("b") },
+      f.host,
+    );
+    expect((await f.readThread(f.ids[1]!)).messages.some((m) => m.text === "背景用蓝色")).toBe(
+      true,
+    );
+    expect(f.ids).toHaveLength(2);
+    expect(f.generate).toHaveBeenCalledTimes(1);
+    await restarted.dispatch(
+      {
+        ...f.command("继续修改", "quote-followup"),
+        routerSourceCommandId: CommandId.makeUnsafe("quoted"),
+      },
+      f.host,
+    );
+    expect((await f.readThread(f.ids[1]!)).messages.some((m) => m.text === "继续修改")).toBe(true);
+  });
+
+  it("scopes quoted cancellation to its bound worker and rejects cross-conversation bindings", async () => {
+    const f = await workerFixture();
+    await f.router.dispatch(f.command("新任务：A", "a"), f.host);
+    await f.router.dispatch(f.command("新任务：B", "b"), f.host);
+    const calls: OrchestrationCommand[] = [];
+    const dispatch = f.host.dispatch;
+    f.host.dispatch = async (command) => {
+      calls.push(command);
+      return dispatch(command);
+    };
+    await f.router.dispatch(
+      { ...f.command("停止", "stop-b"), routerSourceCommandId: CommandId.makeUnsafe("b") },
+      f.host,
+    );
+    expect(calls.filter((c) => c.type === "thread.turn.interrupt").map((c) => c.threadId)).toEqual([
+      f.ids[1],
+    ]);
+    const other = new AgentRouter(path.join(f.root, "receipts"));
+    const otherHost = {
+      ...f.host,
+      dispatch: async (command: OrchestrationCommand) => {
+        calls.push(command);
+        return { sequence: 1 };
+      },
+      readThread: async () => ({ ...(await f.readThread()), id: ThreadId.makeUnsafe("other") }),
+    };
+    calls.length = 0;
+    await other.dispatch(
+      {
+        ...f.command("修改", "cross"),
+        threadId: ThreadId.makeUnsafe("other"),
+        routerSourceCommandId: CommandId.makeUnsafe("a"),
+      },
+      otherHost,
+    );
+    expect(calls.some((c) => c.type === "thread.turn.start")).toBe(false);
+    expect(f.ids).toHaveLength(2);
+  });
+
+  it("does not turn a missing quoted binding into a new task", async () => {
+    const f = await workerFixture();
+    await f.router.dispatch(
+      {
+        ...f.command("修改页面", "missing"),
+        routerSourceCommandId: CommandId.makeUnsafe("unknown"),
+      },
+      f.host,
+    );
+    expect(f.ids).toHaveLength(0);
+    expect(f.generate).not.toHaveBeenCalled();
+    expect((await f.readThread()).messages.at(-1)?.text).toContain("尚未追加");
+  });
+
   it("acknowledges before classification and handles chat, progress, corrections, second task and exact cancel without occupying the console", async () => {
     const f = await workerFixture();
     await f.inbox.accept(f.command("新任务：长任务 A", "a"));

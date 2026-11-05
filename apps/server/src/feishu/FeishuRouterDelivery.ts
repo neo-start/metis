@@ -13,6 +13,7 @@ const Delivery = Schema.Struct({
   command: OrchestrationCommand,
   replied: Schema.optional(Schema.Boolean),
   workerId: Schema.optional(Schema.String),
+  sentMessageIds: Schema.optional(Schema.Array(Schema.String)),
   done: Schema.optional(Schema.Boolean),
 });
 type Delivery = typeof Delivery.Type;
@@ -30,7 +31,11 @@ export class FeishuRouterDelivery {
       accept(command: TurnStart): Promise<unknown>;
       readThread(id: ThreadId): Promise<OrchestrationThread | undefined>;
       allowed(senderId: string): boolean;
-      send(chatId: string, text: string, replyTo: string): Promise<void>;
+      send(
+        chatId: string,
+        text: string,
+        replyTo: string,
+      ): Promise<void | { messageId: string; chunkIds?: string[] }>;
     },
   ) {}
   stop() {
@@ -57,6 +62,26 @@ export class FeishuRouterDelivery {
   }
   async has(commandId: string) {
     return (await this.read(this.key(commandId))) !== undefined;
+  }
+  async resolveReference(chatId: string, senderId: string, messageId: string) {
+    if (!this.host.allowed(senderId)) return;
+    let files: string[];
+    try {
+      files = await readdir(this.root);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+      throw error;
+    }
+    for (const file of files) {
+      if (!/^[a-f0-9]{64}\.json$/u.test(file)) continue;
+      const record = await this.read(file.slice(0, -5));
+      if (
+        record?.chatId === chatId &&
+        record.senderId === senderId &&
+        (record.replyTo === messageId || record.sentMessageIds?.includes(messageId))
+      )
+        return record.command.commandId;
+    }
   }
   private async locked(key: string, work: () => Promise<void>) {
     const existing = this.active.get(key);
@@ -110,11 +135,16 @@ export class FeishuRouterDelivery {
                 (m) => m.id === `router-${key}` || m.id === `router-failure-${key}`,
               );
               if (!reply || this.stopped || !this.host.allowed(record.senderId)) return;
-              await this.host.send(record.chatId, reply.text, record.replyTo);
+              const sent = await this.host.send(record.chatId, reply.text, record.replyTo);
               const workerId = reply.text.startsWith("Router：已创建独立任务")
                 ? reply.text.match(/\/tasks\?thread=([a-zA-Z0-9_-]+)/u)?.[1]
                 : undefined;
-              record = { ...record, replied: true, ...(workerId ? { workerId } : { done: true }) };
+              record = {
+                ...record,
+                replied: true,
+                sentMessageIds: sent ? [sent.messageId, ...(sent.chunkIds ?? [])] : [],
+                ...(workerId ? { workerId } : { done: true }),
+              };
               await this.save(key, record);
             }
             if (record.workerId && !record.done) {
@@ -122,8 +152,15 @@ export class FeishuRouterDelivery {
                 (m) => m.id === `router-completion:${record!.workerId}`,
               );
               if (!completion || this.stopped || !this.host.allowed(record.senderId)) return;
-              await this.host.send(record.chatId, completion.text, record.replyTo);
-              await this.save(key, { ...record, done: true });
+              const sent = await this.host.send(record.chatId, completion.text, record.replyTo);
+              await this.save(key, {
+                ...record,
+                done: true,
+                sentMessageIds: [
+                  ...(record.sentMessageIds ?? []),
+                  ...(sent ? [sent.messageId, ...(sent.chunkIds ?? [])] : []),
+                ],
+              });
             }
           });
         }),

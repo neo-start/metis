@@ -288,6 +288,15 @@
         "apps/server/src/wsRpc.ts"
       ],
       "adaptations": "Share Router runtime with authorized Feishu ingress; persist transport delivery and recover original thread binding. Reuse account alias resolution. No additional T3 source copied."
+    },
+    "taskAssociation": {
+      "localBaseCommit": "43c55e493",
+      "sources": [
+        "apps/server/src/router/RouterInbox.ts",
+        "apps/server/src/router/AgentRouter.ts",
+        "apps/server/src/feishu/FeishuRouterDelivery.ts"
+      ],
+      "adaptations": "Retain source-scoped worker bindings in existing durable receipts; resolve earlier in-flight requests and SDK quoted reply IDs; reject ambiguous implicit targets. No separate task store or T3 code copied."
     }
   }
 }

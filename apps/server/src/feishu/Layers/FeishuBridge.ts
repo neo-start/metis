@@ -323,7 +323,7 @@ export const makeFeishuBridge = Effect.gen(function* () {
                     buildThreadLink(bridgeConfig.publicOrigin, ThreadId.makeUnsafe(id)) ?? id,
                 )
               : text;
-            await channel.send(chatId, { text: markdown }, { replyTo });
+            return channel.send(chatId, { text: markdown }, { replyTo });
           },
         })
       : undefined;
@@ -366,6 +366,13 @@ export const makeFeishuBridge = Effect.gen(function* () {
           message.resources.length === 0 &&
           (!text.trimStart().startsWith("/") || isStopCommand(text))
         ) {
+          const sourceCommand = message.replyToMessageId
+            ? await routerDelivery.resolveReference(
+                message.chatId,
+                message.senderId,
+                message.replyToMessageId,
+              )
+            : undefined;
           await routerDelivery.enqueue({
             chatId: message.chatId,
             senderId: message.senderId,
@@ -375,6 +382,13 @@ export const makeFeishuBridge = Effect.gen(function* () {
               commandId,
               threadId,
               routingMode: "auto",
+              ...(message.replyToMessageId
+                ? {
+                    routerSourceCommandId:
+                      sourceCommand ??
+                      CommandId.makeUnsafe(`feishu:unbound:${message.replyToMessageId}`),
+                  }
+                : {}),
               message: {
                 messageId: MessageId.makeUnsafe(`feishu:${message.messageId}`),
                 role: "user",

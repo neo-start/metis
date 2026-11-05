@@ -1436,6 +1436,8 @@ export type ComputerControlMode = typeof ComputerControlMode.Type;
 export const ThreadTurnStartCommand = Schema.Struct({
   /** Server-only: never turn a Router correction into work on a replacement run. */
   routerTurnId: Schema.optional(TurnId),
+  /** Server-verified transport reference to an earlier Router request. */
+  routerSourceCommandId: Schema.optional(CommandId),
   type: Schema.Literal("thread.turn.start"),
   /** Route plain follow-ups independently of the active provider turn. */
   routingMode: Schema.optional(Schema.Literal("auto")),

@@ -154,3 +154,26 @@ by this implementation or its verification.
 
 Feishu bridge tests cover concurrent status during blocked classification, greetings,
 redelivery after controller reset, durable transport retry and allowlist revocation.
+
+## Task association
+
+Router snapshots earlier in-flight requests before classifying each message. The
+classifier sees pending request IDs/text plus each worker's original and latest
+user input. A clear supplement may select an exact pending request; it waits for
+that predecessor to settle and resolves its durable worker binding. It never
+creates a replacement worker when the predecessor has no confirmed worker.
+Dependencies only point backwards, so chat replies remain concurrent.
+
+Receipts retain worker ID and source conversation ID after text redaction. Feishu
+records the original input and sent reply/chunk IDs. Quoting either resolves the
+original Router request within the same chat and authorized sender; Router then
+rechecks source conversation and worker ownership. This survives restart. Unknown,
+legacy unbound, deleted, archived or cross-conversation targets produce clarification.
+Explicit `新任务：` overrides a quoted context. Web clients cannot inject the
+server-only transport binding. No web quotation UI is added.
+
+When multiple tasks or pending requests exist, implicit steering asks for a task
+ID or quoted reply even if the classifier selects an ID. Explicit task IDs and
+verified quotes bypass that ambiguity check. Task associations inferred from text
+remain model decisions, not a guarantee of semantic correctness. Pending requests
+are recovered through the existing ordered durable inbox, not a second task store.

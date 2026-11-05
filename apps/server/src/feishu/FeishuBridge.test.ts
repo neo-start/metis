@@ -40,6 +40,7 @@ type Inbound = {
   messageId: string;
   content: string;
   resources: [];
+  replyToMessageId?: string;
 };
 const transport = vi.hoisted(() => ({
   receive: undefined as ((message: Inbound) => Promise<void>) | undefined,
@@ -196,10 +197,47 @@ async function setup(routerEnabled = false) {
       resources: [],
       ...override,
     });
-  return { runtime, controller, selection, engine, dispatch, complete, receive, mapPath, generate };
+  return {
+    runtime,
+    controller,
+    selection,
+    engine,
+    dispatch,
+    complete,
+    receive,
+    mapPath,
+    generate,
+    inbox,
+  };
 }
 
 describe("Feishu Router ingress and passive delivery", () => {
+  it("passes a durable quoted input binding and refuses unknown references", async () => {
+    const f = await setup(true);
+    await f.receive("original", "你好");
+    const accept = vi.spyOn(f.inbox, "accept");
+    await f.receive("quoted", "继续修改", { replyToMessageId: "original" });
+    expect(
+      accept.mock.calls.some(
+        ([command]) => command.routerSourceCommandId === "feishu:turn:original",
+      ),
+    ).toBe(true);
+    await f.receive("unknown-quote", "继续修改", { replyToMessageId: "unknown" });
+    expect(
+      accept.mock.calls.some(
+        ([command]) => command.routerSourceCommandId === "feishu:unbound:unknown",
+      ),
+    ).toBe(true);
+    await vi.waitFor(
+      () =>
+        expect(JSON.stringify(transport.send.mock.calls)).toContain(
+          "引用的消息没有可确认的关联任务",
+        ),
+      { timeout: 3000 },
+    );
+    expect(f.generate).not.toHaveBeenCalled();
+  });
+
   it("answers greetings without a provider turn and deduplicates redelivery after controller rotation", async () => {
     const f = await setup(true);
     const first = (await f.controller.overview()).threadId!;

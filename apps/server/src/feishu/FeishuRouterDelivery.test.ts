@@ -38,7 +38,7 @@ it("recovers a worker notification and completion after reconnect without re-sen
     accept: vi.fn(async () => ({ sequence: 1, routed: true })),
     readThread: async () => ({ messages }) as unknown as OrchestrationThread,
     allowed: () => true,
-    send: vi.fn(async () => {}),
+    send: vi.fn(async () => ({ messageId: "bot-reply" })),
   };
   const original = new FeishuRouterDelivery(root, host);
   await original.enqueue({ chatId: "chat", senderId: "owner", replyTo: "test", command });
@@ -64,6 +64,10 @@ it("recovers a worker notification and completion after reconnect without re-sen
   await again.flush();
   expect(host.send).toHaveBeenCalledTimes(3);
   expect(await again.has(command.commandId)).toBe(true);
+  expect(await again.resolveReference("chat", "owner", "test")).toBe(command.commandId);
+  expect(await again.resolveReference("chat", "owner", "bot-reply")).toBe(command.commandId);
+  expect(await again.resolveReference("another-chat", "owner", "bot-reply")).toBeUndefined();
+  expect(await again.resolveReference("chat", "someone-else", "test")).toBeUndefined();
 });
 it("does not admit or deliver persisted messages after allowlist revocation", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "feishu-router-revoke-"));

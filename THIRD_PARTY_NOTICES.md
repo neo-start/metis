@@ -138,3 +138,8 @@ The Router Feishu integration (2026-11-05) reuses the local bridge allowlist,
 transport, controller and account alias resolver from `c5a1669d0`, and extracts
 the existing websocket Router runtime for both ingress paths. T3 has no equivalent
 Feishu transport (reviewed commit above); no additional upstream source copied.
+
+Router task association reuses the local Router inbox/receipts and Feishu delivery
+records at `43c55e493`, plus the SDK normalized `replyToMessageId` and send result
+message IDs. T3 orchestration at `f5ef0ddb90a8c36584e181b1913e7b8a5df30ffc`
+was reviewed; no task-association implementation was copied.
