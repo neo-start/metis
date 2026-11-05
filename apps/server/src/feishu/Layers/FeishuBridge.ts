@@ -1,3 +1,5 @@
+import { makeCompletionRepository } from "../../agentGateway/completionRepository.ts";
+import { readFeishuFollowup } from "../feishuRouterFollowup.ts";
 import { RouterRuntime } from "../../router/RouterRuntime.ts";
 import { FeishuRouterDelivery } from "../FeishuRouterDelivery.ts";
 /**
@@ -99,6 +101,7 @@ export const makeFeishuBridge = Effect.gen(function* () {
   const attachmentRepository = yield* ManagedAttachmentRepository;
   const turnRepository = yield* ProjectionTurnRepository;
   const receipts = yield* OrchestrationCommandReceiptRepository;
+  const completions = yield* makeCompletionRepository;
   const metisController = yield* MetisControllerService;
   const router = Option.getOrUndefined(yield* Effect.serviceOption(RouterRuntime));
 
@@ -314,6 +317,14 @@ export const makeFeishuBridge = Effect.gen(function* () {
       ? new FeishuRouterDelivery(path.join(config.stateDir, "feishu-router-delivery"), {
           accept: (command) => router.accept(command),
           readThread: readDetail,
+          readFollowup: (workerId, command) =>
+            readFeishuFollowup(workerId, command, {
+              readThread: readDetail,
+              turns: (threadId) => run(turnRepository.listByThreadId({ threadId })),
+              isOutputSettled: (threadId) => run(completions.isOutputSettled(threadId)),
+              hasCompletedRun: (threadId, turnId) =>
+                run(completions.hasCompletedRun(threadId, turnId)),
+            }),
           allowed: (sender) => currentAllowedOpenIds(bridgeConfig).includes(sender),
           send: async (chatId, text, replyTo) => {
             const markdown = bridgeConfig.publicOrigin

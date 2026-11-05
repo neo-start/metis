@@ -113,7 +113,10 @@ Queue/Steer bypasses Auto. Simple greetings and status requests need no model ca
 
 Feishu persists the original chat, sender, reply target and command before Router
 admission. Its delivery loop sends Router acknowledgements and worker completion
-messages without waiting for a provider turn. Recovery preserves the original
+messages without waiting for a console provider turn. Follow-up acknowledgements retain
+the worker binding and deliver the result of the exact queued or steered input after
+provider output settles. Results are frozen before transport retry; later worker
+turns cannot replace them. Recovery preserves the original
 thread across controller resets and rechecks the sender allowlist. Confirmed sends
 are deduplicated; a lost remote send acknowledgement may cause a duplicate reply.
 

@@ -15,6 +15,8 @@ const Delivery = Schema.Struct({
   workerId: Schema.optional(Schema.String),
   sentMessageIds: Schema.optional(Schema.Array(Schema.String)),
   done: Schema.optional(Schema.Boolean),
+  followup: Schema.optional(Schema.Boolean),
+  completionText: Schema.optional(Schema.String),
 });
 type Delivery = typeof Delivery.Type;
 
@@ -30,6 +32,7 @@ export class FeishuRouterDelivery {
     private readonly host: {
       accept(command: TurnStart): Promise<unknown>;
       readThread(id: ThreadId): Promise<OrchestrationThread | undefined>;
+      readFollowup?(workerId: string, command: TurnStart): Promise<string | undefined>;
       allowed(senderId: string): boolean;
       send(
         chatId: string,
@@ -127,7 +130,8 @@ export class FeishuRouterDelivery {
               return;
             if (record.command.type !== "thread.turn.start")
               throw new Error("Invalid Router delivery.");
-            await this.host.accept(record.command);
+            const command = record.command;
+            await this.host.accept(command);
             const thread = await this.host.readThread(record.command.threadId);
             if (!thread || thread.deletedAt || thread.archivedAt) return;
             if (!record.replied) {
@@ -136,23 +140,31 @@ export class FeishuRouterDelivery {
               );
               if (!reply || this.stopped || !this.host.allowed(record.senderId)) return;
               const sent = await this.host.send(record.chatId, reply.text, record.replyTo);
+              const followupId = reply.text.match(
+                /^(?:Router[：:]\s*)?(?:修改已加入任务 |已向任务 )([a-zA-Z0-9_-]+)(?: 的队列。| 提交修改，)/u,
+              )?.[1];
               const workerId = /^(?:Router[：:]\s*)?已创建独立任务/u.test(reply.text)
                 ? reply.text.match(/\/tasks\?thread=([a-zA-Z0-9_-]+)/u)?.[1]
-                : undefined;
+                : followupId;
               record = {
                 ...record,
                 replied: true,
                 sentMessageIds: sent ? [sent.messageId, ...(sent.chunkIds ?? [])] : [],
-                ...(workerId ? { workerId } : { done: true }),
+                ...(workerId ? { workerId, followup: Boolean(followupId) } : { done: true }),
               };
               await this.save(key, record);
             }
             if (record.workerId && !record.done) {
-              const completion = thread.messages.find(
-                (m) => m.id === `router-completion:${record!.workerId}`,
-              );
-              if (!completion || this.stopped || !this.host.allowed(record.senderId)) return;
-              const sent = await this.host.send(record.chatId, completion.text, record.replyTo);
+              const completionText =
+                record.completionText ??
+                (record.followup
+                  ? await this.host.readFollowup?.(record.workerId, command)
+                  : thread.messages.find((m) => m.id === `router-completion:${record!.workerId}`)
+                      ?.text);
+              if (!completionText || this.stopped || !this.host.allowed(record.senderId)) return;
+              record = { ...record, completionText };
+              await this.save(key, record);
+              const sent = await this.host.send(record.chatId, completionText, record.replyTo);
               await this.save(key, {
                 ...record,
                 done: true,

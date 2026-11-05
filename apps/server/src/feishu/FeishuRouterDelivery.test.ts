@@ -15,6 +15,53 @@ const roots: string[] = [];
 afterEach(async () => {
   for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
 });
+it.each(["修改已加入任务 worker 的队列。", "已向任务 worker 提交修改，等待执行器接收。"])(
+  "delivers and freezes follow-up results after reconnect: %s",
+  async (ack) => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "feishu-followup-"));
+    roots.push(root);
+    const command: Extract<OrchestrationCommand, { type: "thread.turn.start" }> = {
+      type: "thread.turn.start",
+      commandId: CommandId.makeUnsafe("followup"),
+      threadId: ThreadId.makeUnsafe("controller"),
+      message: {
+        messageId: MessageId.makeUnsafe("input"),
+        role: "user",
+        text: "补充",
+        attachments: [],
+      },
+      runtimeMode: "approval-required",
+      interactionMode: "default",
+      createdAt: new Date().toISOString(),
+    };
+    const key = createHash("sha256").update(command.commandId).digest("hex");
+    const host = {
+      accept: vi.fn(async () => ({})),
+      allowed: () => true,
+      readThread: async () =>
+        ({ messages: [{ id: `router-${key}`, text: ack }] }) as unknown as OrchestrationThread,
+      readFollowup: vi.fn(async (): Promise<string | undefined> => undefined),
+      send: vi.fn(async () => ({ messageId: "ack" })),
+    };
+    const delivery = new FeishuRouterDelivery(root, host);
+    await delivery.enqueue({ chatId: "chat", senderId: "owner", replyTo: "input", command });
+    await delivery.flush();
+    expect(host.send).toHaveBeenCalledTimes(1);
+    delivery.stop();
+    const recovered = new FeishuRouterDelivery(root, host);
+    host.readFollowup.mockResolvedValue("补充结果");
+    host.send.mockRejectedValueOnce(new Error("disconnected"));
+    await expect(recovered.flush()).rejects.toThrow("disconnected");
+    host.readFollowup.mockResolvedValue("another result must not replace the frozen result");
+    host.send.mockResolvedValue({ messageId: "final" });
+    const again = new FeishuRouterDelivery(root, host);
+    await again.flush();
+    expect(host.send).toHaveBeenLastCalledWith("chat", "补充结果", "input");
+    await again.flush();
+    expect(host.send).toHaveBeenCalledTimes(3);
+    expect(await again.resolveReference("chat", "owner", "final")).toBe(command.commandId);
+  },
+);
 it.each(["", "Router："])(
   "recovers worker notifications with prefix %j after reconnect",
   async (prefix) => {
@@ -38,7 +85,7 @@ it.each(["", "Router："])(
     const messages: Array<{ id: string; role: string; text: string }> = [];
     const host = {
       accept: vi.fn(async () => ({ sequence: 1, routed: true })),
-      readThread: async () => ({ messages }) as unknown as OrchestrationThread,
+      readThread: async () => ({ messages }) as unknown as unknown as OrchestrationThread,
       allowed: () => true,
       send: vi.fn(async () => ({ messageId: "bot-reply" })),
     };

@@ -93,7 +93,7 @@ async function setup(routerEnabled = false) {
     Layer.provideMerge(OrchestrationCommandReceiptRepositoryLive),
     Layer.provideMerge(ProjectionTurnRepositoryLive),
     Layer.provideMerge(QueuedTurnPromotionRepositoryLive),
-    Layer.provide(SqlitePersistenceMemory),
+    Layer.provideMerge(SqlitePersistenceMemory),
     Layer.provideMerge(
       ServerConfig.layerTest(process.cwd(), { prefix: "feishu-controller-test-" }),
     ),
