@@ -5,6 +5,11 @@ import { CommandId, MessageId, OrchestrationCommand } from "@synara/contracts";
 import { Effect, Schema } from "effect";
 import { writeFileStringAtomically } from "../atomicWrite.ts";
 import { fingerprintOrchestrationCommand } from "../orchestration/commandFingerprint.ts";
+import {
+  presentRouterResponse,
+  routerResultInput,
+  type RouterResult,
+} from "./RouterPresentation.ts";
 import { AgentRouter, type AgentRouterHost } from "./AgentRouter.ts";
 
 type TurnStart = Extract<OrchestrationCommand, { type: "thread.turn.start" }>;
@@ -32,6 +37,17 @@ export class RouterInbox {
 
   readDelivery(command: TurnStart) {
     return this.router.readDelivery(command);
+  }
+
+  async presentResult(command: TurnStart, result: RouterResult) {
+    if (this.stopped) throw new Error("Router is shutting down.");
+    const source = await this.host.readThread(command.threadId);
+    if (!source || source.deletedAt || source.archivedAt)
+      throw new Error("Router conversation unavailable.");
+    return presentRouterResponse(
+      this.host.generate,
+      routerResultInput(this.host.generationCwd, source, command.message.text, result),
+    );
   }
 
   stop() {

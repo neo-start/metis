@@ -7,6 +7,7 @@ export async function readFeishuFollowup(
   workerId: string,
   command: Extract<OrchestrationCommand, { type: "thread.turn.start" }>,
   host: {
+    presentResult?(result: RouterResult): Promise<string>;
     readThread(id: ThreadId): Promise<OrchestrationThread | undefined>;
     turns(id: ThreadId): Promise<ReadonlyArray<ProjectionTurn>>;
     isOutputSettled(id: string): Promise<boolean>;
@@ -47,5 +48,5 @@ export async function readFeishuFollowup(
         ? (detail.session?.lastError ?? null)
         : null,
   };
-  return routerResultFallback(result);
+  return host.presentResult ? host.presentResult(result) : routerResultFallback(result);
 }

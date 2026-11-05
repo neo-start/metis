@@ -1,3 +1,7 @@
+import path from "node:path";
+import { TextGeneration } from "../../git/Services/TextGeneration.ts";
+import { generateRouterMessage } from "../../router/routerGeneration.ts";
+import { presentRouterResponse, routerResultInput } from "../../router/RouterPresentation.ts";
 import { GatewayToolError } from "../toolRuntime.ts";
 import { makeThoughtTools } from "../thoughtTools.ts";
 import { MetisControllerService } from "../../metis/MetisControllerService.ts";
@@ -158,6 +162,7 @@ export const makeAgentGateway = Effect.gen(function* () {
   const providerRuntimeEvents = yield* ProviderRuntimeEventRepository;
   const diagnostics = yield* ThreadDiagnosticsQuery;
   const serverConfig = yield* ServerConfig;
+  const routerTextGeneration = Option.getOrUndefined(yield* Effect.serviceOption(TextGeneration));
   const browserAutomationHost = Option.getOrElse(
     yield* Effect.serviceOption(BrowserAutomationHost),
     () => makeBrowserAutomationHost({}),
@@ -212,6 +217,25 @@ export const makeAgentGateway = Effect.gen(function* () {
   yield* Effect.forkScoped(
     Effect.forever(
       deliverGatewayCompletions({
+        presentRouterResult: (source, request, result) =>
+          routerTextGeneration
+            ? Effect.tryPromise({
+                try: (signal) =>
+                  presentRouterResponse(
+                    (input) =>
+                      Effect.runPromise(generateRouterMessage(routerTextGeneration, input), {
+                        signal,
+                      }),
+                    routerResultInput(
+                      path.join(serverConfig.stateDir, "router", "generation"),
+                      source,
+                      request,
+                      result,
+                    ),
+                  ),
+                catch: (cause) => new Error("Router result generation failed", { cause }),
+              })
+            : Effect.fail(new Error("Router generation unavailable")),
         repository: operationRepository.completions,
         snapshotQuery,
         projectionTurns,

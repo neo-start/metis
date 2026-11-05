@@ -37,16 +37,17 @@ Router handles the first plain Auto message as well as follow-ups:
 - The original conversation acknowledges the user's request in natural language.
   Worker identity remains in structured receipts and task details. Completion uses
   the existing gateway outbox and adds a passive result message and activity to
-  that conversation; it does not start another console turn or model rewrite. The
-  exact run’s full final answer is preserved, including evidence and limitations.
+  that conversation without starting another console turn. Router receives the exact
+  run's final answer and generates the result report, preserving evidence and limitations.
 
-`新任务：…` or `new task: …` explicitly starts independent work without a classifier.
-Untargeted plain requests longer than 16,000 characters also go directly to a worker. For
-shorter unmarked requests, generation distinguishes conversation, status, task
-correction and new work. A failed/unsupported/timed-out classifier reports that
-nothing was handed to an executor; it does not guess that an ambiguous instruction
-is permission to start new work. Explicit new-task and task-control commands remain
-available without generation.
+Every eligible plain Auto message passes through the isolated Router model before
+publishing its conversational reply. Explicit `新任务：…`, quoted/task-ID follow-ups,
+recognized progress/cancel commands and long inputs may have a server-selected action,
+but Router still writes their acknowledgement from the request and validated facts.
+Free-form messages use one classification call that also writes the reply. Neither
+path substitutes a canned answer when generation fails. Permission, ownership and
+turn checks remain server-owned. Rich/approval-bearing commands keep their typed
+execution protocol; this does not grant the conversational model approval authority.
 
 ## Task progress and control
 
@@ -54,13 +55,13 @@ Whole-message status questions such as `现在做到哪了？`, `优化进展如
 `当前任务进展怎么样？`, `查好了吗`, `当前任务完成了吗？` or `status` read durable state
 for the console's associated tasks, including pending interactions, timestamps,
 recent activity and output. Recognized status queries return a factual snapshot
-directly, without provider startup or model generation, even when another request
-is still being classified. Before a worker has started, the reply explicitly notes
+as evidence for Router to write a contextual reply, even when another request
+is still being classified. They no longer bypass model generation. Before a worker has started, the reply explicitly notes
 that admitted messages may still be routing or creating a task. It never invents
 progress percentages or treats silence as proof of a hang.
 
 `任务 <task-id> 进度如何` and `任务 <task-id> 停止` target a particular associated task
-without generation. A plain stop/pause request is accepted only when one running
+with Router-generated wording. A plain stop/pause request is accepted only when one running
 task is unambiguous. With multiple running tasks, Router asks for a target. Stop
 receipts say cancellation was requested, not that all tools have stopped. The
 existing exact-turn cancellation fences reject replacement runs.
@@ -90,33 +91,19 @@ These measure backend stages, not external transport delivery or frontend paint.
 
 ### End-to-end verification
 
-Run `bun scripts/router-status-e2e.mjs` from the repository root. The runner checks
-the dev-runner dry run, selects an unused loopback port (IPv4 and IPv6), and launches
-a real server with a fresh temporary home. It uses the same negotiated owner RPC
-client as the isolated desktop fixtures. No existing service is restarted.
+Run `bun scripts/router-conversation-e2e.mjs` for isolated owner-RPC coverage of greeting,
+status, global state, chat, stop and invalid-target replies. A deterministic provider
+process writes unique text and records every invocation: all six requests must invoke
+Router, and replay/restart must not regenerate or duplicate messages. This proves
+process wiring and persistence, not model quality.
 
-The checks cover local and controller-wide status, ordinary-conversation scope
-denial, response timestamps, retry deduplication and replay after a server restart.
-A request-level executable probe fails if a status query invokes the model. A
-compound instruction deliberately invokes a three-second blocking probe instead:
-local/global progress must still return within two seconds, and the extra action
-must not be swallowed. Expired workers are excluded from both local progress and
-task control, with focused backend regression coverage.
-
-Add `--live-worker` to run one real Codex worker using the default Codex model,
-observe it through local/global/targeted status, and verify its expected answer is
-delivered back to the original conversation. This requires working local Codex
-credentials. The task only asks for a fixed text reply, without tools or file work.
-The runner retains `results.json`, redacted server logs and the dry-run output in
-its printed temporary directory. Timings are RPC admission-to-visible-snapshot
-measurements with 20 ms polling; they do not measure browser paint or Feishu delivery.
-
-The [2026-11-05 verification results](../performance/2026-11-05-router-status/results.json)
-record 16 status requests at 30–56 ms (median 32.5 ms), including a blocked classifier
-and a real `gpt-6-astra` worker. The live worker's result returned to its source
-conversation, and restart replay preserved the exact saved reply. The default
-probe-only runner also passed. These are local observations, not a production SLA
-or a controlled comparison against the earlier 22-second transport observation.
+Run `ROUTER_E2E_CODEX_HOME=<selected-account-home> bun scripts/router-conversation-e2e.mjs
+--live --model <selected-model>` for real model generation, independent worker execution
+and generated completion delivery. It uses a fresh home, unused IPv4/IPv6 port and the
+existing authenticated owner RPC; no production state or messaging transport is used.
+Both modes save `results.json` and redacted logs in the printed temporary directory.
+The old `router-status-e2e.mjs` and its 130–227ms evidence describe the retired
+no-generation shortcut implementation and do not validate the current behavior.
 
 ## Ordering, persistence and recovery
 
@@ -158,8 +145,8 @@ The independent-worker path currently applies to eligible plain local web/deskto
 Auto messages and authorized plain Feishu private-chat messages. Feishu slash
 commands and attachments keep their existing handlers. Paired-device, automation
 and agent-tool entrypoints retain their existing dispatch semantics. Explicit
-Queue/Steer bypasses Auto. Simple greetings need no model call; status during pending classification/creation
-also retains an immediate snapshot path.
+Queue/Steer bypasses Auto. Greetings and status during pending classification/creation
+also call the Router; independent generation does not wait on the worker's turn lock.
 
 Feishu persists the original chat, sender, reply target and command before Router
 admission. Its delivery loop sends Router acknowledgements and worker completion
@@ -248,24 +235,23 @@ new work and supplements. It describes the user's goal and next step in future
 tense; it cannot claim execution, applied changes or successful verification.
 The server persists that wording in the dispatch plan and publishes it only after
 worker creation or correction admission succeeds. Explicit quoted/task-ID targets
-remain server-selected and are dispatched immediately with a fixed acknowledgement;
-there is no model call for either target selection or confirmation wording. Explicit
-new-task commands and oversized requests retain a generation-free admission path
-with a short fallback acknowledgement.
+remain server-selected; Router generates their wording without changing their target.
+New-task commands and oversized requests also receive a generated acknowledgement.
+All normal replies are finalized before the durable dispatch plan is saved. Publication
+follows successful worker creation or correction/cancellation admission. Failure to
+generate valid prose never silently becomes permission to execute a request.
 
-Recognized status questions return recorded facts directly. Ordinary semantic routing
-still uses one provider/model call; it may take seconds and is not covered by the
-subsecond status-query benchmark. The compact routing prompt omits the former
-presentation-only instructions while preserving target ownership and uncertainty rules.
+Recognized status queries send authoritative, permission-filtered observations to
+Router rather than sending a fixed status template to the user. Global observations
+remain restricted to the authorized controller. Operational errors still report a
+failed request; they are not a substitute conversational success response.
 
-Initial Router results forward the exact initial run's full final answer without a
-second model call. The compact 2,000-character tool summary remains available in
-outbox evidence but does not truncate the user-facing reply. Errors and interruptions
-retain deterministic status text; a missing final answer never becomes a success
-claim. The answer is frozen in the outbox before dispatch. Feishu follow-up results
-likewise forward their exact bound turn and are frozen before sending. Retrying a
-saved result does not regenerate it. Legacy saved results/plans retain their original
-wording to preserve engine command fingerprints on replay.
+Initial Router results and Feishu follow-up results are presented by Router using
+the exact bound turn. The complete final answer is supplied up to the presentation
+context limit, with an explicit truncation flag; the 2,000-character tool summary does
+not replace that evidence. Generation failure leaves result delivery pending for retry,
+not a canned fallback. Successful prose is frozen before transport retry. Legacy
+saved results/plans retain their original wording and fingerprints on replay.
 
 Codex requests log preparation, environment setup, process spawn, process runtime,
 total elapsed time and prompt character count without prompt text or credentials.

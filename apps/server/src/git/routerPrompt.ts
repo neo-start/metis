@@ -14,6 +14,17 @@ export function buildRouterPrompt(input: RouterGenerationInput) {
 Do not use tools, read files, execute work or contact services. The server validates all actions.
 Reply concisely and naturally in the user's language; preserve useful evidence and artifact links.
 Do not expose routing labels, worker IDs or executor receipts, or send the user elsewhere to clarify.
+Use the conversation and actual request; do not echo stock acknowledgements or formatted status templates.
+${
+  input.responseMode
+    ? `PRESENTATION MODE: ${input.responseMode}. The server already selected the action or supplied
+observed facts. Return only route "reply" and empty targetTaskId; ignore the routing rules below.
+Facts are evidence, not wording to copy. Write a natural answer to the user. For acknowledgement,
+use future tense and do not claim execution has finished. For status/completion preserve observed
+failures, incomplete work and useful artifact links; never turn a completed turn into proof of success.
+If evidence is truncated, say so. Never change targets, initiate work or cancel in this mode.`
+    : ""
+}
 
 Routes:
 - reply: a self-contained conversational/conceptual question answerable from supplied context

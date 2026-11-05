@@ -1,7 +1,10 @@
 import { RouterRuntime } from "../router/RouterRuntime.ts";
 import { RouterInbox } from "../router/RouterInbox.ts";
 import { AgentRouter } from "../router/AgentRouter.ts";
-import type { RouterGenerationResult } from "../git/Services/TextGeneration.ts";
+import type {
+  RouterGenerationInput,
+  RouterGenerationResult,
+} from "../git/Services/TextGeneration.ts";
 import path from "node:path";
 import fs from "node:fs/promises";
 import { randomUUID } from "node:crypto";
@@ -153,7 +156,10 @@ async function setup(routerEnabled = false) {
   );
   const dispatch = (command: OrchestrationCommand) => runtime.runPromise(engine.dispatch(command));
   const generate = vi.fn(
-    async (): Promise<RouterGenerationResult> => ({ route: "reply", reply: "独立回复" }),
+    async (_input: RouterGenerationInput): Promise<RouterGenerationResult> => ({
+      route: "reply",
+      reply: "独立回复",
+    }),
   );
   const inbox = new RouterInbox(
     path.join(config.stateDir, "router/inbox"),
@@ -254,11 +260,15 @@ describe("Feishu Router ingress and passive delivery", () => {
       ),
     ).toBe(true);
     await vi.waitFor(
-      () =>
-        expect(JSON.stringify(transport.send.mock.calls)).toContain("我还无法确认你引用的是哪件事"),
+      () => expect(JSON.stringify(transport.send.mock.calls)).toContain("独立回复"),
       { timeout: 3000 },
     );
-    expect(f.generate).not.toHaveBeenCalled();
+    expect(f.generate).toHaveBeenCalledTimes(3);
+    expect(
+      f.generate.mock.calls.some(
+        ([input]) => input.responseMode && input.taskContext.includes("尚未追加"),
+      ),
+    ).toBe(true);
   });
 
   it("answers greetings without a provider turn and deduplicates redelivery after controller rotation", async () => {
@@ -269,13 +279,13 @@ describe("Feishu Router ingress and passive delivery", () => {
       () =>
         expect(transport.send).toHaveBeenCalledWith(
           "oc_owner",
-          { text: "我在，收到你的消息了。" },
+          { text: "独立回复" },
           { replyTo: "router-greeting" },
         ),
       { timeout: 3000 },
     );
     expect(transport.contents).toEqual([]);
-    expect(f.generate).not.toHaveBeenCalled();
+    expect(f.generate).toHaveBeenCalledTimes(1);
     const thread = (await f.runtime.runPromise(f.engine.getReadModel())).threads.find(
       (t) => t.id === first,
     )!;
@@ -299,14 +309,7 @@ describe("Feishu Router ingress and passive delivery", () => {
     );
     await f.receive("router-question", "解释一下路由器");
     await vi.waitFor(() => expect(finish).toBeDefined());
-    expect(transport.send).toHaveBeenCalledWith(
-      "oc_owner",
-      { text: FEISHU_RECEIVED_TEXT },
-      { replyTo: "router-question" },
-    );
-    expect(transport.send.mock.invocationCallOrder[0]).toBeLessThan(
-      f.generate.mock.invocationCallOrder[0]!,
-    );
+    expect(transport.send).not.toHaveBeenCalled();
     await f.receive("router-progress", "进度如何");
     await vi.waitFor(
       () =>

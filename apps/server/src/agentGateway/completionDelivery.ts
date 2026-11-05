@@ -1,4 +1,10 @@
-import { CommandId, EventId, MessageId, ThreadId } from "@synara/contracts";
+import {
+  type OrchestrationThread,
+  CommandId,
+  EventId,
+  MessageId,
+  ThreadId,
+} from "@synara/contracts";
 import { Effect, Option } from "effect";
 import type { OrchestrationEngineShape } from "../orchestration/Services/OrchestrationEngine.ts";
 import type { ProjectionSnapshotQueryShape } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
@@ -6,9 +12,14 @@ import type { ProjectionTurnRepositoryShape } from "../persistence/Services/Proj
 import type { CompletionRepository } from "./completionRepository.ts";
 import { summarizeWaitThreadText } from "./threadSummary.ts";
 
-import { routerResultFallback } from "../router/RouterPresentation.ts";
+import { routerResultFallback, type RouterResult } from "../router/RouterPresentation.ts";
 
 interface CompletionDeliveryDependencies {
+  readonly presentRouterResult?: (
+    source: OrchestrationThread,
+    request: string,
+    result: RouterResult,
+  ) => Effect.Effect<string, Error>;
   readonly repository: CompletionRepository;
   readonly snapshotQuery: ProjectionSnapshotQueryShape;
   readonly projectionTurns: ProjectionTurnRepositoryShape;
@@ -103,13 +114,20 @@ export const deliverGatewayCompletions = (dependencies: CompletionDeliveryDepend
             };
             let userReply: string | undefined;
             if (child?.creationSource === "router") {
-              // The worker already wrote the user-facing answer. Preserve the full
-              // bound turn, including evidence beyond the compact tool summary.
-              userReply = routerResultFallback({
-                ...result,
-                summary: finalText ?? null,
-                summaryTruncated: false,
-              });
+              const source = Option.getOrUndefined(
+                yield* snapshotQuery.getThreadDetailById(ThreadId.makeUnsafe(row.creatorThreadId)),
+              );
+              const evidence = { ...result, summary: finalText ?? null, summaryTruncated: false };
+              const request =
+                detail?.messages.find((message) => message.id === row.initialMessageId)?.text ??
+                child.title;
+              userReply =
+                source &&
+                !source.deletedAt &&
+                !source.archivedAt &&
+                dependencies.presentRouterResult
+                  ? yield* dependencies.presentRouterResult(source, request, evidence)
+                  : routerResultFallback(evidence);
             }
             // Freeze presentation together with evidence before any message or activity dispatch.
             resultJson = JSON.stringify({

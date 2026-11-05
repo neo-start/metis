@@ -2,10 +2,7 @@ import { makeCompletionRepository } from "../../agentGateway/completionRepositor
 import { readFeishuFollowup } from "../feishuRouterFollowup.ts";
 import { RouterRuntime } from "../../router/RouterRuntime.ts";
 import { FeishuRouterDelivery } from "../FeishuRouterDelivery.ts";
-import {
-  FEISHU_RECEIVED_TEXT,
-  needsFeishuRouterAcknowledgement,
-} from "../feishuAcknowledgement.ts";
+import { FEISHU_RECEIVED_TEXT } from "../feishuAcknowledgement.ts";
 /**
  * FeishuBridge - talk to Metis from a Feishu private chat.
  *
@@ -325,6 +322,7 @@ export const makeFeishuBridge = Effect.gen(function* () {
           readThread: readDetail,
           readFollowup: (workerId, command) =>
             readFeishuFollowup(workerId, command, {
+              presentResult: (result) => router.presentResult(command, result),
               readThread: readDetail,
               turns: (threadId) => run(turnRepository.listByThreadId({ threadId })),
               isOutputSettled: (threadId) => run(completions.isOutputSettled(threadId)),
@@ -394,9 +392,6 @@ export const makeFeishuBridge = Effect.gen(function* () {
             chatId: message.chatId,
             senderId: message.senderId,
             replyTo: message.messageId,
-            ...(needsFeishuRouterAcknowledgement(text, Boolean(message.replyToMessageId))
-              ? { acknowledgementText: FEISHU_RECEIVED_TEXT }
-              : {}),
             command: {
               type: "thread.turn.start",
               commandId,

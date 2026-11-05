@@ -1,6 +1,6 @@
 import { it } from "@effect/vitest";
 import { Effect, Layer, Option } from "effect";
-import { expect } from "vitest";
+import { expect, vi } from "vitest";
 import { ThreadId, type OrchestrationCommand } from "@synara/contracts";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
@@ -250,7 +250,7 @@ layer("gateway completion outbox", (it) => {
   );
 
   it.effect(
-    "delivers the full exact-run answer without generation and freezes it across retries",
+    "generates from full exact-run evidence, retries failures and freezes successful prose",
     () =>
       Effect.gen(function* () {
         const id = "natural-completion";
@@ -282,11 +282,21 @@ layer("gateway completion outbox", (it) => {
           messages: [],
           modelSelection: child.modelSelection,
         };
+        const presentRouterResult = vi.fn(
+          (_source: unknown, request: string, result: { summary: string | null }) => {
+            expect(request).toBe("补上 MCP 直聊");
+            expect(result.summary).toBe(child.messages[1]!.text);
+            return presentRouterResult.mock.calls.length === 1
+              ? Effect.fail(new Error("model unavailable"))
+              : Effect.succeed("接口已补齐，测试通过，尚未部署。 /report");
+          },
+        );
         const receipts = new Map<string, string>();
         const delivered: OrchestrationCommand[] = [];
         let lost = true;
         const dependencies = {
           repository,
+          presentRouterResult,
           snapshotQuery: {
             getThreadShellById: (threadId: string) =>
               Effect.succeed(Option.some(threadId === id ? child : source)),
@@ -323,9 +333,12 @@ layer("gateway completion outbox", (it) => {
           } as unknown as OrchestrationEngineShape,
         };
         yield* deliverGatewayCompletions(dependencies);
+        expect((yield* repository.pending())[0]!.resultJson).toBeNull();
+        expect(delivered).toHaveLength(0);
+        yield* deliverGatewayCompletions(dependencies);
         expect(yield* repository.pending()).toHaveLength(1);
         expect(JSON.parse((yield* repository.pending())[0]!.resultJson!).userReply).toContain(
-          "not deployed",
+          "尚未部署",
         );
         yield* deliverGatewayCompletions({
           ...dependencies,
@@ -333,7 +346,8 @@ layer("gateway completion outbox", (it) => {
         });
         const messages = delivered.filter((command) => command.type === "thread.messages.import");
         expect(messages).toHaveLength(1);
-        expect(messages[0]?.messages[0]?.text).toBe(child.messages[1]!.text);
+        expect(messages[0]?.messages[0]?.text).toBe("接口已补齐，测试通过，尚未部署。 /report");
+        expect(presentRouterResult).toHaveBeenCalledTimes(2);
         expect(messages[0]?.messages[0]?.text).not.toContain("Unrelated later result");
         expect(yield* repository.pending()).toHaveLength(0);
       }),

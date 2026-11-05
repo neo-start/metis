@@ -101,7 +101,16 @@ async function fixture(active = true) {
     route: "reply",
     reply: "独立问题的回答",
   }));
-  const host: AgentRouterHost = { readThread, generate, dispatch, generationCwd: root };
+  const presentation = vi.fn<AgentRouterHost["generate"]>(async (input) => {
+    const context = JSON.parse(input.taskContext);
+    return { route: "reply", reply: "Router 生成：" + (context.facts?.observed ?? input.message) };
+  });
+  const host: AgentRouterHost = {
+    readThread,
+    dispatch,
+    generationCwd: root,
+    generate: (input) => (input.responseMode ? presentation(input) : generate(input)),
+  };
   const router = new AgentRouter(path.join(root, "receipts"));
   const command = (
     text: string,
@@ -128,6 +137,7 @@ async function fixture(active = true) {
     host,
     readThread,
     generate,
+    presentation,
     command,
     dispatch,
     threadId,
@@ -194,7 +204,7 @@ describe("AgentRouter above the real orchestration engine", () => {
       const chat = f.router.dispatch(f.command("你还在吗", "chat"), f.host);
       await vi.waitFor(async () => {
         const messages = (await f.readThread()).messages;
-        expect(messages.some((m) => m.text === "我在，收到你的消息了。")).toBe(true);
+        expect(messages.some((m) => m.text === "Router 生成：我在，收到你的消息了。")).toBe(true);
         expect(messages.some((m) => m.text === "独立问题的回答")).toBe(true);
       });
       await Promise.all([greeting, chat]);
@@ -226,7 +236,7 @@ describe("AgentRouter above the real orchestration engine", () => {
       });
       expect(createWorker).not.toHaveBeenCalled();
     } finally {
-      finish({ route: "queue", reply: "" });
+      finish({ route: "queue", reply: "我会按这条补充继续处理。" });
       await Promise.all([first, third]);
     }
     expect(createWorker).toHaveBeenCalledTimes(2);
@@ -261,7 +271,7 @@ describe("AgentRouter above the real orchestration engine", () => {
 
   it("persists a steering plan before dispatch and retries partial delivery without duplication", async () => {
     const f = await fixture();
-    f.generate.mockResolvedValue({ route: "steer", reply: "" });
+    f.generate.mockResolvedValue({ route: "steer", reply: "我会按这条补充继续处理。" });
     let fail = true;
     const host: AgentRouterHost = {
       ...f.host,
@@ -292,7 +302,7 @@ describe("AgentRouter above the real orchestration engine", () => {
         session: { ...thread.session!, activeTurnId: TurnId.makeUnsafe("replacement") },
         createdAt: f.createdAt,
       });
-      return { route: "steer", reply: "" };
+      return { route: "steer", reply: "我会按这条补充继续处理。" };
     });
     await f.router.dispatch(f.command("页面改成蓝色"), f.host);
     expect((await f.readThread()).messages.at(-1)?.text).toContain("尚未发送");
@@ -301,7 +311,7 @@ describe("AgentRouter above the real orchestration engine", () => {
 
   it("rechecks steering ownership inside serialized engine admission", async () => {
     const f = await fixture();
-    f.generate.mockResolvedValue({ route: "steer", reply: "" });
+    f.generate.mockResolvedValue({ route: "steer", reply: "我会按这条补充继续处理。" });
     const host = {
       ...f.host,
       dispatch: async (command: OrchestrationCommand) => {
@@ -324,13 +334,13 @@ describe("AgentRouter above the real orchestration engine", () => {
     expect((await f.readThread()).messages).toHaveLength(0);
   });
 
-  it("falls back to the durable queue with an honest notice on generation failure", async () => {
+  it("fails without dispatching work or substituting a template on generation failure", async () => {
     const f = await fixture();
-    f.generate.mockRejectedValue(new Error("timeout"));
-    await f.router.dispatch(f.command("调查另一个问题"), f.host);
-    expect((await f.readThread()).messages[0]?.dispatchMode).toBe("queue");
-    expect((await f.readThread()).messages.at(-1)?.text).toContain("超时");
-    expect((await f.readThread()).session?.activeTurnId).toBe(f.turnId);
+    f.generate.mockRejectedValue(new Error("offline"));
+    await expect(f.router.dispatch(f.command("帮我修改页面"), f.host)).rejects.toThrow(
+      "not submitted",
+    );
+    expect((await f.readThread()).messages).toHaveLength(0);
   });
 
   it("keeps unsupported native steering queued without interrupting the original task", async () => {
@@ -343,7 +353,7 @@ describe("AgentRouter above the real orchestration engine", () => {
       session: { ...thread.session!, providerName: "cursor" },
       createdAt: f.createdAt,
     });
-    f.generate.mockResolvedValue({ route: "steer", reply: "" });
+    f.generate.mockResolvedValue({ route: "steer", reply: "我会按这条补充继续处理。" });
     await f.router.dispatch(f.command("页面改成蓝色"), f.host);
     expect((await f.readThread()).messages[0]?.dispatchMode).toBe("queue");
   });
@@ -455,13 +465,17 @@ describe("durable Router workers", () => {
     await f.router.dispatch(f.command("新任务：旧书店页面", "old"), f.host);
     const first = f.router.dispatch(f.command("帮我改页面", "page"), f.host);
     await vi.waitFor(() => expect(f.generate).toHaveBeenCalledTimes(1));
-    f.generate.mockResolvedValueOnce({ route: "steer", targetTaskId: "pending:page", reply: "" });
+    f.generate.mockResolvedValueOnce({
+      route: "steer",
+      targetTaskId: "pending:page",
+      reply: "我会按这条补充继续处理。",
+    });
     const followup = f.router.dispatch(f.command("背景用蓝色", "blue"), f.host);
     await vi.waitFor(() => expect(f.generate).toHaveBeenCalledTimes(2));
     expect(JSON.parse(f.generate.mock.calls[1]![0].taskContext).pendingRequests[0].id).toBe(
       "pending:page",
     );
-    finish({ route: "queue", reply: "" });
+    finish({ route: "queue", reply: "我会按这条补充继续处理。" });
     await Promise.all([first, followup]);
     expect(f.ids).toHaveLength(2);
     expect((await f.readThread(f.ids[1]!)).messages.some((m) => m.text === "背景用蓝色")).toBe(
@@ -473,7 +487,11 @@ describe("durable Router workers", () => {
     const f = await workerFixture();
     await f.router.dispatch(f.command("新任务：咖啡店页面", "coffee"), f.host);
     await f.router.dispatch(f.command("新任务：书店页面", "book"), f.host);
-    f.generate.mockResolvedValueOnce({ route: "steer", targetTaskId: f.ids[0]!, reply: "" });
+    f.generate.mockResolvedValueOnce({
+      route: "steer",
+      targetTaskId: f.ids[0]!,
+      reply: "我会按这条补充继续处理。",
+    });
     await f.router.dispatch(f.command("咖啡店那个用蓝色", "blue"), f.host);
     expect(
       (await f.readThread(f.ids[0]!)).messages.some((m) => m.text === "咖啡店那个用蓝色"),
@@ -488,7 +506,11 @@ describe("durable Router workers", () => {
     const f = await workerFixture();
     await f.router.dispatch(f.command("新任务：页面 A", "a"), f.host);
     await f.router.dispatch(f.command("新任务：页面 B", "b"), f.host);
-    f.generate.mockResolvedValueOnce({ route: "steer", targetTaskId: "", reply: "" });
+    f.generate.mockResolvedValueOnce({
+      route: "steer",
+      targetTaskId: "",
+      reply: "我会按这条补充继续处理。",
+    });
     await f.router.dispatch(f.command("背景用蓝色", "ambiguous"), f.host);
     expect((await f.readThread()).messages.at(-1)?.text).toContain("没有唯一可确认的目标");
     expect((await f.readThread(f.ids[0]!)).messages.some((m) => m.text === "背景用蓝色")).toBe(
@@ -594,7 +616,11 @@ describe("durable Router workers", () => {
     await vi.waitFor(async () =>
       expect((await f.readThread()).messages.some((m) => m.text.includes("队列保存"))).toBe(true),
     );
-    f.generate.mockResolvedValueOnce({ route: "steer", targetTaskId: first, reply: "" });
+    f.generate.mockResolvedValueOnce({
+      route: "steer",
+      targetTaskId: first,
+      reply: "我会按这条补充继续处理。",
+    });
     await f.inbox.accept(f.command("长任务 A 改成中文", "steer"));
     await vi.waitFor(async () =>
       expect((await f.readThread(first)).messages.some((m) => m.text.includes("改成中文"))).toBe(
@@ -659,14 +685,15 @@ describe("durable Router workers", () => {
     f.generate.mockResolvedValueOnce({
       route: "steer",
       targetTaskId: "another-conversation",
-      reply: "",
+      reply: "我会按这条补充继续处理。",
     });
     await f.router.dispatch(f.command("改成中文", "invalid-target"), f.host);
     expect(f.host.createWorker).not.toHaveBeenCalled();
     f.generate.mockRejectedValueOnce(new Error("timeout"));
-    await f.router.dispatch(f.command("帮我改一下", "failed-generation"), f.host);
+    await expect(
+      f.router.dispatch(f.command("帮我改一下", "failed-generation"), f.host),
+    ).rejects.toThrow("not submitted");
     expect(f.host.createWorker).not.toHaveBeenCalled();
-    expect((await f.readThread()).messages.at(-1)?.text).toContain("消息未交给执行器");
   });
 
   it("reports uncertain submission honestly when worker creation succeeds but its acknowledgement fails", async () => {
@@ -699,14 +726,14 @@ it("leaves admitted input recoverable when the Router lifecycle stops during gen
   await f.inbox.accept(f.command("需要调查的问题", "shutdown"));
   await vi.waitFor(() => expect(finish).toBeDefined());
   f.inbox.stop();
-  finish!({ route: "queue", reply: "" });
+  finish!({ route: "queue", reply: "我会按这条补充继续处理。" });
   await new Promise((resolve) => setTimeout(resolve, 20));
   expect(f.host.createWorker).not.toHaveBeenCalled();
   const files = await readdir(path.join(f.root, "inbox"));
   const saved = JSON.parse(await readFile(path.join(f.root, "inbox", files[0]!), "utf8"));
   expect(saved.command.message.text).toBe("需要调查的问题");
   expect(saved.error).toBeUndefined();
-  f.generate.mockResolvedValue({ route: "queue", reply: "" });
+  f.generate.mockResolvedValue({ route: "queue", reply: "我会按这条补充继续处理。" });
   const restarted = new RouterInbox(
     path.join(f.root, "inbox"),
     new AgentRouter(path.join(f.root, "receipts")),
@@ -724,7 +751,11 @@ it("pins an explicit correction to task A even when generation would pick B and 
   await f.router.dispatch(f.command("新任务：A", "target-a"), f.host);
   await f.router.dispatch(f.command("新任务：B", "target-b"), f.host);
   const [first, second] = f.ids;
-  f.generate.mockResolvedValue({ route: "steer", targetTaskId: second!, reply: "" });
+  f.generate.mockResolvedValue({
+    route: "steer",
+    targetTaskId: second!,
+    reply: "我会按这条补充继续处理。",
+  });
   await f.router.dispatch(
     {
       ...f.command(`任务 ${first} 修改成中文`, "pinned-correction"),
@@ -805,7 +836,7 @@ it("keeps a generated supplement scoped to its worker and saves the binding befo
   expect((await f.readThread(f.ids[0]!)).messages.at(-1)?.text).toBe(input.message.text);
 });
 
-it("answers local and targeted progress without invoking a provider", async () => {
+it("generates local and targeted progress through Router without classifying actions", async () => {
   const f = await workerFixture();
   await f.router.dispatch(f.command("新任务：MCP", "initial"), f.host);
   f.generate.mockImplementation(() => new Promise(() => {}));
@@ -815,6 +846,7 @@ it("answers local and targeted progress without invoking a provider", async () =
   expect((await f.readThread()).messages.at(-1)?.text).toContain("任务仍在运行");
   await f.router.dispatch(f.command(`任务 ${f.ids[0]} 进度如何`, "targeted"), f.host);
   expect(f.generate).not.toHaveBeenCalled();
+  expect(f.presentation).toHaveBeenCalledTimes(4);
   expect(f.ids).toHaveLength(1);
 });
 
@@ -895,4 +927,42 @@ it("matches only whole global status queries", () => {
   expect(isRouterGlobalStatusQuestion("现在有进行中的 Metis 会话吗，然后停止它们")).toBe(false);
   expect(isRouterGlobalStatusQuestion("show all running tasks and delete them")).toBe(false);
   expect(isRouterGlobalStatusQuestion("当前 Metis 有哪些运行中的任务？停止它们")).toBe(false);
+});
+
+it("uses Router wording for every recognized plain input and freezes it on replay", async () => {
+  const f = await workerFixture();
+  const cases = [
+    "你好",
+    "查好了吗",
+    "当前 Metis 有哪些运行中的任务？",
+    "新任务：修改页面",
+    "任务 worker-flow-3 改成中文",
+    "任务 worker-flow-3 停止",
+  ];
+  for (const [index, text] of cases.entries()) {
+    const generated = `这一条的自然回复 ${index}`;
+    f.presentation.mockResolvedValueOnce({ route: "reply", targetTaskId: "", reply: generated });
+    const input = f.command(text, `flow-${index}`);
+    await f.router.dispatch(input, f.host);
+    expect((await f.readThread()).messages.at(-1)?.text).toBe(generated);
+    await new AgentRouter(path.join(f.root, "receipts")).dispatch(input, f.host);
+    expect(f.presentation).toHaveBeenCalledTimes(index + 1);
+  }
+  expect(f.ids).toHaveLength(1);
+  expect(f.generate).not.toHaveBeenCalled();
+});
+
+it("does not submit work or return a template when Router presentation fails", async () => {
+  const f = await workerFixture();
+  f.presentation.mockRejectedValueOnce(new Error("model unavailable"));
+  await expect(f.router.dispatch(f.command("新任务：修复接口", "offline"), f.host)).rejects.toThrow(
+    "model unavailable",
+  );
+  expect(f.ids).toHaveLength(0);
+  expect((await f.readThread()).messages).toHaveLength(0);
+  f.presentation.mockResolvedValueOnce({ route: "queue", reply: "start another task" });
+  await expect(f.router.dispatch(f.command("你好", "invalid"), f.host)).rejects.toThrow(
+    "invalid presentation",
+  );
+  expect(f.ids).toHaveLength(0);
 });

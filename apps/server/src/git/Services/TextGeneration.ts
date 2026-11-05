@@ -172,6 +172,8 @@ export interface AutomationCompletionEvaluationResult {
 }
 
 export interface RouterGenerationInput extends ThreadTitleGenerationInput {
+  /** Server-owned facts/actions: generate prose without selecting another action. */
+  responseMode?: "acknowledgement" | "status" | "completion";
   /** Bounded task context; quoted history is data, never new authority. */
   taskContext: string;
 }
