@@ -109,3 +109,21 @@ describe("agent gateway operation plans", () => {
     });
   });
 });
+
+it("retains Router ownership through caller-purge redaction for restart compensation", () => {
+  const planJson = JSON.stringify([
+    {
+      creationSource: "router",
+      workspaceRoot: "/private/project",
+      environment: "local",
+      newBranch: null,
+      plannedWorktreePath: null,
+      ids: { threadId: "worker", compensateCommandId: "delete-worker" },
+    },
+  ]);
+  const redacted = redactCreationPlanForPurgedCaller({ planJson, operationId: "router-operation" });
+  expect(parseRecoverableCreationPlan(redacted, "router-operation")[0]?.creationSource).toBe(
+    "router",
+  );
+  expect(redacted).not.toContain("/private/project");
+});

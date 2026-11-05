@@ -255,6 +255,30 @@
       "apps/server/src/textGeneration/CodexTextGeneration.ts",
       "apps/server/src/orchestration/decider.ts"
     ],
-    "adaptations": "Reuse local isolated generation, command receipts, message import, atomic private files and strict cancellation fences for independent follow-up routing. Reviewed T3 one-shot generation and steering; no T3 source copied. Keep provider event stores, model selection, approval boundaries and process runner."
+    "adaptations": "Reuse local isolated generation, command receipts, message import, atomic private files and strict cancellation fences for independent follow-up routing. Reviewed T3 one-shot generation and steering; no T3 source copied. Keep provider event stores, model selection, approval boundaries and process runner.",
+    "independentWorkers": {
+      "localBaseCommit": "6915116b42d0be3b2231139624bf6671ef47c6df",
+      "synaraSources": [
+        "apps/server/src/agentGateway/creationCoordinator.ts",
+        "apps/server/src/agentGateway/startupRecovery.ts",
+        "apps/server/src/agentGateway/completionDelivery.ts",
+        "apps/server/src/agentGateway/Layers/AgentGatewayOperationRepository.ts",
+        "apps/server/src/metis/MetisControllerService.ts",
+        "apps/server/src/git/Services/GitCore.ts",
+        "apps/server/src/orchestration/Services/OrchestrationEngine.ts",
+        "apps/server/src/atomicWrite.ts",
+        "apps/web/src/components/ChatMarkdown.tsx",
+        "apps/web/src/components/chat/useChatTurnSubmission.ts",
+        "apps/web/src/components/chat/useChatTurnExecution.ts",
+        "apps/web/src/components/ChatView.browser.tsx"
+      ],
+      "t3codeReviewedCommit": "f5ef0ddb90a8c36584e181b1913e7b8a5df30ffc",
+      "t3codeSources": [
+        "apps/server/src/textGeneration/CodexTextGeneration.ts",
+        "apps/server/src/orchestration/decider.ts",
+        "apps/web/src/components/ChatView.tsx"
+      ],
+      "adaptations": "Reuse local durable gateway creation saga, ownership-checked worktree compensation, provider lifecycle, task control and completion outbox for server-only owner Router workers. Preserve model, runtime mode, interaction and launch options, source-thread ownership, approvals, exact-turn fences and provider-native subagent semantics. Add private admission inbox and passive transcript results; reuse frontend ACK lifecycle, Thought-link navigation pattern and isolated mock-WebSocket browser harness. No T3 source copied; no migration or process runtime replacement."
+    }
   }
 }

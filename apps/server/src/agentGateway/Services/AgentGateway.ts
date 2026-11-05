@@ -9,6 +9,7 @@
  *
  * @module agentGateway/Services/AgentGateway
  */
+import type { OrchestrationCommand, ThreadId } from "@synara/contracts";
 import { ServiceMap } from "effect";
 import type { Effect } from "effect";
 
@@ -19,6 +20,11 @@ export interface AgentGatewayHttpResult {
 }
 
 export interface AgentGatewayShape {
+  /** Server-only owner Router entrypoint; never exposed in the provider MCP catalog. */
+  readonly createRouterWorker?: (
+    command: Extract<OrchestrationCommand, { type: "thread.turn.start" }>,
+    sourceContext?: string,
+  ) => Effect.Effect<ThreadId, Error>;
   /**
    * Handle one MCP streamable-HTTP POST. All failures are folded into
    * JSON-RPC error responses or HTTP status codes; the effect never fails.

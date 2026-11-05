@@ -1,4 +1,5 @@
 export interface RecoverableCreationPlanEntry {
+  readonly creationSource?: "router";
   readonly workspaceRoot: string;
   readonly environment: "local" | "worktree";
   readonly worktreeRef: string | null;
@@ -85,6 +86,7 @@ export function parseRecoverableCreationPlan(
           }
         : null;
     return {
+      ...(value.creationSource === "router" ? { creationSource: "router" as const } : {}),
       workspaceRoot: value.workspaceRoot,
       environment: value.environment,
       worktreeRef: typeof value.worktreeRef === "string" ? value.worktreeRef : null,
@@ -151,6 +153,7 @@ export function redactCreationPlanForPurgedCaller(input: {
 }): string {
   return JSON.stringify(
     parseRecoverableCreationPlan(input.planJson, input.operationId).map((entry) => ({
+      ...(entry.creationSource ? { creationSource: entry.creationSource } : {}),
       workspaceRoot: entry.environment === "worktree" ? entry.workspaceRoot : "",
       environment: entry.environment,
       ...(entry.worktreeRef ? { worktreeRef: entry.worktreeRef } : {}),

@@ -7,7 +7,7 @@ import {
   MessageId,
   OrchestrationCommand,
   type OrchestrationThread,
-  type ThreadId,
+  ThreadId,
 } from "@synara/contracts";
 import { writeFileStringAtomically } from "../atomicWrite.ts";
 import { fingerprintOrchestrationCommand } from "../orchestration/commandFingerprint.ts";
@@ -27,10 +27,21 @@ export interface AgentRouterHost {
   dispatch(command: OrchestrationCommand): Promise<DispatchResult>;
   /** An empty, private working directory, not the user's repository. */
   generationCwd: string;
+  listWorkers?(id: ThreadId): Promise<ReadonlyArray<OrchestrationThread>>;
+  createWorker?(command: TurnStart, sourceContext?: string): Promise<ThreadId>;
+  /** Durable inbox already imported the user message. */
+  inputAccepted?: boolean;
 }
+const WorkerPlan = Schema.Struct({
+  type: Schema.Literal("router.worker.create"),
+  command: OrchestrationCommand,
+  sourceContext: Schema.optional(Schema.String),
+});
+const PlannedCommand = Schema.Union([OrchestrationCommand, WorkerPlan]);
+type PlannedCommand = typeof PlannedCommand.Type;
 const SavedDispatch = Schema.Struct({
   fingerprint: Schema.String,
-  commands: Schema.Array(OrchestrationCommand),
+  commands: Schema.Array(PlannedCommand),
   resultSequence: Schema.optional(Schema.Number),
 });
 const hash = (text: string) => createHash("sha256").update(text).digest("hex");
@@ -45,6 +56,11 @@ export function isRouterCancelRequest(text: string) {
   return /^(?:停止|暂停|停一下|停止当前任务|暂停当前任务|取消当前任务|stop|pause|cancel(?: the)? (?:current )?task)[。.!！]?$/iu.test(
     text.trim(),
   );
+}
+function isRouterPriorityRequest(text: string) {
+  const targeted = /^(?:任务|task)\s+\S+\s+([\s\S]+)$/iu.exec(text.trim());
+  const action = targeted?.[1] ?? text;
+  return isRouterStatusQuestion(action) || isRouterCancelRequest(action);
 }
 export function routerHasActiveTurn(thread: OrchestrationThread) {
   return (
@@ -63,8 +79,7 @@ export function canRouteTurn(command: TurnStart) {
     !command.reviewTarget &&
     !command.sourceProposedPlan &&
     command.computerControlMode !== "request" &&
-    !command.enableComputerControl &&
-    command.message.text.length <= 16000
+    !command.enableComputerControl
   );
 }
 export function routerStatusReply(thread: OrchestrationThread) {
@@ -106,19 +121,14 @@ export class AgentRouter {
     if (this.requests.size >= 32)
       return Promise.reject(new Error("Router is busy. Please retry shortly."));
     // Progress never waits for model generation. Other follow-ups preserve their arrival order.
-    const previous =
-      isRouterStatusQuestion(command.message.text) || isRouterCancelRequest(command.message.text)
-        ? undefined
-        : this.lanes.get(command.threadId);
+    const previous = isRouterPriorityRequest(command.message.text)
+      ? undefined
+      : this.lanes.get(command.threadId);
     const result = (previous ?? Promise.resolve())
       .catch(() => undefined)
       .then(() => this.run(command, fingerprint, key, host));
     this.requests.set(key, { fingerprint, result });
-    if (
-      !isRouterStatusQuestion(command.message.text) &&
-      !isRouterCancelRequest(command.message.text)
-    )
-      this.lanes.set(command.threadId, result);
+    if (!isRouterPriorityRequest(command.message.text)) this.lanes.set(command.threadId, result);
     void result
       .finally(() => {
         this.requests.delete(key);
@@ -156,7 +166,30 @@ export class AgentRouter {
       );
     }
     let result: DispatchResult = { sequence: 0 };
-    for (const planned of saved.commands) result = await host.dispatch(planned);
+    for (const planned of saved.commands) {
+      if (planned.type !== "router.worker.create") {
+        result = await host.dispatch(planned);
+        continue;
+      }
+      if (!host.createWorker || planned.command.type !== "thread.turn.start")
+        throw new Error("Router worker service unavailable.");
+      const workerId = await host.createWorker(planned.command, planned.sourceContext);
+      result = await host.dispatch({
+        type: "thread.messages.import",
+        commandId: CommandId.makeUnsafe(`router-worker-reply-${key}`),
+        threadId: command.threadId,
+        createdAt: command.createdAt,
+        messages: [
+          {
+            messageId: MessageId.makeUnsafe(`router-${key}`),
+            role: "assistant",
+            text: `Router：已创建独立任务 [${workerId}](/tasks?thread=${encodeURIComponent(workerId)})。可继续在这里聊天；打开任务可查看进度、修改要求或取消。任务完成后会通知此会话。`,
+            createdAt: command.createdAt,
+            updatedAt: command.createdAt,
+          },
+        ],
+      });
+    }
     // Retain only the receipt after acknowledgement, not another copy of chat text.
     await Effect.runPromise(
       writeFileStringAtomically({
@@ -172,9 +205,22 @@ export class AgentRouter {
     thread: OrchestrationThread,
     host: AgentRouterHost,
     key: string,
-  ): Promise<ReadonlyArray<OrchestrationCommand>> {
+  ): Promise<ReadonlyArray<PlannedCommand>> {
     const { routingMode: _, ...workerCommand } = command;
-    const reply = (text: string, includeUser = true): OrchestrationCommand => ({
+    const { providerOptions: _workerOptions, ...correctionCommand } = workerCommand;
+    const workerPlan = (): PlannedCommand => ({
+      type: "router.worker.create",
+      command: workerCommand,
+      sourceContext: JSON.stringify({
+        sourceThreadId: thread.id,
+        title: thread.title,
+        messages: thread.messages
+          .filter((message) => message.id !== command.message.messageId)
+          .slice(-12)
+          .map(({ role, text }) => ({ role, text: text.slice(-2000) })),
+      }),
+    });
+    const reply = (text: string, includeUser = !host.inputAccepted): OrchestrationCommand => ({
       type: "thread.messages.import",
       commandId: includeUser ? command.commandId : CommandId.makeUnsafe(`router-reply-${key}`),
       threadId: command.threadId,
@@ -201,52 +247,109 @@ export class AgentRouter {
       ],
     });
     if (!canRouteTurn(command)) return [workerCommand];
-    if (isRouterStatusQuestion(command.message.text)) return [reply(routerStatusReply(thread))];
+    const workers = host.listWorkers ? await host.listWorkers(thread.id) : [];
+    const tasks = [...(routerHasActiveTurn(thread) ? [thread] : []), ...workers].filter(
+      (task) => !task.deletedAt && !task.archivedAt,
+    );
+    const status = () =>
+      tasks.length
+        ? tasks
+            .map(
+              (task) =>
+                `[${task.title}](/tasks?thread=${encodeURIComponent(task.id)}) · ${task.id}\n${routerStatusReply(task)}`,
+            )
+            .join("\n\n")
+        : host.createWorker
+          ? "Router：尚无已启动任务；已受理消息可能仍在路由或创建中。"
+          : routerStatusReply(thread);
+    if (isRouterStatusQuestion(command.message.text)) return [reply(status())];
     if (isRouterCancelRequest(command.message.text)) {
-      const turnId = thread.session?.activeTurnId;
-      if (!routerHasActiveTurn(thread) || !turnId)
+      const active = tasks.filter(routerHasActiveTurn);
+      if (active.length > 1)
+        return [
+          reply("Router：有多个运行中任务，请打开需要停止的任务，或发送 `任务 <任务ID> 停止`。"),
+        ];
+      const target = active[0];
+      const turnId = target?.session?.activeTurnId;
+      if (!target || !turnId)
         return [reply("Router：当前没有可确认的运行中任务，未发送取消指令。")];
       return [
         {
           type: "thread.turn.interrupt",
           commandId: CommandId.makeUnsafe(`router-cancel-${key}`),
-          threadId: command.threadId,
+          threadId: target.id,
           turnId,
           createdAt: command.createdAt,
         },
         reply("Router：已请求停止当前任务，正在等待执行器确认。已发生的操作不会因此撤销。"),
       ];
     }
-    if (!routerHasActiveTurn(thread)) return [workerCommand];
+    if (host.createWorker && /^(?:新任务[：:]|new task:)/iu.test(command.message.text.trim()))
+      return [workerPlan()];
+    const explicit = /^(?:任务|task)\s+(\S+)\s+([\s\S]+)$/iu.exec(command.message.text.trim());
+    if (explicit) {
+      const target = tasks.find((task) => task.id === explicit[1]);
+      if (!target) return [reply("Router：该任务不属于此会话或已不可用，未发送指令。")];
+      if (isRouterCancelRequest(explicit[2]!)) {
+        if (!routerHasActiveTurn(target) || !target.session?.activeTurnId)
+          return [reply("Router：此任务没有可确认的运行中回合。")];
+        return [
+          {
+            type: "thread.turn.interrupt",
+            commandId: CommandId.makeUnsafe(`router-cancel-${key}`),
+            threadId: target.id,
+            turnId: target.session.activeTurnId,
+            createdAt: command.createdAt,
+          },
+          reply(`Router：已请求停止任务 ${target.id}，等待执行器确认。`),
+        ];
+      }
+      if (isRouterStatusQuestion(explicit[2]!)) return [reply(routerStatusReply(target))];
+    }
+    if (!explicit && host.createWorker && command.message.text.length > 16000)
+      return [workerPlan()];
+    if (!host.createWorker && !routerHasActiveTurn(thread)) return [workerCommand];
     // A provider/model/permission switch remains an ordinary worker operation.
     if (
-      command.runtimeMode !== thread.runtimeMode ||
-      command.interactionMode !== thread.interactionMode ||
-      (command.modelSelection &&
-        JSON.stringify(command.modelSelection) !== JSON.stringify(thread.modelSelection))
+      !explicit &&
+      (command.runtimeMode !== thread.runtimeMode ||
+        command.interactionMode !== thread.interactionMode ||
+        (command.modelSelection &&
+          JSON.stringify(command.modelSelection) !== JSON.stringify(thread.modelSelection)))
     )
-      return [workerCommand];
+      return host.createWorker ? [workerPlan()] : [workerCommand];
     let decision: RouterGenerationResult;
     let failed = false;
     try {
       decision = Schema.decodeUnknownSync(RouterDecision)(
-        await host.generate({
-          cwd: host.generationCwd,
-          message: command.message.text,
-          modelSelection: thread.modelSelection,
-          ...(command.providerOptions ? { providerOptions: command.providerOptions } : {}),
-          taskContext: JSON.stringify({
-            title: thread.title,
-            state: thread.session?.status,
-            latestTurn: thread.latestTurn,
-            conversation: thread.messages
-              .slice(-8)
-              .map(({ role, text }) => ({ role, text: text.slice(-2000) })),
-            activity: thread.activities
-              .slice(-4)
-              .map(({ kind, summary }) => ({ kind, summary: summary.slice(0, 500) })),
-          }),
-        }),
+        explicit
+          ? { route: "steer", targetTaskId: explicit[1], reply: "" }
+          : await host.generate({
+              cwd: host.generationCwd,
+              message: command.message.text,
+              modelSelection: thread.modelSelection,
+              ...(command.providerOptions ? { providerOptions: command.providerOptions } : {}),
+              taskContext: JSON.stringify({
+                tasks: tasks.slice(-20).map((task) => ({
+                  id: task.id,
+                  title: task.title,
+                  state: task.session?.status,
+                  latestTurn: task.latestTurn,
+                  latestOutput: task.messages
+                    .findLast((m) => m.role === "assistant")
+                    ?.text.slice(-1000),
+                })),
+                title: thread.title,
+                state: thread.session?.status,
+                latestTurn: thread.latestTurn,
+                conversation: thread.messages
+                  .slice(-8)
+                  .map(({ role, text }) => ({ role, text: text.slice(-2000) })),
+                activity: thread.activities
+                  .slice(-4)
+                  .map(({ kind, summary }) => ({ kind, summary: summary.slice(0, 500) })),
+              }),
+            }),
       );
     } catch {
       failed = true;
@@ -255,28 +358,62 @@ export class AgentRouter {
     const current = await host.readThread(command.threadId);
     if (!current || current.deletedAt || current.archivedAt || current.sidechatExpiredAt)
       throw new Error("Router target conversation is unavailable.");
-    if (decision.route === "status") return [reply(routerStatusReply(current))];
+    if (decision.route === "status") return [reply(status())];
     if (decision.route === "reply" && decision.reply.trim())
       return [reply(`Router：\n${decision.reply.trim()}`)];
-    if (
-      decision.route === "steer" &&
-      providerSupportsNativeTurnSteering(
-        current.session?.providerName ?? current.modelSelection.provider,
-      )
-    ) {
+    if (decision.route === "steer") {
+      const target = decision.targetTaskId
+        ? tasks.find((task) => task.id === decision.targetTaskId)
+        : tasks.length === 1
+          ? tasks[0]
+          : undefined;
+      if (!target) return [reply("Router：请指定要修改的任务，当前没有唯一可确认的目标。")];
+      const latest = await host.readThread(target.id);
       if (
-        !routerHasActiveTurn(current) ||
-        !thread.session?.activeTurnId ||
-        current.session?.activeTurnId !== thread.session.activeTurnId
-      ) {
+        !latest ||
+        latest.deletedAt ||
+        latest.archivedAt ||
+        latest.sidechatExpiredAt ||
+        latest.session?.activeTurnId !== target.session?.activeTurnId
+      )
         return [
-          reply("Router：原任务的运行状态已改变，这条修改尚未发送。请确认当前任务后重新发送修改。"),
+          reply("Router：目标任务的运行状态已改变，这条修改尚未发送。请确认任务后重新发送。"),
         ];
-      }
+      const active = routerHasActiveTurn(latest);
+      if (active && !target.session?.activeTurnId)
+        return [reply("Router：任务正在启动，请稍后重试修改。")];
+      const steer =
+        active &&
+        providerSupportsNativeTurnSteering(
+          latest.session?.providerName ?? latest.modelSelection.provider,
+        );
+      // Unsupported native steering remains scoped to that worker's queue, never to the console.
       return [
-        { ...workerCommand, dispatchMode: "steer", routerTurnId: thread.session.activeTurnId },
-        reply("Router：已提交任务修改；执行器会在可处理的位置接收。这不代表修改已经完成。", false),
+        {
+          ...correctionCommand,
+          threadId: target.id,
+          modelSelection: latest.modelSelection,
+          runtimeMode: latest.runtimeMode,
+          interactionMode: latest.interactionMode,
+          dispatchMode: steer ? "steer" : "queue",
+          ...(steer ? { routerTurnId: target.session!.activeTurnId! } : {}),
+        },
+        reply(
+          steer
+            ? `Router：已向任务 ${target.id} 提交修改，等待执行器接收。这不代表修改已经完成。`
+            : `Router：修改已加入任务 ${target.id} 的队列。`,
+          false,
+        ),
       ];
+    }
+    if (host.createWorker) {
+      if (failed)
+        return [
+          reply(
+            "Router：独立响应通道暂时不可用或超时，消息未交给执行器。请重试；明确的新任务可用「新任务：…」直接提交。",
+          ),
+        ];
+      return [workerPlan()];
     }
     return [
       { ...workerCommand, dispatchMode: "queue" },

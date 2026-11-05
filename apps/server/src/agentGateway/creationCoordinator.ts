@@ -1,3 +1,4 @@
+import { mkdir } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -107,6 +108,18 @@ export type GatewayCreationContext =
       readonly kind: "provider-session";
       readonly callerThreadId: string;
       readonly callerTurnId: string | null;
+      readonly assertAuthority: () => Effect.Effect<void, GatewayToolError>;
+    }
+  | {
+      /** Only the authenticated owner RPC may construct this context. */
+      readonly kind: "owner-router";
+      readonly callerThreadId: string;
+      readonly runtimeMode: OrchestrationThreadShell["runtimeMode"];
+      readonly interactionMode: ProviderInteractionMode;
+      readonly providerOptions?: Extract<
+        import("@synara/contracts").OrchestrationCommand,
+        { type: "thread.turn.start" }
+      >["providerOptions"];
       readonly assertAuthority: () => Effect.Effect<void, GatewayToolError>;
     }
   | {
@@ -319,7 +332,7 @@ export const makeCreateThreadsHandler = Effect.fn(function* (
         );
       }
       if (
-        context.kind !== "provider-session" &&
+        context.kind === "external-client" &&
         input.threads.some((spec) => spec.notifyCreatorOnComplete)
       ) {
         return yield* Effect.fail(
@@ -329,19 +342,34 @@ export const makeCreateThreadsHandler = Effect.fn(function* (
           ),
         );
       }
-      const callerTurnId = context.kind === "provider-session" ? context.callerTurnId! : null;
-      const caller =
+      const callerTurnId =
         context.kind === "provider-session"
+          ? context.callerTurnId!
+          : context.kind === "owner-router"
+            ? `router:${input.requestId}`
+            : null;
+      const caller =
+        context.kind !== "external-client"
           ? yield* requireThreadShell(context.callerThreadId)
           : null;
       const operationId = `gateway:create:${stableGatewayDigest({
         principalKind: context.kind,
         principalId:
-          context.kind === "provider-session" ? context.callerThreadId : context.integrationId,
+          context.kind !== "external-client" ? context.callerThreadId : context.integrationId,
         ...(callerTurnId ? { callerTurnId } : {}),
         requestId: input.requestId,
       })}`;
-      const fingerprint = stableGatewayDigest(input, 64);
+      const fingerprint = stableGatewayDigest(
+        context.kind === "owner-router"
+          ? {
+              input,
+              runtimeMode: context.runtimeMode,
+              interactionMode: context.interactionMode,
+              providerOptions: context.providerOptions,
+            }
+          : input,
+        64,
+      );
       const externalOperationRepository =
         context.kind === "external-client" ? externalMcpRepository : undefined;
       if (context.kind === "external-client" && externalOperationRepository === undefined) {
@@ -353,12 +381,12 @@ export const makeCreateThreadsHandler = Effect.fn(function* (
         );
       }
       const operationStore: CreationOperationStore =
-        context.kind === "provider-session"
+        context.kind !== "external-client"
           ? {
               getExisting: () =>
                 operationRepository.getByScope({
                   callerThreadId: context.callerThreadId,
-                  callerTurnId: context.callerTurnId!,
+                  callerTurnId: callerTurnId!,
                   operationKind: "create_threads",
                 }),
               getById: operationRepository.getById,
@@ -366,7 +394,7 @@ export const makeCreateThreadsHandler = Effect.fn(function* (
                 operationRepository.reserve({
                   ...reservation,
                   callerThreadId: context.callerThreadId,
-                  callerTurnId: context.callerTurnId!,
+                  callerTurnId: callerTurnId!,
                   operationKind: "create_threads",
                 }),
               markDispatching: operationRepository.markDispatching,
@@ -526,6 +554,7 @@ export const makeCreateThreadsHandler = Effect.fn(function* (
             );
           }
           const runtimeMode =
+            (context.kind === "owner-router" ? context.runtimeMode : undefined) ??
             externalPolicy?.runtimeMode ??
             spec.runtimeMode ??
             (context.kind === "external-client" || caller!.runtimeMode === "auto"
@@ -542,7 +571,7 @@ export const makeCreateThreadsHandler = Effect.fn(function* (
             );
           }
           if (spec.enableComputerControl === true) {
-            if (context.kind === "provider-session") {
+            if (context.kind !== "external-client") {
               return yield* Effect.fail(
                 new ToolInputError(
                   "Threads cannot delegate computer control to tasks they create.",
@@ -924,6 +953,13 @@ export const makeCreateThreadsHandler = Effect.fn(function* (
                   workspaceRoot: entry.workspaceRoot,
                   environment: entry.environment,
                   runtimeMode: entry.runtimeMode,
+                  ...(context.kind === "owner-router"
+                    ? {
+                        creationSource: "router",
+                        interactionMode: context.interactionMode,
+                        providerOptions: context.providerOptions,
+                      }
+                    : {}),
                   worktreeRef: entry.worktreeRef,
                   newBranch: entry.newBranch,
                   plannedWorktreePath: entry.plannedWorktreePath,
@@ -1095,7 +1131,22 @@ export const makeCreateThreadsHandler = Effect.fn(function* (
                     associatedWorktreeRef = created.worktree.ref;
                   }
 
-                  const interactionMode = interactionModeForGatewayTarget(entry.target);
+                  const interactionMode =
+                    context.kind === "owner-router"
+                      ? context.interactionMode
+                      : interactionModeForGatewayTarget(entry.target);
+                  const workingDirectory =
+                    context.kind === "owner-router" && entry.environment === "local"
+                      ? join(
+                          entry.workspaceRoot,
+                          "work",
+                          `router-${stableGatewayDigest({ operationId, index: entry.index }, 16)}`,
+                        )
+                      : undefined;
+                  if (workingDirectory)
+                    yield* Effect.tryPromise(() =>
+                      mkdir(workingDirectory, { recursive: true, mode: 0o700 }),
+                    );
                   yield* context.assertAuthority();
                   yield* orchestrationEngine
                     .dispatch({
@@ -1111,11 +1162,18 @@ export const makeCreateThreadsHandler = Effect.fn(function* (
                       branch,
                       worktreePath,
                       creationSource:
-                        context.kind === "external-client" ? "external_mcp" : "synara_mcp",
-                      ...(context.kind === "provider-session"
+                        context.kind === "external-client"
+                          ? "external_mcp"
+                          : context.kind === "owner-router"
+                            ? "router"
+                            : "synara_mcp",
+                      ...(workingDirectory ? { workingDirectory } : {}),
+                      ...(context.kind !== "external-client"
                         ? {
                             sourceThreadId: ThreadId.makeUnsafe(context.callerThreadId),
-                            sourceTurnId: TurnId.makeUnsafe(callerTurnId!),
+                            ...(context.kind === "provider-session"
+                              ? { sourceTurnId: TurnId.makeUnsafe(callerTurnId!) }
+                              : {}),
                           }
                         : {}),
                       gatewayOperationId: operationId,
@@ -1147,7 +1205,10 @@ export const makeCreateThreadsHandler = Effect.fn(function* (
                     },
                     modelSelection: entry.target,
                     dispatchMode: "queue",
-                    dispatchOrigin: "agent",
+                    dispatchOrigin: context.kind === "owner-router" ? "user" : "agent",
+                    ...(context.kind === "owner-router" && context.providerOptions
+                      ? { providerOptions: context.providerOptions }
+                      : {}),
                     runtimeMode: entry.runtimeMode,
                     interactionMode,
                     ...(entry.spec.enableComputerControl === true
@@ -1228,8 +1289,8 @@ export const makeCreateThreadsHandler = Effect.fn(function* (
     }).pipe(
       (effect) =>
         withCreationPlanLock(
-          context.kind === "provider-session"
-            ? `${context.callerThreadId}\u0000${context.callerTurnId ?? "inactive"}`
+          context.kind !== "external-client"
+            ? `${context.callerThreadId}\u0000${context.kind === "owner-router" ? input.requestId : (context.callerTurnId ?? "inactive")}`
             : `${context.integrationId}\u0000${input.requestId}`,
           effect,
         ),

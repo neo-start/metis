@@ -1,4 +1,4 @@
-import { CommandId, EventId, ThreadId } from "@synara/contracts";
+import { CommandId, EventId, MessageId, ThreadId } from "@synara/contracts";
 import { Effect, Option } from "effect";
 import type { OrchestrationEngineShape } from "../orchestration/Services/OrchestrationEngine.ts";
 import type { ProjectionSnapshotQueryShape } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
@@ -127,6 +127,23 @@ export const deliverGatewayCompletions = (dependencies: CompletionDeliveryDepend
               createdAt,
             },
             createdAt,
+          });
+        }
+        if (available && child?.creationSource === "router") {
+          yield* orchestrationEngine.dispatch({
+            type: "thread.messages.import",
+            commandId: CommandId.makeUnsafe(`router-completion:${row.childThreadId}`),
+            threadId: parentId,
+            createdAt,
+            messages: [
+              {
+                messageId: MessageId.makeUnsafe(`router-completion:${row.childThreadId}`),
+                role: "assistant",
+                text: `Router：任务 [${row.childThreadId}](/tasks?thread=${encodeURIComponent(row.childThreadId)}) ${result.status}。\n${result.error ?? result.summary ?? "执行器没有提供最终回复。"}`,
+                createdAt,
+                updatedAt: createdAt,
+              },
+            ],
           });
         }
         if (!available && child) {

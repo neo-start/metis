@@ -1310,7 +1310,10 @@ function resolveWsRpc(body: WsRequestEnvelope["body"]): unknown {
   return {};
 }
 
-function installDeterministicSendNativeApi(options?: { rejectTurnStart?: boolean }): () => void {
+function installDeterministicSendNativeApi(options?: {
+  rejectTurnStart?: boolean;
+  routedAcknowledgement?: boolean;
+}): () => void {
   const previousNativeApi = window.nativeApi;
   const wsNativeApi = readNativeApi();
   if (!wsNativeApi) {
@@ -1365,7 +1368,12 @@ function installDeterministicSendNativeApi(options?: { rejectTurnStart?: boolean
           if (options?.rejectTurnStart && command.type === "thread.turn.start") {
             throw new Error("Turn start failed for test.");
           }
-          return { sequence: fixture.snapshot.snapshotSequence + 1 };
+          return {
+            sequence: fixture.snapshot.snapshotSequence + 1,
+            ...(options?.routedAcknowledgement && command.type === "thread.turn.start"
+              ? { routed: true }
+              : {}),
+          };
         },
       },
     },
@@ -2138,6 +2146,9 @@ describe("ChatView transcript geometry (full app)", () => {
     attachmentUploadBarrier = null;
     attachmentCancelBarrier = null;
     localStorage.clear();
+    // Existing native-turn cases exercise the explicit Queue workflow. Router
+    // cases below opt into Auto and supply its durable acceptance acknowledgement.
+    localStorage.setItem("synara:app-settings:v1", JSON.stringify({ followUpBehavior: "queue" }));
     acknowledgeProjectImportAnnouncementForTest(createBaseServerConfig());
     useProjectEnvironmentStore.setState({ envModeByProjectId: {} });
     useLatestProjectStore.setState({ latestProjectId: null });
@@ -3545,158 +3556,162 @@ describe("ChatView transcript geometry (full app)", () => {
     }
   });
 
-  it("shows Loading until ack, then keeps Thinking through the post-ack gap", async () => {
-    const restoreNativeApi = installDeterministicSendNativeApi();
-    let currentSnapshot = createSnapshotForTargetUser({
-      targetMessageId: "msg-user-thinking-bridge" as MessageId,
-      targetText: "thinking bridge target",
-    });
-    const mounted = await mountChatView({
-      viewport: DEFAULT_VIEWPORT,
-      snapshot: currentSnapshot,
-    });
-
-    const syncActiveThread = (
-      update: (
-        thread: OrchestrationReadModel["threads"][number],
-      ) => OrchestrationReadModel["threads"][number],
-    ) => {
-      currentSnapshot = {
-        ...currentSnapshot,
-        snapshotSequence: currentSnapshot.snapshotSequence + 1,
-        threads: currentSnapshot.threads.map((thread) =>
-          thread.id === THREAD_ID ? update(thread) : thread,
-        ),
-        updatedAt: isoAt(currentSnapshot.snapshotSequence + 1_200),
-      };
-      fixture = { ...fixture, snapshot: currentSnapshot };
-      useStore.getState().syncServerReadModel(currentSnapshot);
-    };
-
-    try {
-      const prompt = "keep thinking through the ack gap";
-      useComposerDraftStore.getState().setPrompt(THREAD_ID, prompt);
-      const sendButton = await waitForSendButton();
-      expect(sendButton.disabled).toBe(false);
-      sendButton.click();
-
-      await vi.waitFor(
-        () => {
-          expect(document.body.textContent).toContain(prompt);
-          expect(document.body.textContent).toContain("Loading");
-          expect(document.body.textContent).not.toContain("Thinking");
-        },
-        { timeout: 8_000, interval: 16 },
-      );
-
-      const findSentRow = () => {
-        const rows = document.querySelectorAll<HTMLElement>(
-          "[data-message-id][data-message-role='user']",
-        );
-        for (const row of rows) {
-          if (row.textContent?.includes(prompt)) {
-            return row;
-          }
-        }
-        return null;
-      };
-
-      const sentMessageId = await vi.waitFor(
-        () => {
-          const id = findSentRow()?.dataset.messageId;
-          expect(id, "sent user message id").toBeTruthy();
-          return id!;
-        },
-        { timeout: 8_000, interval: 16 },
-      );
-
-      // Server ack: durable user message + turn requested, but session still ready
-      // (provider session not live yet). Thinking must survive this gap.
-      const requestedTurnId = TurnId.makeUnsafe("turn-thinking-bridge");
-      syncActiveThread((thread) => ({
-        ...thread,
-        messages: [
-          ...thread.messages,
-          {
-            id: MessageId.makeUnsafe(sentMessageId),
-            role: "user" as const,
-            text: prompt,
-            turnId: requestedTurnId,
-            streaming: false,
-            source: "native" as const,
-            createdAt: isoAt(1_300),
-            updatedAt: isoAt(1_300),
-          },
-        ],
-        latestTurn: {
-          turnId: requestedTurnId,
-          state: "running",
-          requestedAt: isoAt(1_300),
-          startedAt: null,
-          completedAt: null,
-          assistantMessageId: null,
-        },
-        session: thread.session
-          ? {
-              ...thread.session,
-              status: "ready",
-              activeTurnId: null,
-              updatedAt: isoAt(1_300),
-            }
-          : null,
-        updatedAt: isoAt(1_300),
-      }));
-
-      await vi.waitFor(
-        () => {
-          expect(document.body.textContent).toContain(prompt);
-          expect(document.body.textContent).toContain("Thinking");
-          expect(document.body.textContent).not.toContain("Loading");
-          expect(document.body.textContent).not.toContain("Working for");
-        },
-        { timeout: 4_000, interval: 16 },
-      );
-
-      // Hold the gap briefly so a flicker/empty frame would be visible if the
-      // bridge cleared too early.
-      await new Promise<void>((resolve) => {
-        window.setTimeout(resolve, 400);
+  it.each(["queue", "router"])(
+    "shows Loading until ack, then keeps Thinking through the post-ack gap (%s)",
+    async (followUpBehavior) => {
+      localStorage.setItem("synara:app-settings:v1", JSON.stringify({ followUpBehavior }));
+      const restoreNativeApi = installDeterministicSendNativeApi();
+      let currentSnapshot = createSnapshotForTargetUser({
+        targetMessageId: "msg-user-thinking-bridge" as MessageId,
+        targetText: "thinking bridge target",
       });
-      expect(document.body.textContent).toContain("Thinking");
-      expect(document.body.textContent).not.toContain("Loading");
-      expect(document.body.textContent).not.toContain("Working for");
+      const mounted = await mountChatView({
+        viewport: DEFAULT_VIEWPORT,
+        snapshot: currentSnapshot,
+      });
 
-      syncActiveThread((thread) => ({
-        ...thread,
-        latestTurn: thread.latestTurn
-          ? {
-              ...thread.latestTurn,
-              startedAt: isoAt(1_301),
-            }
-          : thread.latestTurn,
-        session: thread.session
-          ? {
-              ...thread.session,
-              status: "running",
-              activeTurnId: requestedTurnId,
-              updatedAt: isoAt(1_301),
-            }
-          : null,
-        updatedAt: isoAt(1_301),
-      }));
+      const syncActiveThread = (
+        update: (
+          thread: OrchestrationReadModel["threads"][number],
+        ) => OrchestrationReadModel["threads"][number],
+      ) => {
+        currentSnapshot = {
+          ...currentSnapshot,
+          snapshotSequence: currentSnapshot.snapshotSequence + 1,
+          threads: currentSnapshot.threads.map((thread) =>
+            thread.id === THREAD_ID ? update(thread) : thread,
+          ),
+          updatedAt: isoAt(currentSnapshot.snapshotSequence + 1_200),
+        };
+        fixture = { ...fixture, snapshot: currentSnapshot };
+        useStore.getState().syncServerReadModel(currentSnapshot);
+      };
 
-      await vi.waitFor(
-        () => {
-          expect(document.body.textContent).toContain("Thinking");
-          expect(document.body.textContent).toContain("Working for");
-        },
-        { timeout: 4_000, interval: 16 },
-      );
-    } finally {
-      await mounted.cleanup();
-      restoreNativeApi();
-    }
-  });
+      try {
+        const prompt = "keep thinking through the ack gap";
+        useComposerDraftStore.getState().setPrompt(THREAD_ID, prompt);
+        const sendButton = await waitForSendButton();
+        expect(sendButton.disabled).toBe(false);
+        sendButton.click();
+
+        await vi.waitFor(
+          () => {
+            expect(document.body.textContent).toContain(prompt);
+            expect(document.body.textContent).toContain("Loading");
+            expect(document.body.textContent).not.toContain("Thinking");
+          },
+          { timeout: 8_000, interval: 16 },
+        );
+
+        const findSentRow = () => {
+          const rows = document.querySelectorAll<HTMLElement>(
+            "[data-message-id][data-message-role='user']",
+          );
+          for (const row of rows) {
+            if (row.textContent?.includes(prompt)) {
+              return row;
+            }
+          }
+          return null;
+        };
+
+        const sentMessageId = await vi.waitFor(
+          () => {
+            const id = findSentRow()?.dataset.messageId;
+            expect(id, "sent user message id").toBeTruthy();
+            return id!;
+          },
+          { timeout: 8_000, interval: 16 },
+        );
+
+        // Server ack: durable user message + turn requested, but session still ready
+        // (provider session not live yet). Thinking must survive this gap.
+        const requestedTurnId = TurnId.makeUnsafe("turn-thinking-bridge");
+        syncActiveThread((thread) => ({
+          ...thread,
+          messages: [
+            ...thread.messages,
+            {
+              id: MessageId.makeUnsafe(sentMessageId),
+              role: "user" as const,
+              text: prompt,
+              turnId: requestedTurnId,
+              streaming: false,
+              source: "native" as const,
+              createdAt: isoAt(1_300),
+              updatedAt: isoAt(1_300),
+            },
+          ],
+          latestTurn: {
+            turnId: requestedTurnId,
+            state: "running",
+            requestedAt: isoAt(1_300),
+            startedAt: null,
+            completedAt: null,
+            assistantMessageId: null,
+          },
+          session: thread.session
+            ? {
+                ...thread.session,
+                status: "ready",
+                activeTurnId: null,
+                updatedAt: isoAt(1_300),
+              }
+            : null,
+          updatedAt: isoAt(1_300),
+        }));
+
+        await vi.waitFor(
+          () => {
+            expect(document.body.textContent).toContain(prompt);
+            expect(document.body.textContent).toContain("Thinking");
+            expect(document.body.textContent).not.toContain("Loading");
+            expect(document.body.textContent).not.toContain("Working for");
+          },
+          { timeout: 4_000, interval: 16 },
+        );
+
+        // Hold the gap briefly so a flicker/empty frame would be visible if the
+        // bridge cleared too early.
+        await new Promise<void>((resolve) => {
+          window.setTimeout(resolve, 400);
+        });
+        expect(document.body.textContent).toContain("Thinking");
+        expect(document.body.textContent).not.toContain("Loading");
+        expect(document.body.textContent).not.toContain("Working for");
+
+        syncActiveThread((thread) => ({
+          ...thread,
+          latestTurn: thread.latestTurn
+            ? {
+                ...thread.latestTurn,
+                startedAt: isoAt(1_301),
+              }
+            : thread.latestTurn,
+          session: thread.session
+            ? {
+                ...thread.session,
+                status: "running",
+                activeTurnId: requestedTurnId,
+                updatedAt: isoAt(1_301),
+              }
+            : null,
+          updatedAt: isoAt(1_301),
+        }));
+
+        await vi.waitFor(
+          () => {
+            expect(document.body.textContent).toContain("Thinking");
+            expect(document.body.textContent).toContain("Working for");
+          },
+          { timeout: 4_000, interval: 16 },
+        );
+      } finally {
+        await mounted.cleanup();
+        restoreNativeApi();
+      }
+    },
+  );
 
   // Regression: the sent message must reach its anchored coordinate in one
   // motion and then stay there for the rest of the turn. The failure this guards
@@ -5866,6 +5881,139 @@ describe("ChatView transcript geometry (full app)", () => {
       await mounted.cleanup();
     }
   });
+
+  it("opens a Router worker citation inside the app", async () => {
+    const snapshot = addThreadToSnapshot(
+      createSnapshotForTargetUser({
+        targetMessageId: MessageId.makeUnsafe("msg-router-link"),
+        targetText: "create a task",
+      }),
+      OTHER_THREAD_ID,
+    );
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: {
+        ...snapshot,
+        threads: snapshot.threads.map((thread) =>
+          thread.id !== THREAD_ID
+            ? thread
+            : {
+                ...thread,
+                messages: [
+                  ...thread.messages,
+                  {
+                    id: MessageId.makeUnsafe("router-worker-citation"),
+                    role: "assistant" as const,
+                    text: `任务已创建：[打开任务](/tasks?thread=${OTHER_THREAD_ID})`,
+                    turnId: null,
+                    streaming: false,
+                    source: "native" as const,
+                    createdAt: isoAt(2_000),
+                    updatedAt: isoAt(2_000),
+                  },
+                ],
+              },
+        ),
+      },
+    });
+    try {
+      const link = await waitForElement(
+        () =>
+          Array.from(document.querySelectorAll<HTMLAnchorElement>("a")).find(
+            (anchor) => anchor.textContent === "打开任务",
+          ) ?? null,
+        "Unable to find Router worker citation.",
+      );
+      expect(link.getAttribute("href")).toBe(`/${OTHER_THREAD_ID}`);
+      expect(link.getAttribute("target")).not.toBe("_blank");
+      link.click();
+      await vi.waitFor(() =>
+        expect(mounted.router.state.location.pathname).toBe(`/${OTHER_THREAD_ID}`),
+      );
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("restores an Auto prompt when Router admission fails", async () => {
+    localStorage.removeItem("synara:app-settings:v1");
+    const restoreNativeApi = installDeterministicSendNativeApi({ rejectTurnStart: true });
+    const prompt = "新任务：检查构建失败";
+    useComposerDraftStore.getState().setPrompt(THREAD_ID, prompt);
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createSnapshotForTargetUser({
+        targetMessageId: MessageId.makeUnsafe("msg-router-rejected"),
+        targetText: "controller conversation",
+      }),
+    });
+    try {
+      const form = await waitForElement(
+        () => document.querySelector<HTMLFormElement>('form[data-chat-composer-form="true"]'),
+        "Unable to find composer form.",
+      );
+      form.requestSubmit();
+      await vi.waitFor(() => {
+        expect(
+          wsRequests.map(readDispatchedCommand).some((entry) => entry?.routingMode === "auto"),
+        ).toBe(true);
+        expect(document.body.textContent).toContain("Turn start failed for test.");
+        expect(document.querySelector('[contenteditable="true"]')?.textContent).toContain(prompt);
+      });
+      const sendButton = await waitForSendButton();
+      await vi.waitFor(() => expect(sendButton.disabled).toBe(false));
+    } finally {
+      await mounted.cleanup();
+      restoreNativeApi();
+    }
+  });
+
+  it.each(["ready", "running"] as const)(
+    "Auto accepts another message after Router ACK without provider events (%s)",
+    async (sessionStatus) => {
+      localStorage.removeItem("synara:app-settings:v1");
+      const restoreNativeApi = installDeterministicSendNativeApi({ routedAcknowledgement: true });
+      const mounted = await mountChatView({
+        viewport: DEFAULT_VIEWPORT,
+        snapshot: createSnapshotForTargetUser({
+          targetMessageId: MessageId.makeUnsafe("msg-router-controller"),
+          targetText: "controller conversation",
+          sessionStatus,
+        }),
+      });
+      try {
+        const form = await waitForElement(
+          () => document.querySelector<HTMLFormElement>('form[data-chat-composer-form="true"]'),
+          "Unable to find composer form.",
+        );
+        for (const prompt of ["新任务：分析项目结构", "现在进展如何？"]) {
+          useComposerDraftStore.getState().setPrompt(THREAD_ID, prompt);
+          await vi.waitFor(() => {
+            expect(document.querySelector('[contenteditable="true"]')?.textContent).toContain(
+              prompt,
+            );
+          });
+          form.requestSubmit();
+          await vi.waitFor(() => {
+            const command = wsRequests.map(readDispatchedCommand).find((entry) => {
+              const message = entry?.message as { text?: string } | undefined;
+              return entry?.type === "thread.turn.start" && message?.text?.includes(prompt);
+            });
+            expect(command?.routingMode).toBe("auto");
+            expect(document.querySelector('[contenteditable="true"]')?.textContent).not.toContain(
+              prompt,
+            );
+          });
+          // No message echo, running event, or worker completion is emitted.
+          await waitForLayout();
+        }
+        expect(document.querySelector('[data-testid="queued-follow-up-row"]')).toBeNull();
+      } finally {
+        await mounted.cleanup();
+        restoreNativeApi();
+      }
+    },
+  );
 
   it("shows a queued follow-up row while a turn is running", async () => {
     useComposerDraftStore.getState().setPrompt(THREAD_ID, "queue this follow-up");

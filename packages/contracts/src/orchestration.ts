@@ -380,6 +380,7 @@ export type MessageDispatchOrigin = typeof MessageDispatchOrigin.Type;
 // create. Dedicated automations' own threads stay unmarked: they are persistent
 // conversations the user keeps, not run artifacts.
 export const ThreadCreationSource = Schema.Literals([
+  "router",
   "synara_mcp",
   "external_mcp",
   "provider_native",
@@ -2659,6 +2660,8 @@ const ProjectionCheckpointRow = Schema.Struct({
 export type ProjectionCheckpointRow = typeof ProjectionCheckpointRow.Type;
 
 export const DispatchResult = Schema.Struct({
+  /** Router durably accepted the input; independent work continues after this ACK. */
+  routed: Schema.optional(Schema.Literal(true)),
   sequence: NonNegativeInt,
 });
 export type DispatchResult = typeof DispatchResult.Type;

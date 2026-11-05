@@ -75,7 +75,8 @@ export function recoverInterruptedAgentGatewayOperations(input: {
                 );
                 if (Option.isSome(projected)) {
                   if (
-                    projected.value.creationSource !== (input.creationSource ?? "synara_mcp") ||
+                    projected.value.creationSource !==
+                      (entry.creationSource ?? input.creationSource ?? "synara_mcp") ||
                     projected.value.gatewayOperationId !== operation.operationId
                   ) {
                     return yield* Effect.fail(

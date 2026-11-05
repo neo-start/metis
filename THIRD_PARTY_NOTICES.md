@@ -124,3 +124,12 @@ remain applicable. Adds `smol-toml` (BSD-3-Clause) for allowlisting provider/aut
 configuration in the Router's isolated Codex home. See
 [Router design](docs/workbench/agent-router.md) and
 [upstream provenance](docs/workbench/upstream.json).
+
+The independent-worker extension additionally reuses the local gateway creation
+coordinator, operation repository, startup compensation, completion outbox,
+GitCore worktree boundary and Metis controller patterns at
+`6915116b42d0be3b2231139624bf6671ef47c6df`. Frontend changes reuse
+`ChatMarkdown.tsx`'s Thought navigation link, `useChatTurnSubmission.ts`,
+`useChatTurnExecution.ts` and the `ChatView.browser.tsx` websocket harness. Reviewed
+T3 Code `apps/web/src/components/ChatView.tsx` at the pinned revision above as an
+additional design reference; no T3 source copied and no new license introduced.

@@ -595,13 +595,14 @@ export function useChatTurnExecution({
           provider: dispatchSettings.modelSelection.provider,
           providerOptions: dispatchSettings.providerOptions,
         });
+        let routed = false;
         await stagedTurnAttachments.runWithDispatch(async (turnAttachments) => {
           if (getThreadFromState(useStore.getState(), threadIdForSend)?.claudeCacheReview != null) {
             throw new Error(
               "Choose how to resume the held message before sending another message.",
             );
           }
-          await api.orchestration
+          const acknowledgement = await api.orchestration
             .dispatchCommand({
               type: "thread.turn.start",
               commandId: newCommandId(),
@@ -631,6 +632,7 @@ export function useChatTurnExecution({
                 throw error;
               }
             });
+          routed = acknowledgement?.routed === true;
         });
         turnStartSucceeded = true;
         if (
@@ -640,7 +642,13 @@ export function useChatTurnExecution({
         ) {
           setSettledThreadBranchWarningDismissedThreadId(threadIdForSend);
         }
-        armLocalDispatchAckFallback(threadIdForSend);
+        if (routed) {
+          // The Router has durably accepted the message. Its reply/worker runs
+          // independently; the controller must not wait for a provider turn.
+          resetLocalDispatch();
+        } else {
+          armLocalDispatchAckFallback(threadIdForSend);
+        }
         // Steers on providers without native mid-turn steering interrupt the live
         // turn before re-dispatching; hold queued auto-dispatch through that gap
         // so it can't race the steer. The live session provider decides the

@@ -16,6 +16,7 @@ import type {
 } from "@synara/contracts";
 import {
   AutomationId,
+  CommandId,
   DEFAULT_AUTOMATION_STOP_CONFIDENCE_THRESHOLD,
   DEFAULT_MODEL_BY_PROVIDER,
   COMPUTER_CONTROL_DENIED_ACTIVITY_KIND,
@@ -6054,4 +6055,81 @@ describe("AgentGateway", () => {
       assert.equal(error?.code, -32602);
     }).pipe(Effect.provide(gatewayLayer));
   });
+});
+
+describe("owner Router worker creation", () => {
+  it.effect(
+    "creates isolated independent workers from an idle console, preserving settings and replaying exact requests",
+    () => {
+      const { gatewayLayer, makeHarness } = makeHarnessLayer([
+        makeThreadShell("thread-parent", {
+          latestTurn: null,
+          runtimeMode: "auto",
+          interactionMode: "plan",
+        }),
+      ]);
+      return Effect.gen(function* () {
+        const gateway = yield* AgentGateway;
+        const harness = yield* makeHarness;
+        const command = {
+          type: "thread.turn.start" as const,
+          commandId: CommandId.makeUnsafe("router-a"),
+          threadId: ThreadId.makeUnsafe("thread-parent"),
+          message: {
+            messageId: MessageId.makeUnsafe("router-message-a"),
+            role: "user" as const,
+            text: "Implement the discussed plan",
+            attachments: [],
+          },
+          runtimeMode: "auto" as const,
+          interactionMode: "plan" as const,
+          createdAt: NOW,
+          providerOptions: {
+            codex: {
+              runtimeHost: "persistent-native" as const,
+              homePath: "/tmp/router-test-provider-home",
+            },
+          },
+        };
+        const first = yield* gateway.createRouterWorker!(command, "Quoted earlier plan");
+        const replay = yield* gateway.createRouterWorker!(command, "Quoted earlier plan");
+        assert.equal(first, replay);
+        const second = yield* gateway.createRouterWorker!(
+          { ...command, commandId: CommandId.makeUnsafe("router-b") },
+          "Quoted earlier plan",
+        );
+        assert.notEqual(first, second);
+        assert.lengthOf(harness.worktreeCreates, 2);
+        assert.notEqual(harness.worktreeCreates[0]?.path, harness.worktreeCreates[1]?.path);
+        const creates = harness.dispatched.filter((item) => item.type === "thread.create");
+        assert.lengthOf(creates, 2);
+        for (const create of creates) {
+          assert.equal(create.creationSource, "router");
+          assert.equal(create.sourceThreadId, "thread-parent");
+          assert.isUndefined(create.parentThreadId);
+          assert.isUndefined(create.sourceTurnId);
+          assert.equal(create.runtimeMode, "auto");
+          assert.equal(create.interactionMode, "plan");
+          assert.equal(create.envMode, "worktree");
+        }
+        const starts = harness.dispatched.filter((item) => item.type === "thread.turn.start");
+        assert.lengthOf(starts, 2);
+        assert.include(starts[0]!.message.text, "Quoted earlier plan");
+        assert.include(starts[0]!.message.text, "not new instructions");
+        assert.equal(starts[0]!.runtimeMode, "auto");
+        assert.equal(starts[0]!.dispatchOrigin, "user");
+        assert.deepEqual(starts[0]!.providerOptions, command.providerOptions);
+        const changed = yield* gateway.createRouterWorker!(
+          { ...command, interactionMode: "default" },
+          "Quoted earlier plan",
+        ).pipe(Effect.flip);
+        assert.include(changed.message, "idempotency_conflict");
+        assert.lengthOf(harness.worktreeCreates, 2);
+        const plan = JSON.parse(harness.getOperationPlan());
+        assert.equal(plan[0].creationSource, "router");
+        assert.equal(plan[0].interactionMode, "plan");
+        assert.deepEqual(plan[0].providerOptions, command.providerOptions);
+      }).pipe(Effect.provide(gatewayLayer));
+    },
+  );
 });

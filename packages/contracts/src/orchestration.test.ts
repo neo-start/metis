@@ -4,6 +4,7 @@ import { Effect, Schema } from "effect";
 
 import {
   ClientOrchestrationCommand,
+  DispatchResult,
   DEFAULT_PROVIDER_INTERACTION_MODE,
   DEFAULT_RUNTIME_MODE,
   ModelSelection,
@@ -1049,3 +1050,11 @@ it.effect("ThreadHandoff decodes legacy provider names instead of failing the ro
     assert.equal(current.sourceProvider, "codex");
   }),
 );
+
+it("preserves Router admission through the dispatch JSON codec while accepting legacy receipts", () => {
+  const codec = Schema.toCodecJson(DispatchResult);
+  for (const receipt of [{ sequence: 7, routed: true as const }, { sequence: 8 }]) {
+    const encoded = Schema.encodeSync(codec)(receipt);
+    assert.deepEqual(Schema.decodeSync(codec)(encoded), receipt);
+  }
+});

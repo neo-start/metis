@@ -178,6 +178,7 @@ export interface RouterGenerationInput extends ThreadTitleGenerationInput {
 
 export interface RouterGenerationResult {
   route: "reply" | "status" | "steer" | "queue";
+  targetTaskId?: string | undefined;
   reply: string;
 }
 

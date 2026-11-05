@@ -1063,7 +1063,9 @@ export interface NativeApi {
     getThreadDetailSnapshot: (
       input: OrchestrationGetThreadDetailSnapshotInput,
     ) => Promise<OrchestrationGetThreadDetailSnapshotResult>;
-    dispatchCommand: (command: ClientOrchestrationCommand) => Promise<{ sequence: number }>;
+    dispatchCommand: (
+      command: ClientOrchestrationCommand,
+    ) => Promise<{ sequence: number; routed?: true }>;
     importThread: (
       input: OrchestrationImportThreadInput,
     ) => Promise<OrchestrationImportThreadResult>;

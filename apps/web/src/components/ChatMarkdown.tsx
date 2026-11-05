@@ -1095,6 +1095,19 @@ const MARKDOWN_COMPONENTS: Components = {
     const { isUserVariant, cwd, knownAbsoluteFilePaths, resolvedTheme } =
       useContext(MarkdownRenderContext)!;
     const restoredHref = href ? restoreLiteralDollarPlaceholders(href) : href;
+    const taskThreadId = restoredHref?.match(/^\/tasks\?thread=([a-zA-Z0-9_-]{1,200})$/u)?.[1];
+    if (taskThreadId) {
+      if (remote) return <span title="任务位于远端 Metis 实例">{children}</span>;
+      return (
+        <Link
+          to="/$threadId"
+          params={{ threadId: taskThreadId }}
+          className="text-primary underline underline-offset-2"
+        >
+          {children}
+        </Link>
+      );
+    }
     const thoughtId = restoredHref?.startsWith("/thoughts?entry=")
       ? restoredHref.slice("/thoughts?entry=".length)
       : null;

@@ -613,15 +613,19 @@ export function useChatTurnSubmission({
       composerImagesForSend = captures.composerImagesForSend;
       if (hasPendingCacheReview()) return false;
 
-      // Explicit Queue/Steer retains its meaning. Ordinary text follow-ups reach
-      // the server Router immediately instead of waiting in the browser queue.
+      // Explicit Queue/Steer retains its meaning. Ordinary Auto messages, including
+      // the first request, reach the Router without waiting in the browser queue.
       const routeFollowUp =
         settings.followUpBehavior === "router" &&
-        hasQueueableLiveTurn &&
         requestedDispatchMode === undefined &&
         queuedChatTurn === null &&
         composerImagesForSend.length === 0 &&
-        composerFilesForSend.length === 0;
+        composerFilesForSend.length === 0 &&
+        selectedComposerSkillsForSend.length === 0 &&
+        selectedComposerMentionsForSend.length === 0 &&
+        !sourceProposedPlanForSend &&
+        dispatchSettings.computerControlMode !== "request" &&
+        !dispatchSettings.enableComputerControl;
       if (
         hasQueueableLiveTurn &&
         dispatchMode === "queue" &&

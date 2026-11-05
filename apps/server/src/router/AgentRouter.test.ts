@@ -1,3 +1,4 @@
+import { RouterInbox } from "./RouterInbox.ts";
 import { mkdtemp, rm, readFile, readdir } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -33,7 +34,7 @@ const cleanups: Array<() => Promise<unknown>> = [];
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0).toReversed()) await cleanup();
 });
-async function fixture() {
+async function fixture(active = true) {
   const root = await mkdtemp(path.join(os.tmpdir(), "metis-router-test-"));
   cleanups.push(() => rm(root, { recursive: true, force: true }));
   const runtime = ManagedRuntime.make(
@@ -77,22 +78,24 @@ async function fixture() {
     worktreePath: null,
     createdAt,
   });
-  await dispatch({
-    type: "thread.session.set",
-    commandId: CommandId.makeUnsafe("session"),
-    threadId,
-    session: {
+  if (active)
+    await dispatch({
+      type: "thread.session.set",
+      commandId: CommandId.makeUnsafe("session"),
       threadId,
-      status: "running",
-      providerName: "codex",
-      runtimeMode: "approval-required",
-      activeTurnId: turnId,
-      lastError: null,
-      updatedAt: createdAt,
-    },
-    createdAt,
-  });
-  const readThread = async () => (await runtime.runPromise(engine.getReadModel())).threads[0]!;
+      session: {
+        threadId,
+        status: "running",
+        providerName: "codex",
+        runtimeMode: "approval-required",
+        activeTurnId: turnId,
+        lastError: null,
+        updatedAt: createdAt,
+      },
+      createdAt,
+    });
+  const readThread = async (id = threadId) =>
+    (await runtime.runPromise(engine.getReadModel())).threads.find((thread) => thread.id === id)!;
   const generate = vi.fn<AgentRouterHost["generate"]>(async () => ({
     route: "reply",
     reply: "独立问题的回答",
@@ -325,4 +328,229 @@ it("recognizes only whole progress/cancellation utterances", () => {
   expect(isRouterStatusQuestion("进度如何，然后删除文件")).toBe(false);
   expect(isRouterCancelRequest("stop")).toBe(true);
   expect(isRouterCancelRequest("解释 stop 命令")).toBe(false);
+});
+
+async function workerFixture() {
+  const f = await fixture(false);
+  const ids: ThreadId[] = [];
+  f.host.listWorkers = async () => Promise.all(ids.map((id) => f.readThread(id)));
+  f.host.createWorker = vi.fn(async (command) => {
+    const id = ThreadId.makeUnsafe(`worker-${command.commandId}`);
+    if (!ids.includes(id)) {
+      const source = await f.readThread();
+      await f.dispatch({
+        type: "thread.create",
+        commandId: CommandId.makeUnsafe(`create-${id}`),
+        threadId: id,
+        projectId: source.projectId,
+        title: command.message.text,
+        modelSelection: source.modelSelection,
+        runtimeMode: source.runtimeMode,
+        interactionMode: source.interactionMode,
+        branch: null,
+        worktreePath: null,
+        sourceThreadId: source.id,
+        creationSource: "router",
+        createdAt: f.createdAt,
+      });
+      const { routingMode: _routing, ...turn } = command;
+      await f.dispatch({ ...turn, threadId: id });
+      await f.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.makeUnsafe(`running-${id}`),
+        threadId: id,
+        session: {
+          threadId: id,
+          status: "running",
+          providerName: "codex",
+          runtimeMode: source.runtimeMode,
+          activeTurnId: TurnId.makeUnsafe(`turn-${id}`),
+          lastError: null,
+          updatedAt: f.createdAt,
+        },
+        createdAt: f.createdAt,
+      });
+      ids.push(id);
+    }
+    return id;
+  });
+  const inbox = new RouterInbox(path.join(f.root, "inbox"), f.router, f.host);
+  cleanups.push(async () => inbox.stop());
+  return { ...f, ids, inbox };
+}
+
+describe("durable Router workers", () => {
+  it("acknowledges before classification and handles chat, progress, corrections, second task and exact cancel without occupying the console", async () => {
+    const f = await workerFixture();
+    await f.inbox.accept(f.command("新任务：长任务 A", "a"));
+    await vi.waitFor(() => expect(f.ids).toHaveLength(1));
+    expect((await f.readThread()).session).toBeNull();
+    const first = f.ids[0]!;
+    const originalTurn = (await f.readThread(first)).session?.activeTurnId;
+    let finish: ((value: RouterGenerationResult) => void) | undefined;
+    f.generate.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const ack = await f.inbox.accept(f.command("解释一下队列", "chat"));
+    expect(ack.routed).toBe(true);
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    await f.inbox.accept(f.command("进度如何", "status"));
+    await vi.waitFor(async () =>
+      expect((await f.readThread()).messages.some((m) => m.text.includes(first))).toBe(true),
+    );
+    finish!({ route: "reply", reply: "队列保存待处理消息。" });
+    await vi.waitFor(async () =>
+      expect((await f.readThread()).messages.some((m) => m.text.includes("队列保存"))).toBe(true),
+    );
+    f.generate.mockResolvedValueOnce({ route: "steer", targetTaskId: first, reply: "" });
+    await f.inbox.accept(f.command("长任务 A 改成中文", "steer"));
+    await vi.waitFor(async () =>
+      expect((await f.readThread(first)).messages.some((m) => m.text.includes("改成中文"))).toBe(
+        true,
+      ),
+    );
+    expect((await f.readThread(first)).session?.activeTurnId).toBe(originalTurn);
+    await f.inbox.accept(f.command("新任务：长任务 B", "b"));
+    await vi.waitFor(() => expect(f.ids).toHaveLength(2));
+    await f.inbox.accept(f.command("停止", "ambiguous"));
+    await vi.waitFor(async () =>
+      expect((await f.readThread()).messages.some((m) => m.text.includes("多个运行中任务"))).toBe(
+        true,
+      ),
+    );
+    const deliveries = vi.spyOn(f.host, "dispatch");
+    await f.inbox.accept(f.command(`任务 ${first} 停止`, "cancel"));
+    await vi.waitFor(() =>
+      expect(
+        deliveries.mock.calls.some(
+          ([command]) =>
+            command.type === "thread.turn.interrupt" &&
+            command.threadId === first &&
+            command.turnId === originalTurn,
+        ),
+      ).toBe(true),
+    );
+    expect((await f.readThread(f.ids[1]!)).latestTurn?.state).toBe("running");
+    expect((await f.readThread()).session).toBeNull();
+  });
+
+  it("replays accepted work after restart, rejects changed id content and retains only receipts", async () => {
+    const f = await workerFixture();
+    // Pause processing after durable admission to simulate a process loss before classification.
+    const blocked = vi.spyOn(f.router, "dispatch").mockImplementation(() => new Promise(() => {}));
+    const command = f.command("新任务：恢复工作", "recover");
+    const ack = await f.inbox.accept(command);
+    f.inbox.stop();
+    blocked.mockRestore();
+    const restarted = new RouterInbox(
+      path.join(f.root, "inbox"),
+      new AgentRouter(path.join(f.root, "receipts")),
+      f.host,
+    );
+    cleanups.push(async () => restarted.stop());
+    await restarted.recover();
+    await vi.waitFor(() => expect(f.ids).toHaveLength(1));
+    await vi.waitFor(async () => {
+      const records = await readdir(path.join(f.root, "inbox"));
+      const data = JSON.parse(await readFile(path.join(f.root, "inbox", records[0]!), "utf8"));
+      expect(data.command).toBeUndefined();
+    });
+    expect(await restarted.accept(command)).toEqual(ack);
+    await expect(
+      restarted.accept({ ...command, message: { ...command.message, text: "changed" } }),
+    ).rejects.toThrow("different content");
+    expect(f.host.createWorker).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not guess an unrelated target or execute ambiguous work when classification fails", async () => {
+    const f = await workerFixture();
+    f.generate.mockResolvedValueOnce({
+      route: "steer",
+      targetTaskId: "another-conversation",
+      reply: "",
+    });
+    await f.router.dispatch(f.command("改成中文", "invalid-target"), f.host);
+    expect(f.host.createWorker).not.toHaveBeenCalled();
+    f.generate.mockRejectedValueOnce(new Error("timeout"));
+    await f.router.dispatch(f.command("帮我改一下", "failed-generation"), f.host);
+    expect(f.host.createWorker).not.toHaveBeenCalled();
+    expect((await f.readThread()).messages.at(-1)?.text).toContain("消息未交给执行器");
+  });
+
+  it("reports uncertain submission honestly when worker creation succeeds but its acknowledgement fails", async () => {
+    const f = await workerFixture();
+    const dispatch = f.host.dispatch;
+    f.host.dispatch = async (command) => {
+      if (command.commandId.startsWith("router-worker-reply-"))
+        throw new Error("notification unavailable");
+      return dispatch(command);
+    };
+    await f.inbox.accept(f.command("新任务：通知失败", "ack-failure"));
+    await vi.waitFor(async () =>
+      expect((await f.readThread()).messages.some((m) => m.text.includes("任务可能已提交"))).toBe(
+        true,
+      ),
+    );
+    expect(f.ids).toHaveLength(1);
+  });
+});
+
+it("leaves admitted input recoverable when the Router lifecycle stops during generation", async () => {
+  const f = await workerFixture();
+  let finish: ((value: RouterGenerationResult) => void) | undefined;
+  f.generate.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  await f.inbox.accept(f.command("需要调查的问题", "shutdown"));
+  await vi.waitFor(() => expect(finish).toBeDefined());
+  f.inbox.stop();
+  finish!({ route: "queue", reply: "" });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  expect(f.host.createWorker).not.toHaveBeenCalled();
+  const files = await readdir(path.join(f.root, "inbox"));
+  const saved = JSON.parse(await readFile(path.join(f.root, "inbox", files[0]!), "utf8"));
+  expect(saved.command.message.text).toBe("需要调查的问题");
+  expect(saved.error).toBeUndefined();
+  f.generate.mockResolvedValue({ route: "queue", reply: "" });
+  const restarted = new RouterInbox(
+    path.join(f.root, "inbox"),
+    new AgentRouter(path.join(f.root, "receipts")),
+    f.host,
+  );
+  cleanups.push(async () => restarted.stop());
+  await restarted.recover();
+  await vi.waitFor(() => expect(f.host.createWorker).toHaveBeenCalledTimes(1));
+  const context = vi.mocked(f.host.createWorker!).mock.calls[0]?.[1];
+  expect(context).toContain('"sourceThreadId":"task"');
+});
+
+it("pins an explicit correction to task A even when generation would pick B and console settings differ", async () => {
+  const f = await workerFixture();
+  await f.router.dispatch(f.command("新任务：A", "target-a"), f.host);
+  await f.router.dispatch(f.command("新任务：B", "target-b"), f.host);
+  const [first, second] = f.ids;
+  f.generate.mockResolvedValue({ route: "steer", targetTaskId: second!, reply: "" });
+  await f.router.dispatch(
+    {
+      ...f.command(`任务 ${first} 修改成中文`, "pinned-correction"),
+      runtimeMode: "full-access",
+      providerOptions: { codex: { homePath: "/wrong-console-home" } },
+    },
+    f.host,
+  );
+  expect(f.generate).not.toHaveBeenCalled();
+  expect(
+    (await f.readThread(first!)).messages.some((message) => message.text.includes("修改成中文")),
+  ).toBe(true);
+  expect(
+    (await f.readThread(second!)).messages.some((message) => message.text.includes("修改成中文")),
+  ).toBe(false);
+  expect((await f.readThread(first!)).runtimeMode).toBe("approval-required");
+  expect(f.ids).toHaveLength(2);
 });

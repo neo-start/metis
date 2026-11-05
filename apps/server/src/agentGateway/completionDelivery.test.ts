@@ -186,6 +186,70 @@ layer("gateway completion outbox", (it) => {
   }
 
   it.effect(
+    "delivers a Router result into the creator transcript once, including recovery after a message acknowledgement is lost",
+    () =>
+      Effect.gen(function* () {
+        const repository = yield* reserve("router-result");
+        yield* repository.saveResult(
+          "router-result",
+          JSON.stringify({
+            status: "completed",
+            summary: "Finished isolated work",
+            error: null,
+            completedAt: now,
+          }),
+        );
+        const receipts = new Map<string, string>();
+        const messages: OrchestrationCommand[] = [];
+        let fail = true;
+        const dependencies = {
+          repository,
+          snapshotQuery: {
+            getThreadShellById: (id: string) =>
+              Effect.succeed(
+                Option.some(
+                  id === "router-result"
+                    ? { id, creationSource: "router", title: "Worker" }
+                    : { id, archivedAt: null },
+                ),
+              ),
+          } as unknown as ProjectionSnapshotQueryShape,
+          projectionTurns: {} as ProjectionTurnRepositoryShape,
+          orchestrationEngine: {
+            dispatch: (command: OrchestrationCommand) =>
+              Effect.suspend(() => {
+                const fingerprint = fingerprintOrchestrationCommand(command).value;
+                const previous = receipts.get(command.commandId);
+                if (previous) expect(previous).toBe(fingerprint);
+                else {
+                  receipts.set(command.commandId, fingerprint);
+                  messages.push(command);
+                }
+                if (command.type === "thread.messages.import" && fail) {
+                  fail = false;
+                  return Effect.fail(new Error("lost receipt"));
+                }
+                return Effect.succeed({ sequence: receipts.size });
+              }),
+          } as unknown as OrchestrationEngineShape,
+        };
+        yield* deliverGatewayCompletions(dependencies);
+        expect(yield* repository.pending()).toHaveLength(1);
+        yield* deliverGatewayCompletions({
+          ...dependencies,
+          repository: yield* makeCompletionRepository,
+        });
+        expect(yield* repository.pending()).toHaveLength(0);
+        const transcript = messages.filter((command) => command.type === "thread.messages.import");
+        expect(transcript).toHaveLength(1);
+        expect(transcript[0]?.threadId).toBe("parent");
+        expect(transcript[0]?.messages[0]?.text).toContain("/tasks?thread=router-result");
+        expect(transcript[0]?.messages[0]?.text).toContain("Finished isolated work");
+        expect(messages.some((command) => command.type === "thread.turn.start")).toBe(false);
+      }),
+  );
+
+  it.effect(
     "requires real completion and durable output acknowledgement, not idle or approval waits",
     () =>
       Effect.gen(function* () {
