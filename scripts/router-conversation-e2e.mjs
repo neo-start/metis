@@ -264,6 +264,15 @@ writeFileSync(output,JSON.stringify({route:'reply',targetTaskId:'',reply:'ROUTER
     const response = await request(controller, text, responsePattern, providerOptions);
     assert.notEqual(response.response.text, "我在，收到你的消息了。");
   }
+  const conversationalSnapshot = await rpc("orchestration.getSnapshot", {});
+  assert.equal(
+    conversationalSnapshot.threads.filter(
+      (t) => t.sourceThreadId === controller && t.creationSource === "router",
+    ).length,
+    0,
+    "simple conversation must finish with Router replies, without creating workers",
+  );
+  results.push({ simpleConversationCreatesNoWorker: true });
   if (!liveWorker) {
     await request(controller, "停止", responsePattern, providerOptions);
     await request(controller, "任务 unavailable 修改成中文", responsePattern, providerOptions);
@@ -278,7 +287,7 @@ writeFileSync(output,JSON.stringify({route:'reply',targetTaskId:'',reply:'ROUTER
   } else {
     const created = await request(
       controller,
-      "新任务：请只回复 ROUTER_LIVE_WORKER_OK。不要调用工具或读写文件。",
+      "新任务：这是回传测试，不要调用工具或读写文件。请回复以下测试数据：ROUTER_LIVE_WORKER_OK；示例计算：2+3=5；验证范围：仅文本回传；限制：未做真实部署。",
       /\S/,
     );
     const snapshot = await until(
@@ -299,6 +308,15 @@ writeFileSync(output,JSON.stringify({route:'reply',targetTaskId:'',reply:'ROUTER
     );
     const final = complete.messages.find((m) => m.id === `router-completion:${activeWorker}`);
     assert.ok(final.text.trim());
+    assert.ok(
+      complete.messages.findIndex((m) => m.id === created.response.id) <
+        complete.messages.findIndex((m) => m.id === final.id),
+      "initial Router acknowledgement must precede the completion report",
+    );
+    assert.match(final.text, /2\s*\+\s*3\s*=\s*5/);
+    assert.match(final.text, /部署/);
+    assert.notEqual(final.text, created.response.text);
+    assert.ok(created.response.text.length < final.text.length, "initial reply should be brief");
     const worker = await detail(activeWorker);
     assert.equal(worker.latestTurn?.state, "completed");
     assert.ok(
@@ -309,6 +327,7 @@ writeFileSync(output,JSON.stringify({route:'reply',targetTaskId:'',reply:'ROUTER
     results.push({
       worker: activeWorker,
       realWorkerCompleted: true,
+      briefReplyBeforeDetailedResult: true,
       generatedCompletion: final.text,
       requestId: created.input.commandId,
     });

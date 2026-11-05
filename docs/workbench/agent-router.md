@@ -40,6 +40,13 @@ Router handles the first plain Auto message as well as follow-ups:
   that conversation without starting another console turn. Router receives the exact
   run's final answer and generates the result report, preserving evidence and limitations.
 
+The user-facing flow has two cases. Simple questions receive a complete Router answer
+and create no worker or later completion report. Work requests receive one brief,
+request-specific acknowledgement, followed by a substantive report after the worker
+finishes. That report preserves the result, supporting details, verification and known
+limitations, while respecting requests for a short answer. Both messages are generated;
+"brief" describes the first reply's content, not a guaranteed low-latency response.
+
 Every eligible plain Auto message passes through the isolated Router model before
 publishing its conversational reply. Explicit `新任务：…`, quoted/task-ID follow-ups,
 recognized progress/cancel commands and long inputs may have a server-selected action,
