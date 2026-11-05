@@ -46,6 +46,12 @@ request-specific acknowledgement, followed by a substantive report after the wor
 finishes. That report preserves the result, supporting details, verification and known
 limitations, while respecting requests for a short answer. Both messages are generated;
 "brief" describes the first reply's content, not a guaranteed low-latency response.
+Acknowledgements have no prescribed sentence count, tense or example phrase. The prompt
+asks for wording suited to the current message, avoiding repeated explanations, generic
+reassurance and habitual closing caveats or emoji. Questions about actual implementation,
+configuration or observed behavior require investigation unless supplied evidence answers
+them; earlier assistant claims alone are not verification. These are generation instructions,
+not a guarantee of conversational quality from every model response.
 
 Every eligible plain Auto message passes through the isolated Router model before
 publishing its conversational reply. Explicit `新任务：…`, quoted/task-ID follow-ups,
