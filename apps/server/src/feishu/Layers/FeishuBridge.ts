@@ -3,7 +3,6 @@ import { readFeishuFollowup } from "../feishuRouterFollowup.ts";
 import { RouterRuntime } from "../../router/RouterRuntime.ts";
 import { FeishuRouterDelivery } from "../FeishuRouterDelivery.ts";
 import { FeishuReplyStreams } from "../FeishuReplyStreams.ts";
-import { FEISHU_RECEIVED_TEXT } from "../feishuAcknowledgement.ts";
 /**
  * FeishuBridge - talk to Metis from a Feishu private chat.
  *
@@ -302,7 +301,9 @@ export const makeFeishuBridge = Effect.gen(function* () {
       transport: "websocket",
       domain: sdk.Domain.Feishu,
       loggerLevel: sdk.LoggerLevel.warn,
-      outbound: { streamInitialText: FEISHU_RECEIVED_TEXT },
+      // A typing indicator is transport state, not a conversational acknowledgement.
+      // Keep the first sentence for the actual context-aware Router/provider reply.
+      outbound: { streamInitialText: "…" },
       // The allowlist is enforced in the message handler instead of the SDK
       // policy so that rejected senders are logged and edits to
       // feishu-app.json take effect without restarting Metis. open_id is

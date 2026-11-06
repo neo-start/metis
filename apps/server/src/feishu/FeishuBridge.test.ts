@@ -19,7 +19,6 @@ import {
 } from "@synara/contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Readable } from "node:stream";
-import { FEISHU_RECEIVED_TEXT } from "./feishuAcknowledgement.ts";
 import { ServerConfig } from "../config.ts";
 import { OrchestrationEngineLive } from "../orchestration/Layers/OrchestrationEngine.ts";
 import { OrchestrationProjectionPipelineLive } from "../orchestration/Layers/ProjectionPipeline.ts";
@@ -300,18 +299,21 @@ describe("Feishu Router ingress and passive delivery", () => {
 
   it("answers greetings without a provider turn and deduplicates redelivery after controller rotation", async () => {
     const f = await setup(true);
+    f.generate.mockResolvedValueOnce({ route: "reply", reply: "早上好！" });
     const first = (await f.controller.overview()).threadId!;
     await f.receive("router-greeting", "你好？");
     await vi.waitFor(
       () =>
         expect(transport.streamReplies).toHaveBeenCalledWith(
           "oc_owner",
-          { text: "独立回复" },
+          { text: "早上好！" },
           { replyTo: "router-greeting" },
         ),
       { timeout: 3000 },
     );
-    expect(transport.contents).toContain("独立回复");
+    expect(transport.initialContents).toEqual(["…"]);
+    expect(transport.contents).toEqual(["早上好！"]);
+    expect(transport.send).not.toHaveBeenCalled();
     expect(f.generate).toHaveBeenCalledTimes(1);
     const thread = (await f.runtime.runPromise(f.engine.getReadModel())).threads.find(
       (t) => t.id === first,
@@ -337,7 +339,7 @@ describe("Feishu Router ingress and passive delivery", () => {
     await f.receive("router-question", "解释一下路由器");
     await vi.waitFor(() => expect(finish).toBeDefined());
     expect(transport.streamReplies).not.toHaveBeenCalled();
-    expect(transport.initialContents).toHaveLength(1);
+    expect(transport.initialContents).toEqual(["…"]);
     await f.receive("router-progress", "进度如何");
     await vi.waitFor(
       () =>
@@ -363,14 +365,14 @@ describe("Feishu Router ingress and passive delivery", () => {
 });
 
 describe("Feishu instance-controller routing with real orchestration", () => {
-  it("sends the receipt card before downloading an image or starting its provider turn", async () => {
+  it("opens a neutral typing card before downloading an image or starting its provider turn", async () => {
     const f = await setup(true);
     let release!: () => void;
     const download = new Promise<void>((resolve) => {
       release = resolve;
     });
     transport.getResource.mockImplementationOnce(async () => {
-      expect(transport.initialContents).toEqual([FEISHU_RECEIVED_TEXT]);
+      expect(transport.initialContents).toEqual(["…"]);
       await download;
       return {
         headers: { "content-type": "image/png" },
@@ -390,12 +392,12 @@ describe("Feishu instance-controller routing with real orchestration", () => {
     await f.receive("image-receipt", "检查图片", {
       resources: [{ type: "image", fileKey: "test-image" }],
     });
-    expect(transport.initialContents).toEqual([FEISHU_RECEIVED_TEXT]);
+    expect(transport.initialContents).toEqual(["…"]);
     expect(transport.getResource).toHaveBeenCalledTimes(1);
     expect(f.generate).not.toHaveBeenCalled();
   });
 
-  it("does not submit a turn when the initial receipt card cannot be sent", async () => {
+  it("does not submit a turn when the initial typing card cannot be sent", async () => {
     const f = await setup();
     transport.onStreamOpen = async () => {
       throw new Error("receipt transport unavailable");
