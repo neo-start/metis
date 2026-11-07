@@ -157,3 +157,5 @@ records at `f001715c7`. Reviewed Synara's text-generation service at
 `apps/server/src/textGeneration/TextGenerationPrompts.ts` at
 `f5ef0ddb90a8c36584e181b1913e7b8a5df30ffc`. No additional upstream code copied;
 existing licenses and provider execution boundaries remain intact.
+
+Feishu outbound delivery reuses the existing Synara-derived gateway, Feishu configuration/SDK and atomic receipt writer at local base `28ec2a8a130c30d9e5778e9b45304b2556c845d0`. The T3 apps/packages at `f5ef0ddb90a8c36584e181b1913e7b8a5df30ffc` have no Feishu equivalent. No additional upstream code was copied; source paths and adaptations are recorded in `docs/workbench/upstream.json`.

@@ -42,7 +42,20 @@
 
 旧模式使用 Pi 时：`~/.pi/agent/auth.json` 里要有 OpenRouter 的 `api_key`（终端 `pi` 里 `/login` 选 OpenRouter）。实例总控模式复用总控现有 provider 配置。
 
-## 会话映射
+## 主动发送文字、截图和文件
+
+Agent 工具 `synara_send_feishu` 复用上述机器人凭据和 `allowedOpenIds`，支持 `kind: "text"`（`text`）、`kind: "image"`（截图/图片的 `path`）和 `kind: "file"`（文件的 `path`）。仅在用户明确要求发到飞书时调用；普通回复里的本地链接不会触发上传。一个请求发送一条消息。
+
+- `requestId` 必填，同一次发送的重试必须沿用原值。成功返回飞书 `messageId` 才代表确认发送。
+- 白名单只有一人时自动选该收件人；多人时必须指定其中一人的 `recipientOpenId`。不接受任意收件人或群聊。
+- 文件必须在当前线程工作目录内，路径会解析真实路径，拒绝越界软链接、目录、空文件和超限文件。图片最大 10 MiB，文件最大 25 MiB。
+- 上传使用现有 SDK 的 `im.v1.image.create` / `im.v1.file.create`，发送使用 `im.v1.message.create`。机器人需要相应的图片/文件资源上传权限（`im:resource`）及消息发送权限。权限失败会明确报错，不会宣称已发送。
+- `<数据目录>/userdata/feishu-outbound/` 保存请求内容摘要、上传资源 key 和消息回执；开发模式在 `dev/feishu-outbound/`。相同请求重试不会重新上传已确认的资源，成功回执可跨重启复用。更换内容或收件人必须使用新的请求 ID。
+- 未确认的发送以固定 UUID 重试；超过 30 分钟停止自动重发，要求先核对飞书，避免越过远端去重窗口后重复发送。工具会在上传及发送前重查白名单和当前轮次有效性。
+
+示例：`{"requestId":"home-screenshot-1","kind":"image","path":"artifacts/home.png"}`。
+
+## 旧会话映射
 
 旧模式的 `<数据目录>/feishu-chats.json` 记录 chat_id → threadId，优先跟随 provider handoff 后继，否则在旧线程不可用时创建新会话。实例总控模式完全忽略该映射且不改写它；当前载体由实例身份管理。
 
@@ -52,6 +65,7 @@
 - `apps/server/src/feishu/feishuControllerRoute.ts`：解析实例总控身份，缺少活动总控时拒绝回退。
 - `apps/server/src/feishu/Layers/FeishuBridge.ts`：`createLarkChannel` 长连接、收消息→`thread.turn.start`、轮询线程壳判定一轮结束、`channel.stream` 流式更新。
 - `apps/server/src/feishu/feishuInboundAttachments.ts`：有界下载、MIME 识别、受管附件入库、提交失败清理；图片走既有 provider 图像输入，文件走既有文件路径交付。
+- `apps/server/src/feishu/FeishuOutbound.ts` 与 `agentGateway/feishuTools.ts`：主动发送图片、文件及文字，校验收件人、工作目录和持久回执。
 - 接线：`serverLayers.ts` 的 `feishuBridgeLayer`，`effectServer.ts` 在订阅作用域里 `feishuBridge.start()`。
 
 ## 未做
@@ -62,4 +76,4 @@ Router 会根据新建任务及后续补充的对应轮次结果生成自然语�
 
 飞书流式卡片的初始正文只显示省略号和 SDK 的 typing 光标，不显示“收到”“处理好后回复”等固定会话文案。Router 回复和附件/普通执行通道共用这一规则；附件下载前仍先打开卡片，执行后的实际助手输出继续更新到同一卡片。普通 Router 消息接收并持久化后，会并行打开等待卡片；卡片创建不阻塞 Router 接收。生成的回复替换同一张卡片的占位内容，任务完成汇报另开流式卡片，沿用 SDK 的打字动画。等待卡片只是传输状态，不是额外发送的 Router 首句。当前 Router 返回完整结构化回复后才更新正文，不逐 token 转发模型输出。等待超过两分钟时结束光标并提示后续发送，最终回复仍由持久投递队列负责；发送失败可重试。正常关闭、撤销白名单或会话失效会结束等待状态；进程崩溃后已有卡片由飞书超时结束，恢复投递使用新卡片，不保证复用崩溃前的卡片。
 
-飞书卡片审批、附件向飞书发送尚未接入。实例总控的普通回复已可回传；网页发起的轮次不会自动广播到飞书。历史消息不会自动重放。
+飞书卡片审批尚未接入。实例总控的普通回复已可回传；网页发起的轮次不会自动广播到飞书，可在用户要求时通过发送工具投递文字、截图或文件。历史消息不会自动重放。
