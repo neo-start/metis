@@ -93,6 +93,7 @@ import { deliverGatewayCompletions } from "../completionDelivery.ts";
 import { recoverInterruptedAgentGatewayOperations } from "../startupRecovery.ts";
 import { makeCreateThreadsHandler } from "../creationCoordinator.ts";
 import { makeAgentGatewayAutomationTools } from "../automationTools.ts";
+import { makeFeishuTools } from "../feishuTools.ts";
 import { makeAgentGatewayMemoryTools } from "../memoryTools.ts";
 import { MetisMemory } from "../../metisMemory/Services/MetisMemory.ts";
 import { makeAgentGatewayBrowserTools } from "../browserTools.ts";
@@ -1243,6 +1244,11 @@ export const makeAgentGateway = Effect.gen(function* () {
     setThreadGoal,
     ...automationTools,
     ...memoryTools,
+    ...makeFeishuTools({
+      baseDir: serverConfig.baseDir,
+      stateDir: serverConfig.stateDir,
+      resolveWorkspaceRoot,
+    }),
     ...(metisMemory ? makeThoughtTools(metisMemory.thoughts) : []),
     ...(metisController && metisMemory ? makeMetisTools(metisController, metisMemory) : []),
     ...(peers ? makePeerTools(peers) : []),

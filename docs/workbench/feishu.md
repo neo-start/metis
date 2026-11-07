@@ -62,7 +62,7 @@ Router 会根据新建任务及后续补充的对应轮次结果生成自然语�
 
 普通 Router 消息接收并持久化后，会并行打开带 typing 光标的等待卡片；卡片创建不阻塞 Router 接收。生成的回复替换同一张卡片的占位内容，任务完成汇报另开流式卡片，沿用 SDK 的打字动画。等待卡片只是传输状态，不是额外发送的 Router 首句。当前 Router 返回完整结构化回复后才更新正文，不逐 token 转发模型输出。等待超过两分钟时结束光标并提示后续发送，最终回复仍由持久投递队列负责；发送失败可重试。正常关闭、撤销白名单或会话失效会结束等待状态；进程崩溃后已有卡片由飞书超时结束，恢复投递使用新卡片，不保证复用崩溃前的卡片。
 
-飞书卡片审批、附件向飞书发送尚未接入。实例总控的普通回复已可回传；网页发起的轮次不会自动广播到飞书。历史消息不会自动重放。
+飞书卡片审批尚未接入。实例总控的普通回复已可回传；网页发起的轮次不会自动广播到飞书。历史消息不会自动重放。
 
 ### Pending turn ownership
 
@@ -76,3 +76,9 @@ Operational recovery must use the persisted answer and its exact provider turn,
 not rerun the task. A successful card update is distinct from deploying a code
 fix: do not restart a shared backend with unrelated active tasks. The SDK chat
 queue is serial, so an unresolved stream may also delay subsequent messages.
+
+## 向飞书发送图片和文件
+
+`synara_feishu_send_attachment` 将任务工作区内的文件发送到发起该任务的飞书私聊，`kind=image` 使用原生图片，`kind=file` 使用原生文件消息。复用现有飞书 SDK 的上传与发送，不需要额外长连接。只有用户明确要求发送时才调用；不能指定其他收件人。Router 的持久投递记录决定收件人；无绑定或绑定到多个私聊时拒绝发送。每次检查当前发送者白名单和活动轮次。
+
+参数是工作区内的 `path`、`kind` 和稳定的 `idempotencyKey`。图片最多 10 MiB，文件最多 25 MiB；符号链接不得逃逸工作区。生成的截图先复制进任务工作区。重复调用同一 key 和相同内容会返回原消息回执；同 key 的内容变化被拒绝。远端结果不确定时保留发送意图，不自动重发，需先核对飞书。重启不会清空回执。网页任务、旧版独立会话等没有 Router 私聊绑定的任务不能猜测接收者。
