@@ -122,6 +122,17 @@
         "packages/shared/src/jsonrpc-stdio.ts"
       ],
       "changes": "Reuse the existing discovery session lifecycle and bounded JSONL framer. Route plugin/list and plugin/read to a dedicated account-scoped connection with a 64 MiB receive budget; preserve the existing 64 MiB chat receive budget and 16 MiB stdin/write limits. T3 generated PluginListParams at f5ef0ddb90a8c36584e181b1913e7b8a5df30ffc has no pagination; no T3 implementation copied."
+    },
+    "feishuOutboundAdaptation": {
+      "localBaseCommit": "28ec2a8a130c30d9e5778e9b45304b2556c845d0",
+      "sources": [
+        "apps/server/src/feishu/feishuBridgeConfig.ts",
+        "apps/server/src/feishu/FeishuRouterDelivery.ts",
+        "apps/server/src/atomicWrite.ts",
+        "apps/server/src/agentGateway/Layers/AgentGateway.ts",
+        "apps/server/src/agentGateway/computerBrowserTools.ts"
+      ],
+      "changes": "Reuse the Synara-derived gateway active-turn/workspace boundary, existing Feishu SDK/configuration and private atomic receipts for explicit owner-requested text/image/file delivery. T3 apps/packages at f5ef0ddb90a8c36584e181b1913e7b8a5df30ffc contain no Feishu sender; no upstream code transplanted."
     }
   },
   "t3code": {

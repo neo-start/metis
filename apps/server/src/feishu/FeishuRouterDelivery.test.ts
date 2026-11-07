@@ -11,7 +11,6 @@ import {
 } from "@synara/contracts";
 import { afterEach, expect, it, vi } from "vitest";
 import { FeishuRouterDelivery } from "./FeishuRouterDelivery.ts";
-import { FEISHU_RECEIVED_TEXT } from "./feishuAcknowledgement.ts";
 const roots: string[] = [];
 afterEach(async () => {
   for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
@@ -56,7 +55,8 @@ it.each([false, true])(
       senderId: "owner",
       replyTo: "input",
       command,
-      acknowledgementText: FEISHU_RECEIVED_TEXT,
+      // Existing persisted deliveries retain their original text and receipt semantics.
+      acknowledgementText: "收到，我先看一下你的要求，处理好后回复你。",
     };
     const delivery = new FeishuRouterDelivery(root, host);
     const pending = delivery.enqueue(input);

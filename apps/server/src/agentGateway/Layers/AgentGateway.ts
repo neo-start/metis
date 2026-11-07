@@ -8,6 +8,8 @@ import { MetisControllerService } from "../../metis/MetisControllerService.ts";
 import { makeMetisTools } from "../metisTools.ts";
 import { PeerService } from "../../peers/PeerService.ts";
 import { makePeerTools } from "../peerTools.ts";
+import { makeFeishuTools } from "../feishuTools.ts";
+import { FeishuOutbound } from "../../feishu/FeishuOutbound.ts";
 /**
  * AgentGatewayLive - Synara app-control MCP tool surface.
  *
@@ -93,7 +95,6 @@ import { deliverGatewayCompletions } from "../completionDelivery.ts";
 import { recoverInterruptedAgentGatewayOperations } from "../startupRecovery.ts";
 import { makeCreateThreadsHandler } from "../creationCoordinator.ts";
 import { makeAgentGatewayAutomationTools } from "../automationTools.ts";
-import { makeFeishuTools } from "../feishuTools.ts";
 import { makeAgentGatewayMemoryTools } from "../memoryTools.ts";
 import { MetisMemory } from "../../metisMemory/Services/MetisMemory.ts";
 import { makeAgentGatewayBrowserTools } from "../browserTools.ts";
@@ -1244,14 +1245,13 @@ export const makeAgentGateway = Effect.gen(function* () {
     setThreadGoal,
     ...automationTools,
     ...memoryTools,
-    ...makeFeishuTools({
-      baseDir: serverConfig.baseDir,
-      stateDir: serverConfig.stateDir,
-      resolveWorkspaceRoot,
-    }),
     ...(metisMemory ? makeThoughtTools(metisMemory.thoughts) : []),
     ...(metisController && metisMemory ? makeMetisTools(metisController, metisMemory) : []),
     ...(peers ? makePeerTools(peers) : []),
+    ...makeFeishuTools(
+      new FeishuOutbound(serverConfig.baseDir, path.join(serverConfig.stateDir, "feishu-outbound")),
+      resolveWorkspaceRoot,
+    ),
     ...browserTools,
     ...(deviceService?.supported === true
       ? makeAgentGatewayDeviceTools({ manager: deviceService.manager })

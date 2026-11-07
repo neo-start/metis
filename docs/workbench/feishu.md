@@ -42,7 +42,31 @@
 
 旧模式使用 Pi 时：`~/.pi/agent/auth.json` 里要有 OpenRouter 的 `api_key`（终端 `pi` 里 `/login` 选 OpenRouter）。实例总控模式复用总控现有 provider 配置。
 
-## 会话映射
+## 主动发送文字、截图和文件
+
+Agent 工具 `synara_send_feishu` 复用上述机器人凭据和 `allowedOpenIds`，支持 `kind: "text"`（`text`）、`kind: "image"`（截图/图片的 `path`）和 `kind: "file"`（文件的 `path`）。仅在用户明确要求发到飞书时调用；普通回复里的本地链接不会触发上传。一个请求发送一条消息。
+
+- `requestId` 必填，同一次发送的重试必须沿用原值。成功返回飞书 `messageId` 才代表确认发送。
+- 白名单只有一人时自动选该收件人；多人时必须指定其中一人的 `recipientOpenId`。不接受任意收件人或群聊。
+- 文件必须在当前线程工作目录内，路径会解析真实路径，拒绝越界软链接、目录、空文件和超限文件。图片最大 10 MiB，文件最大 25 MiB。
+- 上传使用现有 SDK 的 `im.v1.image.create` / `im.v1.file.create`，发送使用 `im.v1.message.create`。机器人需要相应的图片/文件资源上传权限（`im:resource`）及消息发送权限。权限失败会明确报错，不会宣称已发送。
+- `<数据目录>/userdata/feishu-outbound/` 保存请求内容摘要、上传资源 key 和消息回执；开发模式在 `dev/feishu-outbound/`。相同请求重试不会重新上传已确认的资源，成功回执可跨重启复用。更换内容或收件人必须使用新的请求 ID。
+- 未确认的发送以固定 UUID 重试；超过 30 分钟停止自动重发，要求先核对飞书，避免越过远端去重窗口后重复发送。工具会在上传及发送前重查白名单和当前轮次有效性。
+
+示例：`{"requestId":"home-screenshot-1","kind":"image","path":"artifacts/home.png"}`。
+
+### 交付与状态查询
+
+- 同一任务中仍适用的明确飞书交付要求，应延续到后续截图/文件交付；本地 Markdown 图片或链接不算发到飞书。引用的历史记录、文件内容及其他任务不能新增发送授权。
+- 跨任务产物应由产出它的线程发送，或通过获授权的产物交接进入当前工作目录；发送接口不放宽目录边界。
+- `synara_feishu_status({"requestId":"home-screenshot-1"})` 只查当前线程的本地持久回执，不发送、不上传、不要求原文件或机器人配置仍存在。重启后原文件删除也能查询已保存的结果。
+- `state` 为 `not_found`（当前线程无回执）、`prepared`（准备记录）、`uploaded`（上传已确认但消息未确认）、`uncertain`（已尝试发送但无确认）、`confirmed`（已记录飞书消息 ID）。`inProgress` 表示当前进程仍在执行该请求；此时先等待查询。无回执不能证明其他线程或其他请求 ID 未发送过。
+- 查询返回 `nextAction`：未确认的重试仍须有交付授权，沿用相同内容与请求 ID；不确定发送超过安全重试窗口时先核对飞书。查询不会调用远端补查，也不保证恢复进程崩溃前未落库的确认。
+- 成功报告包含 `requestId` 和 `messageId`；消息 ID 表示飞书 API 已确认接收，不代表用户已读。失败时如实报告当前状态。
+- 每次 HTTP 请求（含取令牌）设置 30 秒超时与中止信号。连接中断、超时、HTTP 429/5xx 最多尝试 3 次，默认间隔 250/500 毫秒；遵守不超过 5 秒的 `Retry-After`，更长等待留给后续重试。业务错误及权限拒绝不自动重试。上传重试可能留下未引用资源，消息重试始终沿用同一 UUID。
+- 每次重试前重新检查当前轮次和收件人授权。上传/发送失败返回结构化 `stage`、`delivery`、`retryable` 及可用的 HTTP/业务错误码，不暴露 SDK 请求、凭据和响应正文。发送异常保守视为结果未知；不声称未送达。
+
+## 旧会话映射
 
 旧模式的 `<数据目录>/feishu-chats.json` 记录 chat_id → threadId，优先跟随 provider handoff 后继，否则在旧线程不可用时创建新会话。实例总控模式完全忽略该映射且不改写它；当前载体由实例身份管理。
 
@@ -52,6 +76,7 @@
 - `apps/server/src/feishu/feishuControllerRoute.ts`：解析实例总控身份，缺少活动总控时拒绝回退。
 - `apps/server/src/feishu/Layers/FeishuBridge.ts`：`createLarkChannel` 长连接、收消息→`thread.turn.start`、轮询线程壳判定一轮结束、`channel.stream` 流式更新。
 - `apps/server/src/feishu/feishuInboundAttachments.ts`：有界下载、MIME 识别、受管附件入库、提交失败清理；图片走既有 provider 图像输入，文件走既有文件路径交付。
+- `apps/server/src/feishu/FeishuOutbound.ts` 与 `agentGateway/feishuTools.ts`：主动发送图片、文件及文字，校验收件人、工作目录和持久回执。
 - 接线：`serverLayers.ts` 的 `feishuBridgeLayer`，`effectServer.ts` 在订阅作用域里 `feishuBridge.start()`。
 
 ## 未做
@@ -60,25 +85,6 @@ Router 会根据新建任务及后续补充的对应轮次结果生成自然语�
 
 普通 Router 消息（包括问候、状态和停止确认）统一由 Router 生成回复，不再先发送固定“收到”文案。生成失败不会回退成模板式成功回复；完成汇报生成失败保留待投递状态。成功生成的回复在重试和重启时复用，不重复生成。旧版已保存的首句与结果回执保留原有去重和引用关系。附件及审批消息仍使用专门的流式卡片和交互协议，其传输/审批状态不代表 Router 已生成会话回复。
 
-普通 Router 消息接收并持久化后，会并行打开带 typing 光标的等待卡片；卡片创建不阻塞 Router 接收。生成的回复替换同一张卡片的占位内容，任务完成汇报另开流式卡片，沿用 SDK 的打字动画。等待卡片只是传输状态，不是额外发送的 Router 首句。当前 Router 返回完整结构化回复后才更新正文，不逐 token 转发模型输出。等待超过两分钟时结束光标并提示后续发送，最终回复仍由持久投递队列负责；发送失败可重试。正常关闭、撤销白名单或会话失效会结束等待状态；进程崩溃后已有卡片由飞书超时结束，恢复投递使用新卡片，不保证复用崩溃前的卡片。
+飞书流式卡片的初始正文只显示省略号和 SDK 的 typing 光标，不显示“收到”“处理好后回复”等固定会话文案。Router 回复和附件/普通执行通道共用这一规则；附件下载前仍先打开卡片，执行后的实际助手输出继续更新到同一卡片。普通 Router 消息接收并持久化后，会并行打开等待卡片；卡片创建不阻塞 Router 接收。生成的回复替换同一张卡片的占位内容，任务完成汇报另开流式卡片，沿用 SDK 的打字动画。等待卡片只是传输状态，不是额外发送的 Router 首句。当前 Router 返回完整结构化回复后才更新正文，不逐 token 转发模型输出。等待超过两分钟时结束光标并提示后续发送，最终回复仍由持久投递队列负责；发送失败可重试。正常关闭、撤销白名单或会话失效会结束等待状态；进程崩溃后已有卡片由飞书超时结束，恢复投递使用新卡片，不保证复用崩溃前的卡片。
 
-飞书卡片审批尚未接入。实例总控的普通回复已可回传；网页发起的轮次不会自动广播到飞书。历史消息不会自动重放。
-
-### Pending turn ownership
-
-A steering request arriving before the provider publishes its active turn must not
-replace an existing pending turn owner. The original message ID binds transport
-completion to the provider turn; losing it leaves the Feishu stream waiting even
-when the model has completed. The turn projector retains an existing pending
-binding for steering requests, including internal agent coordination messages.
-
-Operational recovery must use the persisted answer and its exact provider turn,
-not rerun the task. A successful card update is distinct from deploying a code
-fix: do not restart a shared backend with unrelated active tasks. The SDK chat
-queue is serial, so an unresolved stream may also delay subsequent messages.
-
-## 向飞书发送图片和文件
-
-`synara_feishu_send_attachment` 将任务工作区内的文件发送到发起该任务的飞书私聊，`kind=image` 使用原生图片，`kind=file` 使用原生文件消息。复用现有飞书 SDK 的上传与发送，不需要额外长连接。只有用户明确要求发送时才调用；不能指定其他收件人。Router 的持久投递记录决定收件人；无绑定或绑定到多个私聊时拒绝发送。每次检查当前发送者白名单和活动轮次。
-
-参数是工作区内的 `path`、`kind` 和稳定的 `idempotencyKey`。图片最多 10 MiB，文件最多 25 MiB；符号链接不得逃逸工作区。生成的截图先复制进任务工作区。重复调用同一 key 和相同内容会返回原消息回执；同 key 的内容变化被拒绝。远端结果不确定时保留发送意图，不自动重发，需先核对飞书。重启不会清空回执。网页任务、旧版独立会话等没有 Router 私聊绑定的任务不能猜测接收者。
+飞书卡片审批尚未接入。实例总控的普通回复已可回传；网页发起的轮次不会自动广播到飞书，可在用户要求时通过发送工具投递文字、截图或文件。历史消息不会自动重放。
