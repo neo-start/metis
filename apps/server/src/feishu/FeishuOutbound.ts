@@ -5,6 +5,8 @@ import path from "node:path";
 import { Effect, Schema } from "effect";
 import { writeFileStringAtomically } from "../atomicWrite.ts";
 import { FEISHU_APP_CONFIG_FILENAME, parseFeishuBridgeConfig } from "./feishuBridgeConfig.ts";
+import { describeFeishuFailure, FeishuOutboundFailure } from "./feishuOutboundFailure.ts";
+import type { HttpInstance, HttpRequestOptions } from "@larksuiteoapi/node-sdk";
 
 export interface FeishuSendInput {
   requestId: string;
@@ -34,16 +36,46 @@ const Receipt = Schema.Struct({
 type Receipt = typeof Receipt.Type;
 const digest = (value: string | Buffer) => createHash("sha256").update(value).digest("hex");
 
+function requestKey(threadId: string, requestId: string): string {
+  if (!requestId?.trim() || requestId.length > 200)
+    throw new Error("requestId must contain 1–200 characters.");
+  return digest(JSON.stringify([threadId, requestId]));
+}
+
 /** Narrow SDK adapter: never expose SDK request objects (which contain credentials) on failure. */
 export async function createFeishuOutboundTransport(config: {
   appId: string;
   appSecret: string;
 }): Promise<FeishuOutboundTransport> {
   const sdk = await import("@larksuiteoapi/node-sdk");
+  // Bound every request (including token acquisition), without changing the shared SDK client.
+  const httpInstance: HttpInstance = {
+    request: async <T, R = T, D = unknown>(opts: HttpRequestOptions<D>): Promise<R> => {
+      const result = await sdk.defaultHttpInstance.request<T, R, D>({
+        ...opts,
+        timeout: 30_000,
+        signal: AbortSignal.timeout(30_000),
+      });
+      // Upload helpers otherwise discard nonzero business codes when unwrapping data.
+      const code =
+        typeof result === "object" && result !== null && "code" in result ? result.code : undefined;
+      if (typeof code === "number" && code !== 0)
+        throw Object.assign(new Error("Feishu API rejected the request."), { code });
+      return result;
+    },
+    get: (url, opts) => httpInstance.request({ ...opts, url, method: "GET" }),
+    delete: (url, opts) => httpInstance.request({ ...opts, url, method: "DELETE" }),
+    head: (url, opts) => httpInstance.request({ ...opts, url, method: "HEAD" }),
+    options: (url, opts) => httpInstance.request({ ...opts, url, method: "OPTIONS" }),
+    post: (url, data, opts) => httpInstance.request({ ...opts, url, data, method: "POST" }),
+    put: (url, data, opts) => httpInstance.request({ ...opts, url, data, method: "PUT" }),
+    patch: (url, data, opts) => httpInstance.request({ ...opts, url, data, method: "PATCH" }),
+  };
   const client = new sdk.Client({
     ...config,
     domain: sdk.Domain.Feishu,
     loggerLevel: sdk.LoggerLevel.fatal,
+    httpInstance,
   });
   return {
     async uploadImage(bytes) {
@@ -66,7 +98,7 @@ export async function createFeishuOutboundTransport(config: {
         data: { receive_id: recipient, msg_type: kind, content, uuid },
       });
       if (result.code !== 0 || !result.data?.message_id)
-        throw new Error("Message send returned no receipt.");
+        throw Object.assign(new Error("Message send returned no receipt."), { code: result.code });
       return result.data.message_id;
     },
   };
@@ -79,7 +111,50 @@ export class FeishuOutbound {
     private readonly baseDir: string,
     private readonly receiptsDir: string,
     private readonly transport = createFeishuOutboundTransport,
+    private readonly retryDelay = (ms: number) =>
+      new Promise<void>((resolve) => setTimeout(resolve, ms)),
   ) {}
+
+  /** Local durable evidence only: never uploads, retries, or requires the original file. */
+  async status(requestId: string, context: { threadId: string }) {
+    const key = requestKey(context.threadId, requestId);
+    const raw = await readFile(path.join(this.receiptsDir, `${key}.json`), "utf8").catch(
+      (error: NodeJS.ErrnoException) => {
+        if (error.code === "ENOENT") return null;
+        throw error;
+      },
+    );
+    const receipt = raw === null ? null : Schema.decodeUnknownSync(Receipt)(JSON.parse(raw));
+    const inProgress = this.active.has(key);
+    const state = receipt?.messageId
+      ? "confirmed"
+      : receipt?.attemptedAt !== undefined
+        ? "uncertain"
+        : receipt?.resourceKey
+          ? "uploaded"
+          : receipt
+            ? "prepared"
+            : "not_found";
+    const retryWindowExpired =
+      state === "uncertain" && Date.now() - receipt!.attemptedAt! > 30 * 60_000;
+    return {
+      requestId,
+      state,
+      inProgress,
+      ...(receipt?.messageId ? { messageId: receipt.messageId } : {}),
+      ...(receipt?.attemptedAt !== undefined ? { attemptedAt: receipt.attemptedAt } : {}),
+      nextAction:
+        state === "confirmed"
+          ? "Already confirmed by Feishu. Do not resend; this is not a read receipt."
+          : inProgress
+            ? "A send is in progress. Query this requestId again before retrying."
+            : retryWindowExpired
+              ? "Delivery is unknown and the safe retry window expired. Check Feishu before any new send."
+              : state === "not_found"
+                ? "No local receipt in this thread. This does not prove no send occurred in another thread or under another requestId."
+                : "Not confirmed. If delivery remains authorized, retry the exact same content and requestId.",
+    };
+  }
 
   async send(
     input: FeishuSendInput,
@@ -89,13 +164,11 @@ export class FeishuOutbound {
       assertActive: () => Promise<void>;
     },
   ): Promise<{ messageId: string; kind: FeishuSendInput["kind"]; replayed: boolean }> {
-    if (!input.requestId?.trim() || input.requestId.length > 200)
-      throw new Error("requestId must contain 1–200 characters.");
+    const key = requestKey(context.threadId, input.requestId);
     if (!["text", "image", "file"].includes(input.kind))
       throw new Error("kind must be text, image or file.");
     if (input.kind === "text" ? Boolean(input.path) : Boolean(input.text))
       throw new Error("Send text or one attachment per request.");
-    const key = digest(JSON.stringify([context.threadId, input.requestId]));
     // Serialize same-ID calls, then validate their content against the durable receipt.
     while (this.active.has(key)) await this.active.get(key)?.catch(() => undefined);
     const operation = this.perform(key, input, context);
@@ -141,6 +214,19 @@ export class FeishuOutbound {
       )
         throw new Error("Feishu configuration or recipient authorization changed; send cancelled.");
     };
+    const attempt = async <T>(stage: "upload" | "send", action: () => Promise<T>): Promise<T> => {
+      for (let index = 0; ; index++) {
+        await authorize();
+        try {
+          return await action();
+        } catch (error) {
+          const details = describeFeishuFailure(error);
+          if (!details.retryable || index >= 2 || (details.retryAfterMs ?? 0) > 5_000)
+            throw new FeishuOutboundFailure(stage, input.requestId, details);
+          await this.retryDelay(Math.max(250 * 2 ** index, details.retryAfterMs ?? 0));
+        }
+      }
+    };
     await authorize();
     let bytes: Buffer | undefined;
     let filename: string | undefined;
@@ -159,7 +245,9 @@ export class FeishuOutbound {
         relative.startsWith(`..${path.sep}`) ||
         path.isAbsolute(relative)
       )
-        throw new Error("Attachment resolves outside the active workspace.");
+        throw new Error(
+          "Attachment resolves outside the active workspace. Send from the producing thread, or use an authorized artifact handoff into this workspace; a local Markdown link does not deliver it to Feishu.",
+        );
       const handle = await open(
         file,
         constants.O_RDONLY | (process.platform === "win32" ? 0 : constants.O_NOFOLLOW),
@@ -223,16 +311,11 @@ export class FeishuOutbound {
     const transport = await this.transport(config);
     if (bytes && !receipt.resourceKey) {
       let resourceKey: string;
-      try {
-        resourceKey =
-          input.kind === "image"
-            ? await transport.uploadImage(bytes)
-            : await transport.uploadFile(bytes, filename!);
-      } catch {
-        throw new Error(
-          "Feishu attachment upload failed. Check the image/file format and bot resource permissions; no message was sent.",
-        );
-      }
+      resourceKey = await attempt("upload", () =>
+        input.kind === "image"
+          ? transport.uploadImage(bytes!)
+          : transport.uploadFile(bytes!, filename!),
+      );
       receipt = { ...receipt, resourceKey };
       await save();
     }
@@ -245,19 +328,9 @@ export class FeishuOutbound {
         : input.kind === "image"
           ? { image_key: receipt.resourceKey }
           : { file_key: receipt.resourceKey };
-    let messageId: string;
-    try {
-      messageId = await transport.send(
-        recipient,
-        input.kind,
-        JSON.stringify(content),
-        key.slice(0, 40),
-      );
-    } catch {
-      throw new Error(
-        "Feishu send did not return a confirmed message ID. Retry only with the same requestId; delivery may already have occurred.",
-      );
-    }
+    const messageId = await attempt("send", () =>
+      transport.send(recipient, input.kind, JSON.stringify(content), key.slice(0, 40)),
+    );
     receipt = { ...receipt, messageId };
     await save();
     return { messageId, kind: input.kind, replayed: false };

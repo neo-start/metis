@@ -39,7 +39,8 @@ async function fixture() {
     send: vi.fn<FeishuOutboundTransport["send"]>().mockResolvedValue("om_test"),
   };
   const factory = vi.fn(async () => transport);
-  const sender = new FeishuOutbound(root, receipts, factory);
+  const retryDelay = vi.fn(async (_ms: number) => {});
+  const sender = new FeishuOutbound(root, receipts, factory, retryDelay);
   const context = { threadId: "thread", workspaceRoot, assertActive: vi.fn(async () => {}) };
   const input = { kind: "image" as const, requestId: "shot-1", path: "shot.png" };
   return {
@@ -54,6 +55,7 @@ async function fixture() {
     sender,
     context,
     input,
+    retryDelay,
   };
 }
 
@@ -77,6 +79,69 @@ it("uploads an image, sends its key to the sole owner, and replays the persisted
   const receipt = await readFile(path.join(f.receipts, (await readdir(f.receipts))[0]!), "utf8");
   expect(receipt).not.toContain(f.config.appSecret);
   expect(receipt).not.toContain("ou_owner");
+});
+
+it("retries transient upload/send failures with bounded delays and one stable message UUID", async () => {
+  const f = await fixture();
+  f.transport.uploadImage.mockRejectedValueOnce(
+    Object.assign(new Error("reset"), { code: "ECONNRESET" }),
+  );
+  f.transport.send.mockRejectedValueOnce({ response: { status: 503 } });
+  expect((await f.sender.send(f.input, f.context)).messageId).toBe("om_test");
+  expect(f.transport.uploadImage).toHaveBeenCalledTimes(2);
+  expect(f.transport.send).toHaveBeenCalledTimes(2);
+  expect(f.transport.send.mock.calls[0]).toEqual(f.transport.send.mock.calls[1]);
+  expect(f.retryDelay.mock.calls).toEqual([[250], [250]]);
+});
+
+it("bounds retries and keeps exhausted delivery uncertain", async () => {
+  const f = await fixture();
+  f.transport.send.mockRejectedValue(
+    Object.assign(new Error("secret SDK request"), { code: "ETIMEDOUT" }),
+  );
+  await expect(f.sender.send(f.input, f.context)).rejects.toMatchObject({
+    stage: "send",
+    details: { retryable: true, category: "network_or_timeout" },
+  });
+  expect(f.transport.send).toHaveBeenCalledTimes(3);
+  expect(f.retryDelay.mock.calls).toEqual([[250], [500]]);
+  expect((await f.sender.status(f.input.requestId, f.context)).state).toBe("uncertain");
+});
+
+it("honors short rate-limit waits and leaves long waits for an explicit retry", async () => {
+  const f = await fixture();
+  f.transport.send.mockRejectedValueOnce({
+    response: { status: 429, headers: { "retry-after": "2" } },
+  });
+  await f.sender.send(f.input, f.context);
+  expect(f.retryDelay).toHaveBeenCalledWith(2_000);
+  f.transport.send.mockRejectedValue({
+    response: { status: 429, headers: { "retry-after": "120" } },
+  });
+  await expect(f.sender.send({ ...f.input, requestId: "second" }, f.context)).rejects.toMatchObject(
+    {
+      details: { retryAfterMs: 120_000, retryable: true },
+    },
+  );
+  expect(f.transport.send).toHaveBeenCalledTimes(3);
+});
+
+it("does not retry permission failures or continue after authorization is revoked during backoff", async () => {
+  const f = await fixture();
+  f.transport.uploadImage.mockRejectedValueOnce({
+    response: { status: 403, data: { code: 999, secret: "private" } },
+  });
+  await expect(f.sender.send(f.input, f.context)).rejects.toMatchObject({
+    stage: "upload",
+    details: { retryable: false, httpStatus: 403, apiCode: 999 },
+  });
+  expect(f.retryDelay).not.toHaveBeenCalled();
+  f.transport.send.mockRejectedValue({ response: { status: 503 } });
+  f.retryDelay.mockImplementation(async () => {
+    f.context.assertActive.mockRejectedValue(new Error("turn ended"));
+  });
+  await expect(f.sender.send(f.input, f.context)).rejects.toThrow("turn ended");
+  expect(f.transport.send).toHaveBeenCalledTimes(1);
 });
 
 it("sends files with a filename and text without uploading", async () => {
@@ -182,4 +247,90 @@ it("does not send on upload failure or expose SDK credentials", async () => {
   f.transport.uploadImage.mockRejectedValue(new Error(f.config.appSecret));
   await expect(f.sender.send(f.input, f.context)).rejects.toThrow("attachment upload failed");
   expect(f.transport.send).not.toHaveBeenCalled();
+});
+
+it("queries confirmed receipts after restart without the original file or bot configuration", async () => {
+  const f = await fixture();
+  await f.sender.send(f.input, f.context);
+  await rm(f.file);
+  await rm(path.join(f.root, "feishu-app.json"));
+  f.factory.mockClear();
+  const restarted = new FeishuOutbound(f.root, f.receipts, f.factory);
+  expect(await restarted.status(f.input.requestId, f.context)).toMatchObject({
+    state: "confirmed",
+    messageId: "om_test",
+    inProgress: false,
+  });
+  expect(await restarted.status(f.input.requestId, { threadId: "other-thread" })).toMatchObject({
+    state: "not_found",
+  });
+  expect(f.factory).not.toHaveBeenCalled();
+  expect(f.transport.send).toHaveBeenCalledTimes(1);
+});
+
+it("distinguishes upload failure, uncertain delivery, and expired retries without sending", async () => {
+  const f = await fixture();
+  expect((await f.sender.status(f.input.requestId, f.context)).state).toBe("not_found");
+  f.transport.uploadImage.mockRejectedValueOnce(new Error("upload failure"));
+  await expect(f.sender.send(f.input, f.context)).rejects.toThrow("upload failed");
+  expect((await f.sender.status(f.input.requestId, f.context)).state).toBe("prepared");
+  f.transport.send.mockRejectedValueOnce(new Error("timeout"));
+  await expect(f.sender.send(f.input, f.context)).rejects.toThrow("same requestId");
+  expect(await f.sender.status(f.input.requestId, f.context)).toMatchObject({
+    state: "uncertain",
+    nextAction: expect.stringContaining("same content and requestId"),
+  });
+  const receiptPath = path.join(f.receipts, (await readdir(f.receipts))[0]!);
+  const receipt = JSON.parse(await readFile(receiptPath, "utf8"));
+  receipt.attemptedAt = Date.now() - 31 * 60_000;
+  await writeFile(receiptPath, JSON.stringify(receipt));
+  expect(await f.sender.status(f.input.requestId, f.context)).toMatchObject({
+    state: "uncertain",
+    nextAction: expect.stringContaining("safe retry window expired"),
+  });
+  expect(f.transport.send).toHaveBeenCalledTimes(1);
+  await writeFile(receiptPath, "invalid json");
+  await expect(f.sender.status(f.input.requestId, f.context)).rejects.toThrow();
+  await expect(f.sender.status(" ", f.context)).rejects.toThrow("requestId");
+});
+
+it("reports uploaded but unconfirmed artifacts without exposing resource keys", async () => {
+  const f = await fixture();
+  f.transport.uploadImage.mockImplementation(async () => {
+    f.context.assertActive.mockRejectedValue(new Error("turn ended"));
+    return "img_private_resource";
+  });
+  await expect(f.sender.send(f.input, f.context)).rejects.toThrow("turn ended");
+  const result = await f.sender.status(f.input.requestId, f.context);
+  expect(result.state).toBe("uploaded");
+  expect(JSON.stringify(result)).not.toContain("img_private_resource");
+  expect(f.transport.send).not.toHaveBeenCalled();
+});
+
+it("reports an in-flight send so a status check cannot encourage another send", async () => {
+  const f = await fixture();
+  let finishSend!: (messageId: string) => void;
+  let started!: () => void;
+  const sending = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  f.transport.send.mockImplementation(() => {
+    started();
+    return new Promise<string>((resolve) => {
+      finishSend = resolve;
+    });
+  });
+  const operation = f.sender.send(f.input, f.context);
+  await sending;
+  try {
+    expect(await f.sender.status(f.input.requestId, f.context)).toMatchObject({
+      state: "uncertain",
+      inProgress: true,
+      nextAction: expect.stringContaining("in progress"),
+    });
+  } finally {
+    finishSend("om_test");
+    await operation;
+  }
+  expect((await f.sender.status(f.input.requestId, f.context)).state).toBe("confirmed");
 });

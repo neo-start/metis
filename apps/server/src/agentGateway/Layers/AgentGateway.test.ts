@@ -2027,6 +2027,7 @@ describe("AgentGateway", () => {
         "synara_create_thread",
         "synara_send_message",
         "synara_send_feishu",
+        "synara_feishu_status",
         "synara_interrupt_thread",
         "synara_set_thread_title",
         "synara_set_thread_pull_request",
