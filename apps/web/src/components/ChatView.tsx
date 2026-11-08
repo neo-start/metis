@@ -276,6 +276,8 @@ import { ComposerColumnFrame } from "./chat/ComposerColumnFrame";
 import { ComposerCommandItem, ComposerCommandMenu } from "./chat/ComposerCommandMenu";
 import { ComposerExpiredUserInputNotice } from "./chat/ComposerExpiredUserInputNotice";
 import { ComposerExtrasPanel } from "./chat/ComposerExtrasPanel";
+import { ComposerDrawingBoard } from "./chat/ComposerDrawingBoard";
+import { PencilIcon } from "~/lib/icons";
 import { ComposerExtrasTrigger } from "./chat/ComposerExtrasTrigger";
 import { ComposerGoalHeader } from "./chat/ComposerGoalHeader";
 import { ComposerInputBanners } from "./chat/ComposerInputBanners";
@@ -755,6 +757,10 @@ export default function ChatView({
   );
 
   const [isDragOverComposer, setIsDragOverComposer] = useState(false);
+  const [drawingBoardThreadId, setDrawingBoardThreadId] = useState<ThreadId | null>(null);
+  useEffect(() => {
+    setDrawingBoardThreadId(null);
+  }, [threadId]);
   const [expandedImage, setExpandedImage] = useState<ExpandedImagePreview | null>(null);
 
   const [localDraftErrorsByThreadId, setLocalDraftErrorsByThreadId] = useState<
@@ -5153,6 +5159,21 @@ export default function ChatView({
           scheduleComposerFocus();
         }}
       />
+      <Button
+        type="button"
+        size="icon-sm"
+        variant="chrome"
+        className="shrink-0 rounded-md"
+        title="画板"
+        aria-label="打开画板"
+        disabled={isComposerEditorDisabled || isSidechatExpired || pendingUserInputs.length > 0}
+        onClick={() => {
+          setIsComposerExtrasPanelOpen(false);
+          setDrawingBoardThreadId(threadId);
+        }}
+      >
+        <PencilIcon aria-hidden="true" className="size-4 text-primary" />
+      </Button>
       {!isVoiceRecording && !isVoiceTranscribing ? (
         <RuntimeUsageControls
           {...runtimeUsageControlsProps}
@@ -6446,6 +6467,25 @@ export default function ChatView({
         );
       })()}
 
+      <ComposerDrawingBoard
+        key={threadId}
+        open={drawingBoardThreadId === threadId}
+        onOpenChange={(open) => setDrawingBoardThreadId(open ? threadId : null)}
+        disabled={isComposerEditorDisabled || isSidechatExpired || pendingUserInputs.length > 0}
+        onAttach={(file) => {
+          if (
+            !activeThreadId ||
+            isComposerEditorDisabled ||
+            isSidechatExpired ||
+            pendingUserInputs.length > 0 ||
+            composerImageAttachmentCount() + pendingComposerImageCount >=
+              PROVIDER_SEND_TURN_MAX_ATTACHMENTS
+          )
+            return false;
+          addComposerImages([file]);
+          return true;
+        }}
+      />
       <ComposerSlashStatusDialog
         open={isSlashStatusDialogOpen}
         onOpenChange={setIsSlashStatusDialogOpen}

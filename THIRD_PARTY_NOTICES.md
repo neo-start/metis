@@ -159,3 +159,13 @@ records at `f001715c7`. Reviewed Synara's text-generation service at
 existing licenses and provider execution boundaries remain intact.
 
 Feishu outbound delivery reuses the existing Synara-derived gateway, Feishu configuration/SDK and atomic receipt writer at local base `28ec2a8a130c30d9e5778e9b45304b2556c845d0`. The T3 apps/packages at `f5ef0ddb90a8c36584e181b1913e7b8a5df30ffc` have no Feishu equivalent. No additional upstream code was copied; source paths and adaptations are recorded in `docs/workbench/upstream.json`.
+
+### Composer drawing board (2026-11-08)
+
+Reviewed Synara `eaa61eded31b6755d4f30ba8eabc5d905cf817cb`
+(`apps/web/src/components/ui/dialog.tsx`, `apps/web/src/components/ChatView.tsx`)
+and T3 Code `71c2d3a302092b94511eb7e6ab4e6844a66dbf22`
+(`apps/web/src/components/chat/ChatComposer.tsx`, `apps/web/src/components/ui/dialog.tsx`).
+Neither inspected component tree provided a reusable drawing board. The original
+Canvas 2D editor reuses local Synara dialog, button, input, icons and image intake;
+no T3 source was copied and no new third-party dependency was added.

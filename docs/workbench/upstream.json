@@ -333,5 +333,20 @@
       "reviewedT3Source": "apps/server/src/textGeneration/TextGenerationPrompts.ts",
       "adaptations": "Reuse local isolated routeMessage generation, durable dispatch receipts, exact-turn completion outbox and Feishu delivery records for conversational acknowledgements and results. Separate transport binding from prose; preserve legacy replay fingerprints. No T3 source copied or new provider/runtime boundary."
     }
+  },
+  "composerDrawingBoard": {
+    "date": "2026-11-08",
+    "synara": {
+      "commit": "eaa61eded31b6755d4f30ba8eabc5d905cf817cb",
+      "sources": ["apps/web/src/components/ui/dialog.tsx", "apps/web/src/components/ChatView.tsx"]
+    },
+    "t3code": {
+      "commit": "71c2d3a302092b94511eb7e6ab4e6844a66dbf22",
+      "sources": [
+        "apps/web/src/components/chat/ChatComposer.tsx",
+        "apps/web/src/components/ui/dialog.tsx"
+      ]
+    },
+    "adaptation": "Searched both upstream component trees; no reusable drawing board found. Original Canvas 2D editor reuses local Synara Dialog, Button, Input, icons and composer image intake. No T3 code copied, dependency or transport change."
   }
 }
