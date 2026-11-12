@@ -49,6 +49,7 @@ import {
   CodexSecondaryAdapter,
   CodexTertiaryAdapter,
   CodexQuaternaryAdapter,
+  CodexQuinaryAdapter,
   type CodexAdapterShape,
 } from "../Services/CodexAdapter.ts";
 import {
@@ -117,6 +118,7 @@ const PROVIDER = "codex" as const;
 const CODEX_SECONDARY_PROVIDER = "codexSecondary" as const;
 const CODEX_TERTIARY_PROVIDER = "codexTertiary" as const;
 const CODEX_QUATERNARY_PROVIDER = "codexQuaternary" as const;
+const CODEX_QUINARY_PROVIDER = "codexQuinary" as const;
 type CodexProviderStartOptions = NonNullable<ProviderStartOptions["codex"]>;
 
 // Backstop for an alive-but-silent codex app-server: if a turn produces no
@@ -1997,7 +1999,8 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
           });
         return options?.gatewayProvider === CODEX_SECONDARY_PROVIDER ||
           options?.gatewayProvider === CODEX_TERTIARY_PROVIDER ||
-          options?.gatewayProvider === CODEX_QUATERNARY_PROVIDER
+          options?.gatewayProvider === CODEX_QUATERNARY_PROVIDER ||
+          options?.gatewayProvider === CODEX_QUINARY_PROVIDER
           ? local
           : makePersistentCodexManager(local, { stateDir: serverConfig.stateDir });
       }),
@@ -2732,6 +2735,23 @@ export function makeCodexQuaternaryAdapterLive(
       Effect.map((base) =>
         aliasCodexAdapterAsAccount(base, resolveAccountOptions, "codexQuaternary"),
       ),
+    ),
+  );
+}
+export function makeCodexQuinaryAdapterLive(
+  options: Omit<CodexAdapterLiveOptions, "gatewayProvider" | "resolveDefaultProviderOptions"> & {
+    readonly resolveAccountOptions: () => Promise<CodexProviderStartOptions>;
+  },
+) {
+  const { resolveAccountOptions, ...adapterOptions } = options;
+  return Layer.effect(
+    CodexQuinaryAdapter,
+    makeCodexAdapter({
+      ...adapterOptions,
+      gatewayProvider: CODEX_QUINARY_PROVIDER,
+      resolveDefaultProviderOptions: async () => ({ codex: await resolveAccountOptions() }),
+    }).pipe(
+      Effect.map((base) => aliasCodexAdapterAsAccount(base, resolveAccountOptions, "codexQuinary")),
     ),
   );
 }

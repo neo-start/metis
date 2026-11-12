@@ -78,6 +78,17 @@ export const PROVIDER_DESCRIPTORS = defineProviderDescriptors([
     },
   },
   {
+    kind: "codexQuinary",
+    displayName: PROVIDER_DISPLAY_NAMES.codexQuinary,
+    available: true,
+    setupDocsHref: "https://trysynara.com/docs/providers/codex",
+    supportsNativeTurnSteering: true,
+    usage: {
+      signInCommand: "CODEX_HOME=~/.codex-quinary codex login",
+      learnMoreHref: "https://platform.openai.com/usage",
+    },
+  },
+  {
     kind: "claudeAgent",
     displayName: PROVIDER_DISPLAY_NAMES.claudeAgent,
     available: true,

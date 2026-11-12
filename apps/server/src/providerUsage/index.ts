@@ -37,6 +37,7 @@ const LOCAL_ARCHIVE_PROVIDERS: ReadonlySet<ProviderKind> = new Set([
   "codexSecondary",
   "codexTertiary",
   "codexQuaternary",
+  "codexQuinary",
   "claudeAgent",
 ]);
 
@@ -45,7 +46,8 @@ const providerChildKind = (provider: ProviderKind): ProviderChildKind =>
     ? "claude"
     : provider === "codexSecondary" ||
         provider === "codexTertiary" ||
-        provider === "codexQuaternary"
+        provider === "codexQuaternary" ||
+        provider === "codexQuinary"
       ? "codex"
       : provider;
 
@@ -308,6 +310,7 @@ export const listProviderUsage = Effect.fn(function* (input: ServerListProviderU
             codexSecondary: settings.providers.codexSecondary,
             codexTertiary: settings.providers.codexTertiary,
             codexQuaternary: settings.providers.codexQuaternary,
+            codexQuinary: settings.providers.codexQuinary,
           },
         },
         {

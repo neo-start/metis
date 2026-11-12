@@ -111,6 +111,7 @@ export function useChatProviderModels({
       codexSecondary: resolveHint("codexSecondary"),
       codexTertiary: resolveHint("codexTertiary"),
       codexQuaternary: resolveHint("codexQuaternary"),
+      codexQuinary: resolveHint("codexQuinary"),
       claudeAgent: resolveHint("claudeAgent"),
       claudeOpenRouter: resolveHint("claudeOpenRouter"),
       cursor: resolveHint("cursor"),

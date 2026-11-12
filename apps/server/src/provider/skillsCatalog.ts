@@ -476,6 +476,7 @@ const PROVIDER_SKILL_ORIGIN_PREFERENCES = {
   codexSecondary: ["codex", "agents"],
   codexTertiary: ["codex", "agents"],
   codexQuaternary: ["codex", "agents"],
+  codexQuinary: ["codex", "agents"],
   claudeAgent: ["claude"],
   claudeOpenRouter: ["claude"],
   cursor: ["cursor", "agents", "claude", "codex"],

@@ -35,6 +35,7 @@ export const COMPOSER_PROVIDER_KINDS = [
   "codexSecondary",
   "codexTertiary",
   "codexQuaternary",
+  "codexQuinary",
   "claudeAgent",
   "claudeOpenRouter",
   "cursor",
@@ -160,6 +161,7 @@ export function makeModelSelection(
     case "codexSecondary":
 
     case "codexTertiary":
+    case "codexQuinary":
     case "codexQuaternary":
       return {
         provider,
@@ -258,6 +260,10 @@ export function normalizeProviderModelOptions(
     candidate?.codexQuaternary && typeof candidate.codexQuaternary === "object"
       ? (candidate.codexQuaternary as Record<string, unknown>)
       : null;
+  const codexQuinaryCandidate =
+    candidate?.codexQuinary && typeof candidate.codexQuinary === "object"
+      ? (candidate.codexQuinary as Record<string, unknown>)
+      : null;
   const claudeCandidate =
     candidate?.claudeAgent && typeof candidate.claudeAgent === "object"
       ? (candidate.claudeAgent as Record<string, unknown>)
@@ -324,9 +330,11 @@ export function normalizeProviderModelOptions(
   const codexQuaternaryReasoningEffort = trimStringOrUndefined(
     codexQuaternaryCandidate?.reasoningEffort,
   );
+  const codexQuinaryReasoningEffort = trimStringOrUndefined(codexQuinaryCandidate?.reasoningEffort);
   const codexSecondaryFastMode = booleanOrUndefined(codexSecondaryCandidate?.fastMode);
   const codexTertiaryFastMode = booleanOrUndefined(codexTertiaryCandidate?.fastMode);
   const codexQuaternaryFastMode = booleanOrUndefined(codexQuaternaryCandidate?.fastMode);
+  const codexQuinaryFastMode = booleanOrUndefined(codexQuinaryCandidate?.fastMode);
   const codexSecondary =
     codexSecondaryReasoningEffort !== undefined || codexSecondaryFastMode !== undefined
       ? {
@@ -352,6 +360,15 @@ export function normalizeProviderModelOptions(
             ? { reasoningEffort: codexQuaternaryReasoningEffort }
             : {}),
           ...(codexQuaternaryFastMode !== undefined ? { fastMode: codexQuaternaryFastMode } : {}),
+        }
+      : undefined;
+  const codexQuinary =
+    codexQuinaryReasoningEffort !== undefined || codexQuinaryFastMode !== undefined
+      ? {
+          ...(codexQuinaryReasoningEffort !== undefined
+            ? { reasoningEffort: codexQuinaryReasoningEffort }
+            : {}),
+          ...(codexQuinaryFastMode !== undefined ? { fastMode: codexQuinaryFastMode } : {}),
         }
       : undefined;
 
@@ -473,6 +490,7 @@ export function normalizeProviderModelOptions(
     !codexSecondary &&
     !codexTertiary &&
     !codexQuaternary &&
+    !codexQuinary &&
     !claude &&
     !claudeOpenRouter &&
     !cursor &&
@@ -490,6 +508,7 @@ export function normalizeProviderModelOptions(
     ...(codexSecondary ? { codexSecondary } : {}),
     ...(codexTertiary ? { codexTertiary } : {}),
     ...(codexQuaternary ? { codexQuaternary } : {}),
+    ...(codexQuinary ? { codexQuinary } : {}),
     ...(claude ? { claudeAgent: claude } : {}),
     ...(claudeOpenRouter ? { claudeOpenRouter } : {}),
     ...(cursor ? { cursor } : {}),
@@ -552,27 +571,29 @@ export function normalizeModelSelection(
         ? modelOptions?.codexSecondary
         : provider === "codexTertiary"
           ? modelOptions?.codexTertiary
-          : provider === "codexQuaternary"
-            ? modelOptions?.codexQuaternary
-            : provider === "claudeAgent"
-              ? modelOptions?.claudeAgent
-              : provider === "claudeOpenRouter"
-                ? modelOptions?.claudeOpenRouter
-                : provider === "antigravity"
-                  ? modelOptions?.antigravity
-                  : provider === "grok"
-                    ? normalizeGrokModelOptions(model, modelOptions?.grok)
-                    : provider === "droid"
-                      ? modelOptions?.droid
-                      : provider === "cursor"
-                        ? modelOptions?.cursor
-                        : provider === "opencode"
-                          ? modelOptions?.opencode
-                          : provider === "pi"
-                            ? modelOptions?.pi
-                            : provider === "devin"
-                              ? modelOptions?.devin
-                              : undefined;
+          : provider === "codexQuinary"
+            ? modelOptions?.codexQuinary
+            : provider === "codexQuaternary"
+              ? modelOptions?.codexQuaternary
+              : provider === "claudeAgent"
+                ? modelOptions?.claudeAgent
+                : provider === "claudeOpenRouter"
+                  ? modelOptions?.claudeOpenRouter
+                  : provider === "antigravity"
+                    ? modelOptions?.antigravity
+                    : provider === "grok"
+                      ? normalizeGrokModelOptions(model, modelOptions?.grok)
+                      : provider === "droid"
+                        ? modelOptions?.droid
+                        : provider === "cursor"
+                          ? modelOptions?.cursor
+                          : provider === "opencode"
+                            ? modelOptions?.opencode
+                            : provider === "pi"
+                              ? modelOptions?.pi
+                              : provider === "devin"
+                                ? modelOptions?.devin
+                                : undefined;
   const normalizedOptions =
     provider === "antigravity" && hasLegacyAntigravityEffort
       ? {
@@ -613,7 +634,8 @@ export function reconcileProviderScopedModelSelection(
       current.provider === "codex" ||
       current.provider === "codexSecondary" ||
       current.provider === "codexTertiary" ||
-      current.provider === "codexQuaternary"
+      current.provider === "codexQuaternary" ||
+      current.provider === "codexQuinary"
     ) &&
     current.provider !== "cursor" &&
     current.provider !== "claudeAgent"
@@ -628,6 +650,7 @@ export function reconcileProviderScopedModelSelection(
           current.provider === "codexSecondary" ||
           current.provider === "codexTertiary" ||
           current.provider === "codexQuaternary" ||
+          current.provider === "codexQuinary" ||
           current.provider === "cursor"
         ? current.options?.reasoningEffort
         : undefined;
@@ -647,6 +670,7 @@ export function reconcileProviderScopedModelSelection(
       current.provider === "codexSecondary" ||
       current.provider === "codexTertiary" ||
       current.provider === "codexQuaternary" ||
+      current.provider === "codexQuinary" ||
       current.provider === "cursor"
     ) {
       const { reasoningEffort: _reasoningEffort, ...remainingOptions } = current.options ?? {};

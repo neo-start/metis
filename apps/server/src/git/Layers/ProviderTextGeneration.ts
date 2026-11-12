@@ -132,7 +132,8 @@ const makeProviderTextGeneration = Effect.gen(function* () {
       if (
         provider === "codexSecondary" ||
         provider === "codexTertiary" ||
-        provider === "codexQuaternary"
+        provider === "codexQuaternary" ||
+        provider === "codexQuinary"
       ) {
         return Effect.gen(function* () {
           const settings = yield* serverSettings.getSettings.pipe(

@@ -51,6 +51,7 @@ export function shouldInlineSkillForProvider(provider: ProviderKind, skillPath: 
     // registered via skills/extraRoots/set. Only foreign provider roots
     // need inline instructions alongside their structured skill reference.
 
+    case "codexQuinary":
     case "codexQuaternary":
       // Codex loads .codex and .agents skills natively, plus ~/.synara/skills
       // registered via skills/extraRoots/set. Only foreign provider roots

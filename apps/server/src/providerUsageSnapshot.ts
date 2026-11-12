@@ -731,6 +731,7 @@ async function loadProviderUsageSnapshot(input: {
   switch (input.provider) {
     case "codexSecondary":
     case "codexTertiary":
+    case "codexQuinary":
     case "codexQuaternary":
       // Additional accounts never fall back to the primary ~/.codex archive.
       return input.homePath

@@ -50,6 +50,7 @@ describe.each([
   ["codexSecondary", ".codex-secondary"],
   ["codexTertiary", ".codex-tertiary"],
   ["codexQuaternary", ".codex-quaternary"],
+  ["codexQuinary", ".codex-quinary"],
 ] as const)("Codex account alias %s", (provider, defaultHome) => {
   const aliasCodexAdapterAsSecondary = (
     base: CodexAdapterShape,

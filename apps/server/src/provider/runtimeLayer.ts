@@ -16,6 +16,7 @@ import {
   makeCodexSecondaryAdapterLive,
   makeCodexTertiaryAdapterLive,
   makeCodexQuaternaryAdapterLive,
+  makeCodexQuinaryAdapterLive,
 } from "./Layers/CodexAdapter";
 import { makeCursorAdapterLive } from "./Layers/CursorAdapter";
 import { makeDevinAdapterLive } from "./Layers/DevinAdapter";
@@ -105,6 +106,20 @@ export function makeServerProviderLayer(
           ),
         ),
     }).pipe(Layer.provide(agentGatewayCredentialsLayer));
+    const codexQuinaryAdapterLayer = makeCodexQuinaryAdapterLive({
+      ...(nativeEventLogger ? { nativeEventLogger } : {}),
+      // Read at use time so a changed CODEX_HOME applies to the next session.
+      resolveAccountOptions: () =>
+        Effect.runPromise(
+          serverSettings.getSettings.pipe(
+            Effect.map(({ providers: { codexQuinary } }) => ({
+              ...(codexQuinary.binaryPath ? { binaryPath: codexQuinary.binaryPath } : {}),
+              ...(codexQuinary.homePath ? { homePath: codexQuinary.homePath } : {}),
+            })),
+            Effect.orElseSucceed(() => ({})),
+          ),
+        ),
+    }).pipe(Layer.provide(agentGatewayCredentialsLayer));
     const claudeAdapterLayer = makeClaudeAdapterLive(
       nativeEventLogger ? { nativeEventLogger } : undefined,
     ).pipe(Layer.provide(agentGatewayCredentialsLayer));
@@ -153,6 +168,7 @@ export function makeServerProviderLayer(
       Layer.provide(codexSecondaryAdapterLayer),
       Layer.provide(codexTertiaryAdapterLayer),
       Layer.provide(codexQuaternaryAdapterLayer),
+      Layer.provide(codexQuinaryAdapterLayer),
       Layer.provide(claudeAdapterLayer),
       Layer.provide(claudeOpenRouterAdapterLayer),
       Layer.provide(cursorAdapterLayer),

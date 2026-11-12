@@ -15,6 +15,7 @@ const PROVIDER_STATUS_CACHE_IDS = [
   "codexSecondary",
   "codexTertiary",
   "codexQuaternary",
+  "codexQuinary",
   "claudeAgent",
   "claudeOpenRouter",
   "cursor",

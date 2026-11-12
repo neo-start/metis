@@ -10,6 +10,7 @@ import {
   codexSecondaryUsageFetcher,
   codexTertiaryUsageFetcher,
   codexQuaternaryUsageFetcher,
+  codexQuinaryUsageFetcher,
   codexUsageFetcher,
 } from "./providers/codex";
 import { cursorUsageFetcher } from "./providers/cursor";
@@ -25,6 +26,7 @@ export const PROVIDER_USAGE_FETCHERS: Partial<Record<ProviderKind, ProviderUsage
   codexSecondary: codexSecondaryUsageFetcher,
   codexTertiary: codexTertiaryUsageFetcher,
   codexQuaternary: codexQuaternaryUsageFetcher,
+  codexQuinary: codexQuinaryUsageFetcher,
   claudeAgent: claudeUsageFetcher,
   cursor: cursorUsageFetcher,
   antigravity: antigravityUsageFetcher,

@@ -54,6 +54,7 @@ export const NEW_THREAD_MODEL_PREFETCH_PROVIDERS: ReadonlyArray<Exclude<Provider
   "codexSecondary",
   "codexTertiary",
   "codexQuaternary",
+  "codexQuinary",
   "claudeAgent",
   "claudeOpenRouter",
   "cursor",
@@ -153,6 +154,8 @@ export function providerModelsPrefetchQueryOptions(input: {
       return providerModelsQueryOptions({ provider: "codexTertiary", priority });
     case "codexQuaternary":
       return providerModelsQueryOptions({ provider: "codexQuaternary", priority });
+    case "codexQuinary":
+      return providerModelsQueryOptions({ provider: "codexQuinary", priority });
     case "cursor":
       return providerModelsQueryOptions({
         provider: "cursor",

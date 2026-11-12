@@ -57,6 +57,7 @@ export function getComposerProviderState(input: ComposerProviderStateInput): Com
     case "codex":
     case "codexSecondary":
     case "codexTertiary":
+    case "codexQuinary":
     case "codexQuaternary": {
       const providerOptions = modelOptions?.[provider];
       rawEffort = trimOrNull(providerOptions?.reasoningEffort);

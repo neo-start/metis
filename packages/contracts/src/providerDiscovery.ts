@@ -12,6 +12,7 @@ const ProviderDiscoveryKind = Schema.Literals([
   "codexSecondary",
   "codexTertiary",
   "codexQuaternary",
+  "codexQuinary",
   "claudeAgent",
   "claudeOpenRouter",
   "cursor",

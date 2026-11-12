@@ -28,6 +28,8 @@ describe("provider usage metadata", () => {
       "codex",
       "codexSecondary",
       "codexTertiary",
+      "codexQuaternary",
+      "codexQuinary",
       "claudeAgent",
       "cursor",
       "antigravity",

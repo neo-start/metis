@@ -10,6 +10,7 @@ type ModelProviderKind =
   | "codexSecondary"
   | "codexTertiary"
   | "codexQuaternary"
+  | "codexQuinary"
   | "claudeAgent"
   | "claudeOpenRouter"
   | "cursor"
@@ -106,6 +107,7 @@ function inferLegacyModelProvider(provider: unknown, model: string): ModelProvid
     provider === "codexSecondary" ||
     provider === "codexTertiary" ||
     provider === "codexQuaternary" ||
+    provider === "codexQuinary" ||
     provider === "claudeAgent" ||
     provider === "claudeOpenRouter" ||
     provider === "cursor" ||

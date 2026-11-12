@@ -36,6 +36,7 @@ export type CodexServerProviderSettings = typeof CodexServerProviderSettings.Typ
 export const CODEX_SECONDARY_DEFAULT_HOME_PATH = "~/.codex-secondary";
 export const CODEX_TERTIARY_DEFAULT_HOME_PATH = "~/.codex-tertiary";
 export const CODEX_QUATERNARY_DEFAULT_HOME_PATH = "~/.codex-quaternary";
+export const CODEX_QUINARY_DEFAULT_HOME_PATH = "~/.codex-quinary";
 
 export const CodexSecondaryServerProviderSettings = Schema.Struct({
   ...CodexServerProviderSettingsBase,
@@ -54,10 +55,16 @@ export const CodexQuaternaryServerProviderSettings = Schema.Struct({
     Schema.withDecodingDefault(() => CODEX_QUATERNARY_DEFAULT_HOME_PATH),
   ),
 });
+export const CodexQuinaryServerProviderSettings = Schema.Struct({
+  ...CodexServerProviderSettingsBase,
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(() => false)),
+  homePath: StringSetting.pipe(Schema.withDecodingDefault(() => CODEX_QUINARY_DEFAULT_HOME_PATH)),
+});
 export type CodexSecondaryServerProviderSettings = typeof CodexSecondaryServerProviderSettings.Type;
 export type CodexTertiaryServerProviderSettings = typeof CodexTertiaryServerProviderSettings.Type;
 export type CodexQuaternaryServerProviderSettings =
   typeof CodexQuaternaryServerProviderSettings.Type;
+export type CodexQuinaryServerProviderSettings = typeof CodexQuinaryServerProviderSettings.Type;
 
 export const ClaudeCacheReviewDefault = Schema.Literals(["ask", "continue", "compact"]);
 export type ClaudeCacheReviewDefault = typeof ClaudeCacheReviewDefault.Type;
@@ -167,6 +174,7 @@ export const ServerSettings = Schema.Struct({
     codexQuaternary: CodexQuaternaryServerProviderSettings.pipe(
       Schema.withDecodingDefault(() => ({})),
     ),
+    codexQuinary: CodexQuinaryServerProviderSettings.pipe(Schema.withDecodingDefault(() => ({}))),
     claudeAgent: ClaudeServerProviderSettings.pipe(Schema.withDecodingDefault(() => ({}))),
     claudeOpenRouter: ClaudeOpenRouterServerProviderSettings.pipe(
       Schema.withDecodingDefault(() => ({})),
@@ -238,6 +246,12 @@ export const ServerSettingsPatch = Schema.Struct({
         }),
       ),
       codexQuaternary: Schema.optionalKey(
+        Schema.Struct({
+          ...ProviderSettingsBasePatch,
+          homePath: Schema.optionalKey(StringSetting),
+        }),
+      ),
+      codexQuinary: Schema.optionalKey(
         Schema.Struct({
           ...ProviderSettingsBasePatch,
           homePath: Schema.optionalKey(StringSetting),

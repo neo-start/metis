@@ -2029,6 +2029,7 @@ function toLegacyProvider(providerName: string | null): ProviderKind {
     providerName === "codexSecondary" ||
     providerName === "codexTertiary" ||
     providerName === "codexQuaternary" ||
+    providerName === "codexQuinary" ||
     providerName === "claudeAgent" ||
     providerName === "claudeOpenRouter" ||
     providerName === "cursor" ||

@@ -161,6 +161,7 @@ const allProvidersDisabledSettings = {
     codexSecondary: { enabled: false },
     codexTertiary: { enabled: false },
     codexQuaternary: { enabled: false },
+    codexQuinary: { enabled: false },
     claudeAgent: { enabled: false },
     claudeOpenRouter: { enabled: false },
     cursor: { enabled: false },
@@ -180,6 +181,7 @@ const allProvidersDisabledServerSettings = {
     codexSecondary: { ...DEFAULT_SERVER_SETTINGS.providers.codexSecondary, enabled: false },
     codexTertiary: { ...DEFAULT_SERVER_SETTINGS.providers.codexTertiary, enabled: false },
     codexQuaternary: { ...DEFAULT_SERVER_SETTINGS.providers.codexQuaternary, enabled: false },
+    codexQuinary: { ...DEFAULT_SERVER_SETTINGS.providers.codexQuinary, enabled: false },
     claudeAgent: { ...DEFAULT_SERVER_SETTINGS.providers.claudeAgent, enabled: false },
     claudeOpenRouter: { ...DEFAULT_SERVER_SETTINGS.providers.claudeOpenRouter, enabled: false },
     cursor: { ...DEFAULT_SERVER_SETTINGS.providers.cursor, enabled: false },
@@ -812,7 +814,7 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
 
         assert.deepEqual(
           statuses.map((status) => status.provider),
-          ["codexSecondary", "codexTertiary", "codexQuaternary"],
+          ["codexSecondary", "codexTertiary", "codexQuaternary", "codexQuinary"],
         );
         assert.strictEqual(statuses[1]?.available, false);
         assert.strictEqual(statuses[0]?.provider, "codexSecondary");

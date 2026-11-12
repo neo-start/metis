@@ -1,6 +1,6 @@
 # Independent Codex accounts
 
-Metis supports four Codex entries in Settings → Providers and the model picker:
+Metis supports five Codex entries in Settings → Providers and the model picker:
 
 | Entry          | Provider ID       | Default account home                  |
 | -------------- | ----------------- | ------------------------------------- |
@@ -8,6 +8,7 @@ Metis supports four Codex entries in Settings → Providers and the model picker
 | codex-personal | `codexSecondary`  | `~/.codex-secondary`                  |
 | codex-third    | `codexTertiary`   | `~/.codex-tertiary`                   |
 | codex-fourth   | `codexQuaternary` | `~/.codex-quaternary`                 |
+| codex-fifth    | `codexQuinary`    | `~/.codex-quinary`                    |
 
 The additional entries are disabled by default. Sign in using the official Codex CLI
 with a separate `CODEX_HOME`, then enable the corresponding entry. If you use another

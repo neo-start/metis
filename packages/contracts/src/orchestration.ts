@@ -73,6 +73,7 @@ export const ProviderKind = Schema.Literals([
   "codexSecondary",
   "codexTertiary",
   "codexQuaternary",
+  "codexQuinary",
   "claudeAgent",
   "claudeOpenRouter",
   "cursor",
@@ -91,6 +92,7 @@ export const CODEX_PROVIDER_KINDS = [
   "codexSecondary",
   "codexTertiary",
   "codexQuaternary",
+  "codexQuinary",
 ] as const;
 export type CodexProviderKind = (typeof CODEX_PROVIDER_KINDS)[number];
 
@@ -101,7 +103,8 @@ export function isCodexProviderKind(
     provider === "codex" ||
     provider === "codexSecondary" ||
     provider === "codexTertiary" ||
-    provider === "codexQuaternary"
+    provider === "codexQuaternary" ||
+    provider === "codexQuinary"
   );
 }
 
@@ -177,9 +180,15 @@ export const CodexQuaternaryModelSelection = Schema.Struct({
   model: TrimmedNonEmptyString,
   options: Schema.optional(CodexModelOptions),
 });
+export const CodexQuinaryModelSelection = Schema.Struct({
+  provider: Schema.Literal("codexQuinary"),
+  model: TrimmedNonEmptyString,
+  options: Schema.optional(CodexModelOptions),
+});
 export type CodexSecondaryModelSelection = typeof CodexSecondaryModelSelection.Type;
 export type CodexTertiaryModelSelection = typeof CodexTertiaryModelSelection.Type;
 export type CodexQuaternaryModelSelection = typeof CodexQuaternaryModelSelection.Type;
+export type CodexQuinaryModelSelection = typeof CodexQuinaryModelSelection.Type;
 
 export const ClaudeModelSelection = Schema.Struct({
   provider: Schema.Literal("claudeAgent"),
@@ -250,6 +259,7 @@ export const ModelSelection = Schema.Union([
   CodexSecondaryModelSelection,
   CodexTertiaryModelSelection,
   CodexQuaternaryModelSelection,
+  CodexQuinaryModelSelection,
   ClaudeModelSelection,
   ClaudeOpenRouterModelSelection,
   CursorModelSelection,
@@ -281,6 +291,10 @@ export const CodexTertiaryProviderStartOptions = Schema.Struct({
   runtimeHost: Schema.optional(Schema.Literal("backend")),
 });
 export const CodexQuaternaryProviderStartOptions = Schema.Struct({
+  ...CodexProviderStartOptions.fields,
+  runtimeHost: Schema.optional(Schema.Literal("backend")),
+});
+export const CodexQuinaryProviderStartOptions = Schema.Struct({
   ...CodexProviderStartOptions.fields,
   runtimeHost: Schema.optional(Schema.Literal("backend")),
 });
@@ -333,6 +347,7 @@ export const ProviderStartOptions = Schema.Struct({
   codexSecondary: Schema.optional(CodexSecondaryProviderStartOptions),
   codexTertiary: Schema.optional(CodexTertiaryProviderStartOptions),
   codexQuaternary: Schema.optional(CodexQuaternaryProviderStartOptions),
+  codexQuinary: Schema.optional(CodexQuinaryProviderStartOptions),
   claudeAgent: Schema.optional(ClaudeProviderStartOptions),
   claudeOpenRouter: Schema.optional(ClaudeOpenRouterProviderStartOptions),
   cursor: Schema.optional(CursorProviderStartOptions),

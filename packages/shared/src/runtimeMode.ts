@@ -5,6 +5,7 @@ const AUTO_RUNTIME_MODE_PROVIDERS = new Set<ProviderKind>([
   "codexSecondary",
   "codexTertiary",
   "codexQuaternary",
+  "codexQuinary",
   "claudeAgent",
 ]);
 const RUNTIME_MODE_PRIVILEGE = {

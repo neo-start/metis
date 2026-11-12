@@ -26,6 +26,7 @@ import {
   CodexSecondaryAdapter,
   CodexTertiaryAdapter,
   CodexQuaternaryAdapter,
+  CodexQuinaryAdapter,
 } from "../Services/CodexAdapter.ts";
 import { CursorAdapter } from "../Services/CursorAdapter.ts";
 import { DevinAdapter } from "../Services/DevinAdapter.ts";
@@ -49,6 +50,7 @@ const makeProviderAdapterRegistry = (options?: ProviderAdapterRegistryLiveOption
             yield* CodexSecondaryAdapter,
             yield* CodexTertiaryAdapter,
             yield* CodexQuaternaryAdapter,
+            yield* CodexQuinaryAdapter,
             yield* ClaudeAdapter,
             yield* ClaudeOpenRouterAdapter,
             yield* CursorAdapter,

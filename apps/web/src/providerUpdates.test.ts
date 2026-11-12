@@ -65,6 +65,7 @@ function serverSettings(overrides: Partial<ServerSettings["providers"]> = {}): S
       codexSecondary: { ...provider, binaryPath: "codex", homePath: "" },
       codexTertiary: { ...provider, binaryPath: "codex", homePath: "" },
       codexQuaternary: { ...provider, binaryPath: "codex", homePath: "" },
+      codexQuinary: { ...provider, binaryPath: "codex", homePath: "" },
       claudeAgent: {
         ...provider,
         binaryPath: "claude",

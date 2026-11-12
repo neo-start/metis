@@ -69,6 +69,7 @@ export const PROVIDER_ICON_COMPONENT_BY_PROVIDER: Record<ProviderKind, Icon> = {
   codexSecondary: OpenAI,
   codexTertiary: OpenAI,
   codexQuaternary: OpenAI,
+  codexQuinary: OpenAI,
   claudeAgent: ClaudeAI,
   claudeOpenRouter: ClaudeAI,
   cursor: CursorIcon,

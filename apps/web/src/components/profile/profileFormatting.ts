@@ -82,6 +82,7 @@ export function formatProviderLabel(provider: ProviderKind): string {
     case "codexSecondary":
 
     case "codexTertiary":
+    case "codexQuinary":
     case "codexQuaternary":
       return PROVIDER_DISPLAY_NAMES[provider];
     case "claudeOpenRouter":

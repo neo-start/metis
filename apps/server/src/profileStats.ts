@@ -30,6 +30,7 @@ const PROVIDER_KINDS = new Set<ProviderKind>([
   "codexSecondary",
   "codexTertiary",
   "codexQuaternary",
+  "codexQuinary",
   "claudeAgent",
   "claudeOpenRouter",
   "cursor",

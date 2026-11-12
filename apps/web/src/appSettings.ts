@@ -13,6 +13,7 @@ import {
   CODEX_SECONDARY_DEFAULT_HOME_PATH,
   CODEX_TERTIARY_DEFAULT_HOME_PATH,
   CODEX_QUATERNARY_DEFAULT_HOME_PATH,
+  CODEX_QUINARY_DEFAULT_HOME_PATH,
   DesktopAppIcon,
   DEFAULT_GIT_TEXT_GENERATION_MODEL,
   DEFAULT_SERVER_SETTINGS,
@@ -146,6 +147,7 @@ type CustomModelSettingsKey =
   | "customCodexSecondaryModels"
   | "customCodexTertiaryModels"
   | "customCodexQuaternaryModels"
+  | "customCodexQuinaryModels"
   | "customClaudeModels"
   | "customClaudeOpenRouterModels"
   | "customCursorModels"
@@ -170,6 +172,7 @@ const BUILT_IN_MODEL_SLUGS_BY_PROVIDER: Record<ProviderKind, ReadonlySet<string>
   codexSecondary: new Set(getModelOptions("codexSecondary").map((option) => option.slug)),
   codexTertiary: new Set(getModelOptions("codexTertiary").map((option) => option.slug)),
   codexQuaternary: new Set(getModelOptions("codexQuaternary").map((option) => option.slug)),
+  codexQuinary: new Set(getModelOptions("codexQuinary").map((option) => option.slug)),
   claudeAgent: new Set(getModelOptions("claudeAgent").map((option) => option.slug)),
   claudeOpenRouter: new Set(getModelOptions("claudeOpenRouter").map((option) => option.slug)),
   cursor: new Set(getModelOptions("cursor").map((option) => option.slug)),
@@ -199,6 +202,7 @@ const PersistedProviderKind = Schema.Literals([
   "codexSecondary",
   "codexTertiary",
   "codexQuaternary",
+  "codexQuinary",
   "claudeAgent",
   "claudeOpenRouter",
   "cursor",
@@ -304,6 +308,9 @@ export const AppSettingsSchema = Schema.Struct({
   codexQuaternaryBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(
     withDefaults(() => ""),
   ),
+  codexQuinaryBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(
+    withDefaults(() => ""),
+  ),
   codexSecondaryHomePath: Schema.String.check(Schema.isMaxLength(4096)).pipe(
     withDefaults(() => CODEX_SECONDARY_DEFAULT_HOME_PATH),
   ),
@@ -312,6 +319,9 @@ export const AppSettingsSchema = Schema.Struct({
   ),
   codexQuaternaryHomePath: Schema.String.check(Schema.isMaxLength(4096)).pipe(
     withDefaults(() => CODEX_QUATERNARY_DEFAULT_HOME_PATH),
+  ),
+  codexQuinaryHomePath: Schema.String.check(Schema.isMaxLength(4096)).pipe(
+    withDefaults(() => CODEX_QUINARY_DEFAULT_HOME_PATH),
   ),
   cursorBinaryPath: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
   cursorApiEndpoint: Schema.String.check(Schema.isMaxLength(4096)).pipe(withDefaults(() => "")),
@@ -429,6 +439,7 @@ export const AppSettingsSchema = Schema.Struct({
   customCodexSecondaryModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
   customCodexTertiaryModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
   customCodexQuaternaryModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
+  customCodexQuinaryModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
   customClaudeModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
   customClaudeOpenRouterModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
   customCursorModels: Schema.Array(Schema.String).pipe(withDefaults(() => [])),
@@ -524,6 +535,15 @@ const PROVIDER_CUSTOM_MODEL_CONFIG: Record<ProviderKind, ProviderCustomModelConf
     defaultSettingsKey: "customCodexQuaternaryModels",
     title: "codex-fourth",
     description: "Save additional model slugs for the fourth Codex account.",
+    placeholder: "your-codex-model-slug",
+    example: "gpt-6.7-codex-ultra-preview",
+  },
+  codexQuinary: {
+    provider: "codexQuinary",
+    settingsKey: "customCodexQuinaryModels",
+    defaultSettingsKey: "customCodexQuinaryModels",
+    title: "codex-fifth",
+    description: "Save additional model slugs for the fifth Codex account.",
     placeholder: "your-codex-model-slug",
     example: "gpt-6.7-codex-ultra-preview",
   },
@@ -771,6 +791,10 @@ function normalizeAppSettings(settings: AppSettings): AppSettings {
       "codexQuaternary",
       settings.codexQuaternaryBinaryPath,
     ),
+    codexQuinaryBinaryPath: normalizeProviderBinaryPathOverride(
+      "codexQuinary",
+      settings.codexQuinaryBinaryPath,
+    ),
     cursorBinaryPath: normalizeProviderBinaryPathOverride("cursor", settings.cursorBinaryPath),
     devinBinaryPath: normalizeProviderBinaryPathOverride("devin", settings.devinBinaryPath),
     antigravityBinaryPath: normalizeProviderBinaryPathOverride(
@@ -803,6 +827,10 @@ function normalizeAppSettings(settings: AppSettings): AppSettings {
     customCodexQuaternaryModels: normalizeCustomModelSlugs(
       settings.customCodexQuaternaryModels,
       "codexQuaternary",
+    ),
+    customCodexQuinaryModels: normalizeCustomModelSlugs(
+      settings.customCodexQuinaryModels,
+      "codexQuinary",
     ),
     customClaudeModels: normalizeCustomModelSlugs(settings.customClaudeModels, "claudeAgent"),
     customClaudeOpenRouterModels: normalizeCustomModelSlugs(
@@ -881,9 +909,11 @@ function serverSettingsToAppSettings(settings: ServerSettingsView): Partial<AppS
     codexSecondaryBinaryPath: settings.providers.codexSecondary.binaryPath,
     codexTertiaryBinaryPath: settings.providers.codexTertiary.binaryPath,
     codexQuaternaryBinaryPath: settings.providers.codexQuaternary.binaryPath,
+    codexQuinaryBinaryPath: settings.providers.codexQuinary.binaryPath,
     codexSecondaryHomePath: settings.providers.codexSecondary.homePath,
     codexTertiaryHomePath: settings.providers.codexTertiary.homePath,
     codexQuaternaryHomePath: settings.providers.codexQuaternary.homePath,
+    codexQuinaryHomePath: settings.providers.codexQuinary.homePath,
     cursorApiEndpoint: settings.providers.cursor.apiEndpoint,
     cursorBinaryPath: settings.providers.cursor.binaryPath,
     devinBinaryPath: settings.providers.devin.binaryPath,
@@ -904,6 +934,7 @@ function serverSettingsToAppSettings(settings: ServerSettingsView): Partial<AppS
     customCodexSecondaryModels: settings.providers.codexSecondary.customModels,
     customCodexTertiaryModels: settings.providers.codexTertiary.customModels,
     customCodexQuaternaryModels: settings.providers.codexQuaternary.customModels,
+    customCodexQuinaryModels: settings.providers.codexQuinary.customModels,
     customClaudeModels: settings.providers.claudeAgent.customModels,
     customClaudeOpenRouterModels: settings.providers.claudeOpenRouter.customModels,
     customCursorModels: settings.providers.cursor.customModels,
@@ -1085,6 +1116,23 @@ export function appSettingsPatchToServerSettingsPatch(
     };
   }
   if (
+    hasOwn(patch, "codexQuinaryBinaryPath") ||
+    hasOwn(patch, "codexQuinaryHomePath") ||
+    hasOwn(patch, "customCodexQuinaryModels")
+  ) {
+    providers.codexQuinary = {
+      ...(hasOwn(patch, "codexQuinaryBinaryPath")
+        ? { binaryPath: patch.codexQuinaryBinaryPath ?? "" }
+        : {}),
+      ...(hasOwn(patch, "codexQuinaryHomePath")
+        ? { homePath: patch.codexQuinaryHomePath ?? "" }
+        : {}),
+      ...(hasOwn(patch, "customCodexQuinaryModels")
+        ? { customModels: patch.customCodexQuinaryModels ?? [] }
+        : {}),
+    };
+  }
+  if (
     hasOwn(patch, "claudeBinaryPath") ||
     hasOwn(patch, "claudeEnableArtifacts") ||
     hasOwn(patch, "claudeCacheReviewDecision") ||
@@ -1239,9 +1287,11 @@ function buildInitialServerSettingsMigrationPatch(settings: AppSettings): Server
     "codexSecondaryBinaryPath",
     "codexTertiaryBinaryPath",
     "codexQuaternaryBinaryPath",
+    "codexQuinaryBinaryPath",
     "codexSecondaryHomePath",
     "codexTertiaryHomePath",
     "codexQuaternaryHomePath",
+    "codexQuinaryHomePath",
     "cursorApiEndpoint",
     "cursorBinaryPath",
     "defaultThreadEnvMode",
@@ -1276,6 +1326,7 @@ function buildInitialServerSettingsMigrationPatch(settings: AppSettings): Server
     "customCodexSecondaryModels",
     "customCodexTertiaryModels",
     "customCodexQuaternaryModels",
+    "customCodexQuinaryModels",
     "customClaudeModels",
     "customClaudeOpenRouterModels",
     "customCursorModels",
@@ -1348,6 +1399,7 @@ export function getCustomModelsByProvider(
     codexSecondary: getCustomModelsForProvider(settings, "codexSecondary"),
     codexTertiary: getCustomModelsForProvider(settings, "codexTertiary"),
     codexQuaternary: getCustomModelsForProvider(settings, "codexQuaternary"),
+    codexQuinary: getCustomModelsForProvider(settings, "codexQuinary"),
     claudeAgent: getCustomModelsForProvider(settings, "claudeAgent"),
     claudeOpenRouter: getCustomModelsForProvider(settings, "claudeOpenRouter"),
     cursor: getCustomModelsForProvider(settings, "cursor"),
@@ -1486,6 +1538,7 @@ export function getCustomModelOptionsByProvider(
     codexSecondary: getAppModelOptions("codexSecondary", customModelsByProvider.codexSecondary),
     codexTertiary: getAppModelOptions("codexTertiary", customModelsByProvider.codexTertiary),
     codexQuaternary: getAppModelOptions("codexQuaternary", customModelsByProvider.codexQuaternary),
+    codexQuinary: getAppModelOptions("codexQuinary", customModelsByProvider.codexQuinary),
     claudeAgent: getAppModelOptions("claudeAgent", customModelsByProvider.claudeAgent),
     claudeOpenRouter: getAppModelOptions(
       "claudeOpenRouter",
@@ -1511,9 +1564,11 @@ export function getProviderStartOptions(
     | "codexSecondaryBinaryPath"
     | "codexTertiaryBinaryPath"
     | "codexQuaternaryBinaryPath"
+    | "codexQuinaryBinaryPath"
     | "codexSecondaryHomePath"
     | "codexTertiaryHomePath"
     | "codexQuaternaryHomePath"
+    | "codexQuinaryHomePath"
     | "cursorApiEndpoint"
     | "cursorBinaryPath"
     | "devinBinaryPath"
@@ -1548,6 +1603,10 @@ export function getProviderStartOptions(
   const codexQuaternaryBinaryPath = normalizeProviderBinaryPathOverride(
     "codexQuaternary",
     settings.codexQuaternaryBinaryPath,
+  );
+  const codexQuinaryBinaryPath = normalizeProviderBinaryPathOverride(
+    "codexQuinary",
+    settings.codexQuinaryBinaryPath,
   );
   const cursorBinaryPath = normalizeProviderBinaryPathOverride("cursor", settings.cursorBinaryPath);
   const devinBinaryPath = normalizeProviderBinaryPathOverride("devin", settings.devinBinaryPath);
@@ -1604,6 +1663,14 @@ export function getProviderStartOptions(
             ...(settings.codexQuaternaryHomePath
               ? { homePath: settings.codexQuaternaryHomePath }
               : {}),
+          },
+        }
+      : {}),
+    ...(codexQuinaryBinaryPath || settings.codexQuinaryHomePath
+      ? {
+          codexQuinary: {
+            ...(codexQuinaryBinaryPath ? { binaryPath: codexQuinaryBinaryPath } : {}),
+            ...(settings.codexQuinaryHomePath ? { homePath: settings.codexQuinaryHomePath } : {}),
           },
         }
       : {}),
@@ -1713,6 +1780,7 @@ export function getCustomBinaryPathForProvider(
     | "codexSecondaryBinaryPath"
     | "codexTertiaryBinaryPath"
     | "codexQuaternaryBinaryPath"
+    | "codexQuinaryBinaryPath"
     | "cursorBinaryPath"
     | "devinBinaryPath"
     | "antigravityBinaryPath"
@@ -1732,6 +1800,8 @@ export function getCustomBinaryPathForProvider(
       return normalizeProviderBinaryPathOverride(provider, settings.codexTertiaryBinaryPath);
     case "codexQuaternary":
       return normalizeProviderBinaryPathOverride(provider, settings.codexQuaternaryBinaryPath);
+    case "codexQuinary":
+      return normalizeProviderBinaryPathOverride(provider, settings.codexQuinaryBinaryPath);
     case "claudeAgent":
       return normalizeProviderBinaryPathOverride(provider, settings.claudeBinaryPath);
     case "claudeOpenRouter":
