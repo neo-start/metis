@@ -19,6 +19,8 @@
 - 线程需要批准或回答时，飞书会收到一条提醒，但要回 Metis 里处理；手机上直接批准是第三层的事。
 - 私聊图片和文件通过消息资源接口下载，接入与网页上传相同的受管附件存储，再随用户消息交给当前 provider。音频/视频按普通文件传递，不承诺转写。单条最多 8 个附件，图片 10 MiB、文件 25 MiB，沿用现有附件限制；表情包 API 不支持下载，会提示改发图片。
 - 附件下载或保存失败时明确报错，本条不会降级成只有占位文字的模型任务；成功接收的附件沿用发送者、线程和消息归属验证。白名单之外的消息不下载附件。
+- 流式卡片的 HTTP 200 响应仍检查飞书业务错误码；SDK 吞掉的正文更新、结束流式或网络错误也不会当成成功投递。正文已生成而卡片失败时，复用该正文发送普通文字，再尝试撤回失败的占位卡，不重新执行任务。普通文字也发送失败时，Router 持久队列保留重试；撤回失败只记警告，不重发已送达正文。此保护同时覆盖 Router 和带附件/旧模式的回复。
+- 普通回复里的本地 Markdown 图片不能代替图片上传。卡片格式被拒绝时，文字降级会保留正文及图片引用，图片本身仍须走下述明确授权的图片发送工具。旧版已经错误标记成功的回执不会自动重放。
 
 ## 配置
 
@@ -75,6 +77,7 @@ Agent 工具 `synara_send_feishu` 复用上述机器人凭据和 `allowedOpenIds
 - `apps/server/src/feishu/feishuBridgeConfig.ts`：配置解析、停止指令、回复排版（纯函数，有测试）。
 - `apps/server/src/feishu/feishuControllerRoute.ts`：解析实例总控身份，缺少活动总控时拒绝回退。
 - `apps/server/src/feishu/Layers/FeishuBridge.ts`：`createLarkChannel` 长连接、收消息→`thread.turn.start`、轮询线程壳判定一轮结束、`channel.stream` 流式更新。
+- `apps/server/src/feishu/FeishuStreaming.ts`：复用有界 HTTP 适配器，逐条流跟踪 SDK 忽略的卡片错误、失败降级与占位卡清理；保留长回复分片 ID。
 - `apps/server/src/feishu/feishuInboundAttachments.ts`：有界下载、MIME 识别、受管附件入库、提交失败清理；图片走既有 provider 图像输入，文件走既有文件路径交付。
 - `apps/server/src/feishu/FeishuOutbound.ts` 与 `agentGateway/feishuTools.ts`：主动发送图片、文件及文字，校验收件人、工作目录和持久回执。
 - 接线：`serverLayers.ts` 的 `feishuBridgeLayer`，`effectServer.ts` 在订阅作用域里 `feishuBridge.start()`。

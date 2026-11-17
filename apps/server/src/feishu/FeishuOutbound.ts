@@ -42,20 +42,17 @@ function requestKey(threadId: string, requestId: string): string {
   return digest(JSON.stringify([threadId, requestId]));
 }
 
-/** Narrow SDK adapter: never expose SDK request objects (which contain credentials) on failure. */
-export async function createFeishuOutboundTransport(config: {
-  appId: string;
-  appSecret: string;
-}): Promise<FeishuOutboundTransport> {
-  const sdk = await import("@larksuiteoapi/node-sdk");
+/** Shared, bounded HTTP adapter; HTTP 200 does not imply Feishu business success. */
+export function createFeishuHttpInstance(base: Pick<HttpInstance, "request">): HttpInstance {
   // Bound every request (including token acquisition), without changing the shared SDK client.
   const httpInstance: HttpInstance = {
     request: async <T, R = T, D = unknown>(opts: HttpRequestOptions<D>): Promise<R> => {
-      const result = await sdk.defaultHttpInstance.request<T, R, D>({
+      const bounded = {
         ...opts,
         timeout: 30_000,
         signal: AbortSignal.timeout(30_000),
-      });
+      };
+      const result = await base.request<T, R, D>(bounded);
       // Upload helpers otherwise discard nonzero business codes when unwrapping data.
       const code =
         typeof result === "object" && result !== null && "code" in result ? result.code : undefined;
@@ -71,6 +68,16 @@ export async function createFeishuOutboundTransport(config: {
     put: (url, data, opts) => httpInstance.request({ ...opts, url, data, method: "PUT" }),
     patch: (url, data, opts) => httpInstance.request({ ...opts, url, data, method: "PATCH" }),
   };
+  return httpInstance;
+}
+
+/** Narrow SDK adapter: never expose SDK request objects (which contain credentials) on failure. */
+export async function createFeishuOutboundTransport(config: {
+  appId: string;
+  appSecret: string;
+}): Promise<FeishuOutboundTransport> {
+  const sdk = await import("@larksuiteoapi/node-sdk");
+  const httpInstance = createFeishuHttpInstance(sdk.defaultHttpInstance);
   const client = new sdk.Client({
     ...config,
     domain: sdk.Domain.Feishu,

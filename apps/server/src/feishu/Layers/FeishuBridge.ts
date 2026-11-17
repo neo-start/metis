@@ -2,6 +2,7 @@ import { makeCompletionRepository } from "../../agentGateway/completionRepositor
 import { readFeishuFollowup } from "../feishuRouterFollowup.ts";
 import { RouterRuntime } from "../../router/RouterRuntime.ts";
 import { FeishuRouterDelivery } from "../FeishuRouterDelivery.ts";
+import { FeishuStreaming } from "../FeishuStreaming.ts";
 import { FeishuReplyStreams } from "../FeishuReplyStreams.ts";
 /**
  * FeishuBridge - talk to Metis from a Feishu private chat.
@@ -295,7 +296,9 @@ export const makeFeishuBridge = Effect.gen(function* () {
     }).pipe(Effect.catch((error) => Effect.logWarning(error.message).pipe(Effect.as(undefined))));
     if (!sdk) return;
 
+    const streaming = new FeishuStreaming(sdk.defaultHttpInstance, (message) => log.warn(message));
     const channel = sdk.createLarkChannel({
+      httpInstance: streaming.httpInstance,
       appId: bridgeConfig.appId,
       appSecret: bridgeConfig.appSecret,
       transport: "websocket",
@@ -317,7 +320,13 @@ export const makeFeishuBridge = Effect.gen(function* () {
     channel.on("reconnecting", () => log.info("reconnecting"));
     channel.on("reconnected", () => log.info("reconnected"));
 
-    const replyStreams = new FeishuReplyStreams(channel, (error) =>
+    const replyChannel: Pick<typeof channel, "stream"> = {
+      stream: (chatId, input, options) =>
+        "markdown" in input
+          ? streaming.stream(channel, chatId, input, options)
+          : channel.stream(chatId, input, options),
+    };
+    const replyStreams = new FeishuReplyStreams(replyChannel, (error) =>
       log.warn("Router reply stream failed", { error: String(error) }),
     );
     const routerDelivery = router
@@ -453,7 +462,7 @@ export const makeFeishuBridge = Effect.gen(function* () {
         if ((await readDetail(threadId))?.messages.some((entry) => entry.id === messageId)) return;
 
         let outcome: TurnOutcome | null = null;
-        await channel.stream(
+        await replyChannel.stream(
           message.chatId,
           {
             markdown: async (controller) => {

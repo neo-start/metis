@@ -59,6 +59,7 @@ const transport = vi.hoisted(() => ({
 vi.mock("@larksuiteoapi/node-sdk", () => ({
   Domain: { Feishu: "feishu" },
   LoggerLevel: { warn: "warn" },
+  defaultHttpInstance: { request: vi.fn() },
   createLarkChannel: (config: { outbound: { streamInitialText: string } }) => ({
     on: (event: string, handler: (message: Inbound) => Promise<void>) => {
       if (event === "message") transport.receive = handler;
