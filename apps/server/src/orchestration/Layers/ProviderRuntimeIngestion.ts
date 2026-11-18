@@ -3387,6 +3387,8 @@ const make = Effect.gen(function* () {
   // deduplicate durable effects while the caches are rebuilt in event order.
   const rebuildAcceptedOpenTurnState = Effect.gen(function* () {
     let sequence = 0;
+    let lastProgressAt = Date.now();
+    let replayedEvents = 0;
     // Log only the first failure for each turn, but keep replaying later rows.
     // A command rejection or identity collision is scoped to that event's
     // command ids, while a transient persistence failure may succeed on the
@@ -3420,6 +3422,14 @@ const make = Effect.gen(function* () {
           threadId: entry.event.threadId,
           cause: Cause.pretty(replay.cause),
         });
+      }
+      replayedEvents += page.length;
+      if (Date.now() - lastProgressAt >= 10_000) {
+        yield* Effect.logInfo("provider runtime open-turn recovery progress", {
+          sequence,
+          replayedEvents,
+        });
+        lastProgressAt = Date.now();
       }
       if (page.length < PROVIDER_RUNTIME_REPLAY_PAGE_SIZE) break;
     }

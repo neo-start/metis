@@ -15,9 +15,10 @@ import { setTimeout as delay } from "node:timers/promises";
 
 export { requestMetisBackground };
 
-// Durable replay for a large workspace can outlast the old 30-second startup
-// window. Keep the backend's deadline and its attaching launcher's budget aligned.
-export const METIS_BACKEND_STARTUP_TIMEOUT_MS = 180_000;
+// Rebuilding accepted open-turn caches can take several minutes on large
+// journals; ingestion logs bounded progress while preserving the ready gate.
+// Keep the backend deadline and attaching launcher budget aligned.
+export const METIS_BACKEND_STARTUP_TIMEOUT_MS = 600_000;
 
 export function prepareMetisBackgroundHome(home) {
   if (process.platform !== "darwin" && process.platform !== "linux")

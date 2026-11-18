@@ -298,6 +298,10 @@ const make = Effect.gen(function* () {
     });
   };
 
+  // Bound the ordered journal scan by the earliest open turn. Without this
+  // redundant lower bound SQLite scans all retained history before the first
+  // match (millions of rows on long-lived workspaces). The join still decides
+  // membership, and an empty open-turn set correctly returns no events.
   const readAcceptedOpenTurnEvents: ProviderRuntimeEventRepositoryShape["readAcceptedOpenTurnEvents"] =
     (input) => {
       const limit = Math.max(1, Math.min(1_000, Math.floor(input.limit)));
@@ -313,6 +317,7 @@ const make = Effect.gen(function* () {
             ON consumer.consumer_name = ${input.consumerName}
            AND event.sequence <= consumer.last_acked_sequence
           WHERE event.sequence > ${input.sequenceExclusive}
+            AND event.sequence >= (SELECT MIN(first_sequence) FROM provider_runtime_open_turns)
           ORDER BY event.sequence ASC
           LIMIT ${limit}
         `.pipe(

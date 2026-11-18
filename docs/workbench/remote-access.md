@@ -66,3 +66,7 @@ flowchart LR
 当前复用 T3 的 HTTPS origin 校验与 fragment token 写法；不混用 T3 与 Synara 的 RPC、会话格式或 event store。完整 T3 Connect 还依赖自有账户、域名、Cloudflare、数据库等配置，不能直接使用上游生产服务；当前 launcher 是可配置的连接入口，不等于完整控制服务已部署。HTTPS tunnel 也不等于端到端加密承诺。
 
 来源：[T3 relay](https://github.com/pingdotgg/t3code/blob/main/infra/relay/README.md)、[T3 Connect 内部说明](https://github.com/pingdotgg/t3code/blob/main/docs/internals/t3-connect.md)、[Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/)。源码版本见 upstream.json。
+
+## 大型工作区启动恢复
+
+启动器最多等待 10 分钟，仍要求 `/health` 的 `startupReady=true`，不能仅以端口监听判断成功。未结束回合较多时，后端需要重建已接受事件的进程内缓存；日志每约 10 秒输出 `provider runtime open-turn recovery progress`（序号和累计事件数）。序号持续推进代表恢复在工作，不代表重新发送用户提示。长时间没有进度应排查具体初始化阶段，而不是继续增加等待时间。查询以最早未结束回合的序号限制历史扫描，但保留原有连接条件、消费边界与事件顺序。
