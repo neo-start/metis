@@ -1,4 +1,7 @@
-import { Effect } from "effect";
+import path from "node:path";
+import { ThreadId } from "@synara/contracts";
+import { Effect, Option } from "effect";
+import type { ProviderSessionDirectoryShape } from "../provider/Services/ProviderSessionDirectory.ts";
 import type { FeishuOutbound, FeishuSendInput } from "../feishu/FeishuOutbound.ts";
 import { FeishuOutboundFailure } from "../feishu/feishuOutboundFailure.ts";
 import { mcpToolResultError, mcpToolResultJson } from "./protocol.ts";
@@ -13,7 +16,32 @@ import {
 export function makeFeishuTools(
   sender: Pick<FeishuOutbound, "send" | "status">,
   resolveWorkspaceRoot: (context: ToolContext) => Effect.Effect<string | null>,
+  sessionDirectory?: Pick<ProviderSessionDirectoryShape, "getBinding">,
 ): ReadonlyArray<ToolEntry> {
+  const resolveAttachmentWorkspaceRoot = (context: ToolContext) =>
+    Effect.gen(function* () {
+      const workspaceRoot = yield* resolveWorkspaceRoot(context);
+      if (workspaceRoot || !sessionDirectory) return workspaceRoot;
+
+      // Chats can run in a provider-owned scratch directory before a project
+      // workspace exists. Read the actual host-persisted cwd; never infer an
+      // attachment root from the requested path or from another thread.
+      const binding = Option.getOrNull(
+        yield* sessionDirectory.getBinding(ThreadId.makeUnsafe(context.callerThreadId)),
+      );
+      if (
+        !binding ||
+        binding.threadId !== context.callerThreadId ||
+        binding.provider !== context.callerProvider ||
+        binding.status !== "running"
+      )
+        return null;
+      const payload = binding.runtimePayload;
+      if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+      const cwd = (payload as Record<string, unknown>).cwd;
+      return typeof cwd === "string" && cwd.trim() && path.isAbsolute(cwd) ? cwd : null;
+    }).pipe(Effect.orElseSucceed(() => null));
+
   return [
     {
       requiredCapability: "thread:write",
@@ -63,7 +91,8 @@ export function makeFeishuTools(
               ? {}
               : { recipientOpenId: readStringArg(args, "recipientOpenId", { required: true })! }),
           };
-          const workspaceRoot = yield* resolveWorkspaceRoot(context);
+          const workspaceRoot =
+            input.kind === "text" ? null : yield* resolveAttachmentWorkspaceRoot(context);
           return yield* Effect.tryPromise({
             try: async () =>
               mcpToolResultJson(

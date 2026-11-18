@@ -69,6 +69,7 @@ import { AgentGatewayCredentials } from "../Services/AgentGatewayCredentials.ts"
 import { AgentGatewayOperationRepository } from "../Services/AgentGatewayOperationRepository.ts";
 import { ProviderDiscoveryService } from "../../provider/Services/ProviderDiscoveryService.ts";
 import { ProviderHealth } from "../../provider/Services/ProviderHealth.ts";
+import { ProviderSessionDirectory } from "../../provider/Services/ProviderSessionDirectory.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import {
   AGENT_GATEWAY_TARGET_OPTIONS_DESCRIPTION,
@@ -164,6 +165,9 @@ export const makeAgentGateway = Effect.gen(function* () {
   const providerRuntimeEvents = yield* ProviderRuntimeEventRepository;
   const diagnostics = yield* ThreadDiagnosticsQuery;
   const serverConfig = yield* ServerConfig;
+  const providerSessionDirectory = Option.getOrUndefined(
+    yield* Effect.serviceOption(ProviderSessionDirectory),
+  );
   const routerTextGeneration = Option.getOrUndefined(yield* Effect.serviceOption(TextGeneration));
   const browserAutomationHost = Option.getOrElse(
     yield* Effect.serviceOption(BrowserAutomationHost),
@@ -1251,6 +1255,7 @@ export const makeAgentGateway = Effect.gen(function* () {
     ...makeFeishuTools(
       new FeishuOutbound(serverConfig.baseDir, path.join(serverConfig.stateDir, "feishu-outbound")),
       resolveWorkspaceRoot,
+      providerSessionDirectory,
     ),
     ...browserTools,
     ...(deviceService?.supported === true
