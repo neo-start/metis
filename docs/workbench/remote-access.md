@@ -70,3 +70,11 @@ flowchart LR
 ## 大型工作区启动恢复
 
 启动器最多等待 10 分钟，仍要求 `/health` 的 `startupReady=true`，不能仅以端口监听判断成功。未结束回合较多时，后端需要重建已接受事件的进程内缓存；日志每约 10 秒输出 `provider runtime open-turn recovery progress`（序号和累计事件数）。序号持续推进代表恢复在工作，不代表重新发送用户提示。长时间没有进度应排查具体初始化阶段，而不是继续增加等待时间。查询以最早未结束回合的序号限制历史扫描，但保留原有连接条件、消费边界与事件顺序。
+
+The shared service keeps its browser and computer host key in the private
+`desktop-host.key` file in the Metis home. Restarting the backend reuses this
+key so an attached desktop can keep serving tools. Each home has its own key.
+On the first upgrade from a launcher that generated a key at every startup,
+reopen the desktop after starting the updated backend to attach it once.
+To rotate the key deliberately, stop the service and desktop, remove this
+file, then start the service and reopen the desktop.

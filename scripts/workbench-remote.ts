@@ -3,6 +3,7 @@
 import { spawnProcess } from "@synara/shared/processRuntime";
 import { resolveExecutable } from "@synara/shared/executable";
 import { randomBytes } from "node:crypto";
+import { loadMetisHostCapability } from "./lib/metis-host-capability";
 import {
   chmodSync,
   existsSync,
@@ -162,7 +163,7 @@ async function runService(): Promise<void> {
   // The attached desktop serves browser/computer tools on these sockets and
   // proves itself with this capability, as the desktop-owned backend does.
   const hostBridge = metisDesktopHostBridge(home);
-  const hostCapability = randomBytes(32).toString("base64url");
+  const hostCapability = hostBridge ? loadMetisHostCapability(home) : "";
   if (hostBridge) {
     mkdirSync(hostBridge.directory, { recursive: true, mode: 0o700 });
     const directory = lstatSync(hostBridge.directory);
