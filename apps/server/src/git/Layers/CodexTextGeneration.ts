@@ -1,3 +1,4 @@
+import { redactAcpLogSecrets } from "../../provider/acp/AcpNativeLogging.ts";
 import { routerCodexConfig, ROUTER_CODEX_OVERRIDES } from "../routerCodexConfig.ts";
 import { buildRouterPrompt } from "../routerPrompt.ts";
 import { randomUUID } from "node:crypto";
@@ -430,7 +431,13 @@ const makeCodexTextGeneration = Effect.gen(function* () {
                   completion,
                   new TextGenerationError({
                     operation,
-                    detail: "Codex Router turn failed.",
+                    detail: `Codex Router turn failed: ${String(
+                      redactAcpLogSecrets(
+                        typeof event.error?.message === "string"
+                          ? event.error.message
+                          : "No provider error detail.",
+                      ),
+                    ).slice(0, 2000)}`,
                   }),
                 );
               } else if (event?.type === "turn.completed") {

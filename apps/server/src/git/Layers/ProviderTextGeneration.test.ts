@@ -115,6 +115,36 @@ function makeProviderTextGenerationTestLayer(
 }
 
 describe("ProviderTextGenerationLive", () => {
+  it("uses the configured primary account for routing, not the default CLI home", async () => {
+    const { layer, codex } = makeProviderTextGenerationTestLayer({
+      providers: {
+        codex: {
+          enabled: true,
+          homePath: "/private/primary-account",
+          binaryPath: "/bin/primary-codex",
+        },
+      },
+    });
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const service = yield* TextGeneration;
+        return yield* service.routeMessage!({
+          cwd: "/router",
+          message: "diagnostic",
+          taskContext: "{}",
+          modelSelection: { provider: "codex", model: "selected-model" },
+        });
+      }).pipe(Effect.provide(layer)),
+    );
+    expect(codex.routeMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        modelSelection: { provider: "codex", model: "selected-model" },
+        providerOptions: {
+          codex: { homePath: "/private/primary-account", binaryPath: "/bin/primary-codex" },
+        },
+      }),
+    );
+  });
   it("routes the fourth Codex account using its own credentials and exact model", async () => {
     const { layer, codex, cursor } = makeProviderTextGenerationTestLayer({
       providers: {
@@ -162,7 +192,7 @@ describe("ProviderTextGenerationLive", () => {
         return yield* text.routeMessage!(input);
       }).pipe(Effect.provide(layer)),
     );
-    expect(codex.routeMessage).toHaveBeenCalledWith(input);
+    expect(codex.routeMessage).toHaveBeenCalledWith(expect.objectContaining(input));
     expect(cursor.routeMessage).not.toHaveBeenCalled();
   });
 

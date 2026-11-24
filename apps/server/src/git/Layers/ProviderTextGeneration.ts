@@ -130,6 +130,7 @@ const makeProviderTextGeneration = Effect.gen(function* () {
       // Router requests must never silently change the conversation's provider/model.
       const provider = input.modelSelection?.provider;
       if (
+        provider === "codex" ||
         provider === "codexSecondary" ||
         provider === "codexTertiary" ||
         provider === "codexQuaternary" ||
@@ -165,10 +166,16 @@ const makeProviderTextGeneration = Effect.gen(function* () {
             ...input,
             modelSelection: { ...input.modelSelection!, provider: "codex" } as ModelSelection,
             providerOptions: {
-              codex: resolveCodexAccountOptions(
-                input.providerOptions?.[provider] ?? account,
-                provider,
-              ),
+              codex:
+                provider === "codex"
+                  ? (input.providerOptions?.codex ?? {
+                      binaryPath: account.binaryPath,
+                      homePath: account.homePath,
+                    })
+                  : resolveCodexAccountOptions(
+                      input.providerOptions?.[provider] ?? account,
+                      provider,
+                    ),
             },
           });
         });

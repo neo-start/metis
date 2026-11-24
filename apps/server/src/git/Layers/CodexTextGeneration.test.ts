@@ -865,7 +865,14 @@ it.layer(CodexTextGenerationTestLayer)("CodexTextGenerationLive", (it) => {
               ]),
           ...(scenario === "no-terminal" || scenario === "cancelled"
             ? []
-            : [{ type: scenario === "failed" ? "turn.failed" : "turn.completed" }]),
+            : [
+                {
+                  type: scenario === "failed" ? "turn.failed" : "turn.completed",
+                  ...(scenario === "failed"
+                    ? { error: { message: "Unauthorized: Bearer fake-test-credential" } }
+                    : {}),
+                },
+              ]),
         ];
         yield* fs.writeFileString(
           binary,
@@ -912,6 +919,11 @@ process.stdin.on('end', () => {
           if (scenario === "completed")
             expect(outcome).toMatchObject({ _tag: "Success", success: answer });
           else expect(outcome._tag).toBe("Failure");
+          if (scenario === "failed") {
+            const serialized = JSON.stringify(outcome);
+            expect(serialized).toContain("Unauthorized");
+            expect(serialized).not.toContain("fake-test-credential");
+          }
         }
         expect(Date.now() - started).toBeLessThan(3000);
         const state = JSON.parse(yield* fs.readFileString(marker));
