@@ -49,10 +49,14 @@ function appendGutterRange(ranges: EditorGutterChangeRange[], next: EditorGutter
 export function extractEditorGutterChanges(
   patch: string | undefined,
   filePath: string | null,
-): { ranges: EditorGutterChangeRange[]; wholeFileAddition: boolean } {
+): {
+  ranges: EditorGutterChangeRange[];
+  wholeFileAddition: boolean;
+  fileDiff: FileDiffMetadata | null;
+} {
   const file = findFileDiffForPath(patch, filePath);
   if (!file) {
-    return { ranges: [], wholeFileAddition: false };
+    return { ranges: [], wholeFileAddition: false, fileDiff: null };
   }
   const ranges: EditorGutterChangeRange[] = [];
   for (const hunk of file.hunks) {
@@ -77,5 +81,5 @@ export function extractEditorGutterChanges(
       }
     }
   }
-  return { ranges, wholeFileAddition: file.type === "new" };
+  return { ranges, wholeFileAddition: file.type === "new", fileDiff: file };
 }

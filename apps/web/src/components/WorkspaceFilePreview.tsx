@@ -83,6 +83,11 @@ import { readNativeApi } from "~/nativeApi";
 import ChatMarkdown from "./ChatMarkdown";
 import { DiffTruncationWarning } from "./DiffTruncationWarning";
 import { DiffPanelChangeNavigationButtons } from "./DiffPanelChangeNavigation";
+import { WorkspaceFileChangeOverview } from "./WorkspaceFileChangeOverview";
+import {
+  WorkspaceFileDiffPreview,
+  type WorkspaceFileDiffPreviewHandle,
+} from "./WorkspaceFileDiffPreview";
 import { FileLineCommentBox } from "./chat/FileLineCommentBox";
 import { PanelStateMessage } from "./chat/PanelStateMessage";
 import { useFileLineCommenting } from "./chat/useFileLineCommenting";
@@ -92,6 +97,7 @@ import { useCodeSelectionAction } from "./chat/useCodeSelectionAction";
 import { LocalImagePreview } from "./LocalImagePreview";
 import { PdfFilePreview } from "./PdfFilePreview";
 import { Skeleton } from "./ui/skeleton";
+import { Toggle } from "./ui/toggle";
 
 const MARKDOWN_PREVIEW_EXTENSIONS = new Set([".markdown", ".md", ".mdx"]);
 
@@ -565,6 +571,11 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
   const { resolvedTheme } = useTheme();
   const diffThemeName = resolveDiffThemeName(resolvedTheme);
   const contentsRef = useRef<HTMLDivElement>(null);
+  const diffNavigationRef = useRef<WorkspaceFileDiffPreviewHandle>(null);
+  const [diffViewOverride, setDiffViewOverride] = useState<{
+    key: string;
+    enabled: boolean;
+  } | null>(null);
   const taskWriteQueueRef = useRef<Promise<void>>(Promise.resolve());
   const latestTaskWriteVersionRef = useRef({ next: 0, byFile: new Map<string, number>() });
   const taskFileDiskVersionRef = useRef(new Map<string, string>());
@@ -849,27 +860,31 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
     }),
   );
   const workingTreePatch = changeGutterEnabled ? workingTreeDiffQuery.data?.patch : undefined;
-  const { ranges: changeRanges, wholeFileAddition: changeGutterSubtle } = useMemo(
+  const {
+    ranges: changeRanges,
+    wholeFileAddition: changeGutterSubtle,
+    fileDiff,
+  } = useMemo(
     () => extractEditorGutterChanges(workingTreePatch, fileScopePath),
     [workingTreePatch, fileScopePath],
   );
-  const changeNavigationRef = useRef({ filePath, patch: workingTreePatch, index: -1 });
-  const goToChange = (direction: -1 | 1) => {
+  const previewKey = `${workspaceRoot ?? ""}\0${filePath ?? ""}`;
+  if (diffViewOverride !== null && diffViewOverride.key !== previewKey) {
+    setDiffViewOverride(null);
+  }
+  const showDiffPreview =
+    fileDiff !== null &&
+    changeRanges.length > 0 &&
+    diffViewOverride?.key === previewKey &&
+    diffViewOverride.enabled;
+  const changeNavigationRef = useRef({ key: previewKey, patch: workingTreePatch, index: -1 });
+  const selectSourceChange = (index: number) => {
     const container = contentsRef.current;
-    if (!container || changeRanges.length === 0) return;
-    const previous = changeNavigationRef.current;
-    const current =
-      previous.filePath === filePath && previous.patch === workingTreePatch ? previous.index : -1;
-    const index =
-      current === -1
-        ? direction === 1
-          ? 0
-          : changeRanges.length - 1
-        : (current + direction + changeRanges.length) % changeRanges.length;
+    if (!container) return;
     const markers = container.querySelectorAll<HTMLElement>("[data-change-start]");
     const marker = markers[index];
     if (!marker) return;
-    changeNavigationRef.current = { filePath, patch: workingTreePatch, index };
+    changeNavigationRef.current = { key: previewKey, patch: workingTreePatch, index };
     container.scrollTo({
       top:
         container.scrollTop +
@@ -878,6 +893,23 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
         container.clientHeight / 3,
       behavior: "instant",
     });
+  };
+  const goToChange = (direction: -1 | 1) => {
+    if (showDiffPreview) {
+      diffNavigationRef.current?.goToChange(direction);
+      return;
+    }
+    if (changeRanges.length === 0) return;
+    const previous = changeNavigationRef.current;
+    const current =
+      previous.key === previewKey && previous.patch === workingTreePatch ? previous.index : -1;
+    selectSourceChange(
+      current === -1
+        ? direction === 1
+          ? 0
+          : changeRanges.length - 1
+        : (current + direction + changeRanges.length) % changeRanges.length,
+    );
   };
   // Highlight -> floating "Add to chat" -> reference that points at exactly what
   // was selected, mirroring the transcript flow. In the source view the DOM
@@ -894,7 +926,10 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
     }
   };
   const previewSelectionAction = useCodeSelectionAction({
-    enabled: Boolean(onReferenceInChat && filePath) && (showMarkdownPreview || !editableDocument),
+    enabled:
+      Boolean(onReferenceInChat && filePath) &&
+      !showDiffPreview &&
+      (showMarkdownPreview || !editableDocument),
     readSelection: readPreviewSelection,
     onCommit: commitPreviewSelection,
   });
@@ -903,7 +938,10 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
   // `.line` resolves to an exact line number (the rendered-markdown view
   // restructures the source and cannot map a row back to a file line).
   const lineCommentingEnabled =
-    Boolean(onCommentInChat && filePath) && !showMarkdownPreview && !editableDocument;
+    Boolean(onCommentInChat && filePath) &&
+    !showMarkdownPreview &&
+    !showDiffPreview &&
+    !editableDocument;
   const lineCommenting = useFileLineCommenting({
     enabled: lineCommentingEnabled,
     resetKey: filePath,
@@ -1015,6 +1053,7 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
     void taskWriteQueueRef.current;
   };
   const handleMarkdownPreviewChange = (rendered: boolean) => {
+    setDiffViewOverride({ key: previewKey, enabled: false });
     setMarkdownPreviewOverride({ filePath, rendered });
     props.onMarkdownPreviewChange?.(rendered);
   };
@@ -1142,6 +1181,24 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
       />
       {changeGutterEnabled && changeRanges.length > 0 ? (
         <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border/60 px-3 py-1 text-ui-xs text-muted-foreground">
+          <div role="group" aria-label="File view" className="flex shrink-0 gap-0.5">
+            <Toggle
+              size="xs"
+              pressed={!showDiffPreview}
+              onPressedChange={() => setDiffViewOverride({ key: previewKey, enabled: false })}
+              aria-label="Show source"
+            >
+              Source
+            </Toggle>
+            <Toggle
+              size="xs"
+              pressed={showDiffPreview}
+              onPressedChange={() => setDiffViewOverride({ key: previewKey, enabled: true })}
+              aria-label="Show uncommitted diff"
+            >
+              Diff
+            </Toggle>
+          </div>
           <span
             className="min-w-0 flex-1 truncate"
             title="Compared with Git HEAD; includes agent and manual edits."
@@ -1151,9 +1208,11 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
           <span className="editor-file-change-legend" data-change="added">
             Added
           </span>
-          <span className="editor-file-change-legend" data-change="modified">
-            Modified
-          </span>
+          {!showDiffPreview ? (
+            <span className="editor-file-change-legend" data-change="modified">
+              Modified
+            </span>
+          ) : null}
           <span className="editor-file-change-legend" data-change="deleted">
             Deleted
           </span>
@@ -1253,6 +1312,13 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
         </PanelStateMessage>
       ) : !hasFileContents ? (
         <FilePreviewLoadingState />
+      ) : showDiffPreview && fileDiff ? (
+        <WorkspaceFileDiffPreview
+          key={previewKey}
+          fileDiff={fileDiff}
+          theme={resolvedTheme}
+          navigationRef={diffNavigationRef}
+        />
       ) : (
         <>
           {activeEditBuffer && editableDocument ? (
@@ -1273,103 +1339,115 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
             />
           ) : null}
           {!activeEditBuffer || !editableDocument || showMarkdownPreview ? (
-            <div
-              ref={contentsRef}
-              className={cn(
-                "editor-file-viewer min-h-0 flex-1 overflow-auto",
-                showMarkdownPreview && "editor-file-viewer--markdown-preview",
-              )}
-              onContextMenu={handleContentsContextMenu}
-              onMouseUp={previewSelectionAction.onContainerMouseUp}
-              onMouseMove={lineCommenting.onContainerMouseMove}
-              onMouseLeave={lineCommenting.onContainerMouseLeave}
-            >
-              {showMarkdownPreview ? (
-                <div className="editor-markdown-preview">
-                  <ChatMarkdown
-                    text={displayedFileContents}
-                    cwd={markdownPreviewCwd(props.workspaceRoot, filePath)}
-                    wikiLinkRoot={props.workspaceRoot ?? undefined}
-                    isStreaming={false}
-                    className="editor-markdown-preview__body text-sm leading-relaxed"
-                    {...(canToggleTasks ? { onTaskToggle: handleTaskToggle } : {})}
+            <div className="relative flex min-h-0 min-w-0 flex-1">
+              <div
+                ref={contentsRef}
+                className={cn(
+                  "editor-file-viewer min-h-0 flex-1 overflow-auto",
+                  showMarkdownPreview && "editor-file-viewer--markdown-preview",
+                )}
+                onContextMenu={handleContentsContextMenu}
+                onMouseUp={previewSelectionAction.onContainerMouseUp}
+                onMouseMove={lineCommenting.onContainerMouseMove}
+                onMouseLeave={lineCommenting.onContainerMouseLeave}
+              >
+                {showMarkdownPreview ? (
+                  <div className="editor-markdown-preview">
+                    <ChatMarkdown
+                      text={displayedFileContents}
+                      cwd={markdownPreviewCwd(props.workspaceRoot, filePath)}
+                      wikiLinkRoot={props.workspaceRoot ?? undefined}
+                      isStreaming={false}
+                      className="editor-markdown-preview__body text-sm leading-relaxed"
+                      {...(canToggleTasks ? { onTaskToggle: handleTaskToggle } : {})}
+                    />
+                  </div>
+                ) : (
+                  <div className="editor-file-viewer__source">
+                    <FileContentsView
+                      path={filePath}
+                      contents={fileContents}
+                      themeName={diffThemeName}
+                    />
+                    {changeRanges.length > 0 ? (
+                      <FilePreviewChangeGutter ranges={changeRanges} subtle={changeGutterSubtle} />
+                    ) : null}
+                  </div>
+                )}
+                {!showMarkdownPreview && lineCount > 0 ? (
+                  <span className="sr-only">{lineCount} lines</span>
+                ) : null}
+                {previewSelectionAction.pendingAction ? (
+                  <TranscriptSelectionAction
+                    left={previewSelectionAction.pendingAction.left}
+                    top={previewSelectionAction.pendingAction.top}
+                    placement={previewSelectionAction.pendingAction.placement}
+                    onAddToChat={previewSelectionAction.commit}
                   />
-                </div>
-              ) : (
-                <div className="editor-file-viewer__source">
-                  <FileContentsView
-                    path={filePath}
-                    contents={fileContents}
-                    themeName={diffThemeName}
-                  />
-                  {changeRanges.length > 0 ? (
-                    <FilePreviewChangeGutter ranges={changeRanges} subtle={changeGutterSubtle} />
-                  ) : null}
-                </div>
-              )}
-              {!showMarkdownPreview && lineCount > 0 ? (
-                <span className="sr-only">{lineCount} lines</span>
-              ) : null}
-              {previewSelectionAction.pendingAction ? (
-                <TranscriptSelectionAction
-                  left={previewSelectionAction.pendingAction.left}
-                  top={previewSelectionAction.pendingAction.top}
-                  placement={previewSelectionAction.pendingAction.placement}
-                  onAddToChat={previewSelectionAction.commit}
-                />
-              ) : null}
-              {lineCommentingEnabled && hoveredCommentLine && !activeCommentLine ? (
-                <button
-                  type="button"
-                  className="editor-file-viewer__comment-add"
-                  style={{
-                    top: hoveredCommentLine.top,
-                    left: hoveredCommentLine.left,
-                    height: hoveredCommentLine.height,
-                  }}
-                  aria-label={`Comment on line ${hoveredCommentLine.lineNumber}`}
-                  title="Comment"
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    lineCommenting.openComment(hoveredCommentLine);
-                  }}
-                >
-                  <span className="editor-file-viewer__comment-add-glyph">
-                    <PlusIcon className="size-3.5" />
-                  </span>
-                </button>
-              ) : null}
-              {lineCommentingEnabled && activeCommentLine ? (
-                <>
-                  <div
-                    className="editor-file-viewer__comment-line-highlight"
-                    style={{ top: activeCommentLine.top, height: activeCommentLine.height }}
-                    aria-hidden="true"
-                  />
-                  <FileLineCommentBox
-                    lineLabel={formatFileCommentRange({
-                      startLine: activeCommentLine.lineNumber,
-                      endLine: activeCommentLine.lineNumber,
-                    })}
-                    top={activeCommentLine.top + activeCommentLine.height}
-                    left={activeCommentLine.left}
-                    width={Math.max(
-                      240,
-                      Math.min(440, activeCommentLine.containerWidth - activeCommentLine.left - 16),
-                    )}
-                    onCancel={lineCommenting.closeComment}
-                    onSubmit={(text) => {
-                      commitLineComment({
+                ) : null}
+                {lineCommentingEnabled && hoveredCommentLine && !activeCommentLine ? (
+                  <button
+                    type="button"
+                    className="editor-file-viewer__comment-add"
+                    style={{
+                      top: hoveredCommentLine.top,
+                      left: hoveredCommentLine.left,
+                      height: hoveredCommentLine.height,
+                    }}
+                    aria-label={`Comment on line ${hoveredCommentLine.lineNumber}`}
+                    title="Comment"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      lineCommenting.openComment(hoveredCommentLine);
+                    }}
+                  >
+                    <span className="editor-file-viewer__comment-add-glyph">
+                      <PlusIcon className="size-3.5" />
+                    </span>
+                  </button>
+                ) : null}
+                {lineCommentingEnabled && activeCommentLine ? (
+                  <>
+                    <div
+                      className="editor-file-viewer__comment-line-highlight"
+                      style={{ top: activeCommentLine.top, height: activeCommentLine.height }}
+                      aria-hidden="true"
+                    />
+                    <FileLineCommentBox
+                      lineLabel={formatFileCommentRange({
                         startLine: activeCommentLine.lineNumber,
                         endLine: activeCommentLine.lineNumber,
-                        text,
-                      });
-                      lineCommenting.closeComment();
-                    }}
-                  />
-                </>
+                      })}
+                      top={activeCommentLine.top + activeCommentLine.height}
+                      left={activeCommentLine.left}
+                      width={Math.max(
+                        240,
+                        Math.min(
+                          440,
+                          activeCommentLine.containerWidth - activeCommentLine.left - 16,
+                        ),
+                      )}
+                      onCancel={lineCommenting.closeComment}
+                      onSubmit={(text) => {
+                        commitLineComment({
+                          startLine: activeCommentLine.lineNumber,
+                          endLine: activeCommentLine.lineNumber,
+                          text,
+                        });
+                        lineCommenting.closeComment();
+                      }}
+                    />
+                  </>
+                ) : null}
+              </div>
+              {!showMarkdownPreview && changeRanges.length > 0 ? (
+                <WorkspaceFileChangeOverview
+                  ranges={changeRanges}
+                  lineCount={lineCount}
+                  onSelectChange={selectSourceChange}
+                />
               ) : null}
             </div>
           ) : null}

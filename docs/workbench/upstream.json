@@ -357,8 +357,10 @@
       "apps/web/src/components/WorkspaceFilePreview.tsx",
       "apps/web/src/lib/editorGutterDiff.ts",
       "apps/web/src/components/DiffPanelChangeNavigation.tsx",
+      "apps/web/src/components/DiffPanelChangeMarkers.tsx",
+      "apps/web/src/components/chat/FileDiffView.tsx",
       "apps/server/src/git/Layers/GitCore.ts"
     ],
-    "changes": "Reuse existing Git gutter parsing, navigation, preview grants and watchers for full-row uncommitted-change highlights. Normalize file-scoped Git queries from subdirectories for absolute sibling-worktree references. No agent-only attribution or T3 code copied."
+    "changes": "Reuse existing Git gutter parsing, navigation, preview grants and watchers for full-row uncommitted-change highlights. Normalize file-scoped Git queries from subdirectories for absolute sibling-worktree references. Add Source/Diff switching with the shared FileDiffCard and scrollbar-adjacent line/block navigation; extract ChangeOverviewRuler from DiffPanelChangeMarkers for shared marker buttons. T3 file preview sources have no corresponding overview ruler. No agent-only attribution or T3 code copied."
   }
 }

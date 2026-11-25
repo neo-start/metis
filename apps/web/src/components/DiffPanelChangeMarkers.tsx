@@ -3,6 +3,7 @@ import { useEffect, useState, type RefObject } from "react";
 
 import { resolveFileDiffPath } from "~/lib/diffRendering";
 import { readDiffFileAnchors, resolveDiffRenderSurface } from "~/lib/diffScrollSurface";
+import { ChangeOverviewRuler } from "./ChangeOverviewRuler";
 import {
   DIFF_CHANGE_MARKER_HEIGHT_PX,
   resolveDiffChangeMarkers,
@@ -94,28 +95,19 @@ export function DiffPanelChangeMarkers(props: {
   }
 
   return (
-    <div
-      role="group"
-      aria-label="Change markers"
-      className="pointer-events-none absolute inset-y-0 right-[10px] z-10 w-[6px]"
-    >
-      {markers.map((marker) => (
-        <button
-          key={marker.path}
-          type="button"
-          aria-label={`${CHANGE_MARKER_LABEL_BY_KIND[marker.kind]}: ${marker.path}`}
-          title={marker.path}
-          className="pointer-events-auto absolute left-0 w-full cursor-pointer rounded-full opacity-70 transition-opacity hover:opacity-100"
-          style={{
-            top: `${marker.top}px`,
-            height: `${DIFF_CHANGE_MARKER_HEIGHT_PX}px`,
-            backgroundColor: CHANGE_MARKER_COLOR_BY_KIND[marker.kind],
-          }}
-          onClick={() => {
-            props.onSelectFilePath(marker.path);
-          }}
-        />
-      ))}
-    </div>
+    <ChangeOverviewRuler
+      markers={markers.map((marker) => ({
+        key: marker.path,
+        label: `${CHANGE_MARKER_LABEL_BY_KIND[marker.kind]}: ${marker.path}`,
+        title: marker.path,
+        top: marker.top,
+        height: DIFF_CHANGE_MARKER_HEIGHT_PX,
+        color: CHANGE_MARKER_COLOR_BY_KIND[marker.kind],
+      }))}
+      onSelectMarker={(index) => {
+        const marker = markers[index];
+        if (marker) props.onSelectFilePath(marker.path);
+      }}
+    />
   );
 }

@@ -41,6 +41,7 @@ export function FileDiffSurface(props: { className?: string; children: ReactNode
 type FileDiffCardOptions = NonNullable<FileDiffProps<unknown>["options"]>;
 
 export type DiffLineClickProps = Parameters<NonNullable<FileDiffCardOptions["onLineClick"]>>[0];
+export type DiffPostRenderCallback = NonNullable<FileDiffCardOptions["onPostRender"]>;
 
 // A single themed file diff with Synara's custom file header. Bakes in the shared
 // `unsafeCSS` theming so every surface renders with the chat code font and
@@ -51,9 +52,11 @@ export function FileDiffCard(props: {
   diffStyle?: "unified" | "split";
   overflow?: "scroll" | "wrap";
   collapsed?: boolean;
+  hideHeader?: boolean;
   /** Trailing header chrome (actions menu, collapse chevron). */
   renderHeaderTrailing?: () => ReactNode;
   onLineClick?: ((line: DiffLineClickProps) => void) | undefined;
+  onPostRender?: DiffPostRenderCallback;
 }) {
   return (
     <FileDiff
@@ -66,15 +69,21 @@ export function FileDiffCard(props: {
         themeType: props.theme,
         unsafeCSS: buildDiffPanelUnsafeCSS(props.theme),
         ...(props.collapsed !== undefined ? { collapsed: props.collapsed } : {}),
+        ...(props.hideHeader ? { disableFileHeader: true } : {}),
         ...(props.onLineClick ? { onLineClick: props.onLineClick } : {}),
+        ...(props.onPostRender ? { onPostRender: props.onPostRender } : {}),
       }}
-      renderCustomHeader={(fileDiff) => (
-        <FileDiffHeader
-          fileDiff={fileDiff}
-          theme={props.theme}
-          trailing={props.renderHeaderTrailing?.()}
-        />
-      )}
+      {...(props.hideHeader
+        ? {}
+        : {
+            renderCustomHeader: (fileDiff: FileDiffMetadata) => (
+              <FileDiffHeader
+                fileDiff={fileDiff}
+                theme={props.theme}
+                trailing={props.renderHeaderTrailing?.()}
+              />
+            ),
+          })}
     />
   );
 }

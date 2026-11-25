@@ -53,8 +53,12 @@ T3 的 `threadSort.ts` 时间处理和稳定排序，以及 `ThreadSearchMatch.t
 
 ## 文件预览的改动高亮
 
-右侧文件预览的 Source 视图复用现有 Git 单文件 diff：新增行显示绿色背景，修改行显示蓝色背景，删除位置保留红色标记。工具条标为 “Uncommitted changes”，可用上一处 / 下一处按钮跳转；这是相对 Git HEAD 的工作区差异，可能包含手动修改，不表示仅由当前 agent 写入。已提交改动不在这个标记范围内。
+右侧文件预览的 Source 视图复用现有 Git 单文件 diff：新增行显示绿色背景，修改行显示蓝色背景，删除位置保留红色标记。滚动条旁同步显示按源码行比例分布的绿 / 蓝 / 红色标记，点击或键盘激活可跳到对应位置。标记固定在可视区域，不随源码的水平或垂直滚动离开侧栏。
+
+有行改动时，工具条提供 Source / Diff 切换。Diff 复用现有统一差异视图，同时展示删除前和新增后的内容，保留各自的行号与词级差异；右侧标记按实际渲染的位置和高度显示新增 / 删除块，支持点击和上一处 / 下一处跳转。源码的精确行引用与行评论仅在 Source 视图启用，避免把已删除内容映射到当前文件行号。
+
+工具条标为 “Uncommitted changes”；这是相对 Git HEAD 的工作区差异，可能包含手动修改，不表示仅由当前 agent 写入。已提交改动不在这个标记范围内。切换文件默认回到 Source，无行差异时隐藏切换入口；截断 diff 会提示内容和标记可能不完整。
 
 从对话点击绝对路径（包括旁边的 worktree）时，先完成已有 preview grant 和文件读取，再以文件父目录查询单文件 diff。Git 层将子目录路径转换为仓库相对路径，保留新文件和重命名信息。可见文件继续通过既有 watcher 刷新；关闭的 pane 不读取 diff。渲染后的 Markdown、二进制文件、符号链接、截断文件和可编辑缓冲区不显示行标记，避免把源码行号覆盖到不同的展示内容上。
 
-此改动复用 `WorkspaceFilePreview`、`extractEditorGutterChanges`、`DiffPanelChangeNavigationButtons`、Git 查询与现有颜色 token；没有新增 provider 事件或改变授权。按仓库限制未运行前端测试、浏览器或截图验证。
+此改动复用 `WorkspaceFilePreview`、`extractEditorGutterChanges`、`FileDiffCard`、`DiffPanelChangeNavigationButtons`、Git 查询与现有颜色 token。`DiffPanelChangeMarkers` 的按钮绘制已抽为共享 `ChangeOverviewRuler`，供仓库 diff 与单文件预览复用；单文件组件负责源码行比例或 diff 布局测量。没有新增 provider 事件或改变授权。按仓库限制未运行前端测试、浏览器或截图验证。
