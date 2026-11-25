@@ -50,3 +50,11 @@ T3 的 `threadSort.ts` 时间处理和稳定排序，以及 `ThreadSearchMatch.t
 此版本是本地开发分支，不是正式签名安装包。本机共享服务已通过自有 Cloudflare Tunnel 接通 HTTPS；手机跨网配对仍待用户确认。未自动导入个人会话，也未发起付费模型任务。继承功能仍需按使用场景验收；编译通过不等同于每个 provider 实测成功。
 
 按用户约定不执行前端测试或浏览器 QA。本轮做类型、lint、格式、构建与非前端身份隔离检查；实际执行结果由完成记录给出。
+
+## 文件预览的改动高亮
+
+右侧文件预览的 Source 视图复用现有 Git 单文件 diff：新增行显示绿色背景，修改行显示蓝色背景，删除位置保留红色标记。工具条标为 “Uncommitted changes”，可用上一处 / 下一处按钮跳转；这是相对 Git HEAD 的工作区差异，可能包含手动修改，不表示仅由当前 agent 写入。已提交改动不在这个标记范围内。
+
+从对话点击绝对路径（包括旁边的 worktree）时，先完成已有 preview grant 和文件读取，再以文件父目录查询单文件 diff。Git 层将子目录路径转换为仓库相对路径，保留新文件和重命名信息。可见文件继续通过既有 watcher 刷新；关闭的 pane 不读取 diff。渲染后的 Markdown、二进制文件、符号链接、截断文件和可编辑缓冲区不显示行标记，避免把源码行号覆盖到不同的展示内容上。
+
+此改动复用 `WorkspaceFilePreview`、`extractEditorGutterChanges`、`DiffPanelChangeNavigationButtons`、Git 查询与现有颜色 token；没有新增 provider 事件或改变授权。按仓库限制未运行前端测试、浏览器或截图验证。

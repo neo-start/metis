@@ -588,6 +588,50 @@ it.layer(TestLayer)("git integration", (it) => {
       }),
     );
 
+    it.effect("reads tracked and untracked files relative to a repository subdirectory", () =>
+      Effect.gen(function* () {
+        const core = yield* GitCore;
+        const tmp = yield* makeTmpDir();
+        yield* initRepoWithCommit(tmp);
+        const nested = path.join(tmp, "src", "nested");
+        yield* Effect.promise(() => fs.mkdir(nested, { recursive: true }));
+        yield* writeTextFile(path.join(nested, "tracked.txt"), "before\n");
+        yield* writeTextFile(path.join(tmp, "tracked.txt"), "unrelated before\n");
+        yield* git(tmp, ["add", "."]);
+        yield* git(tmp, ["commit", "-m", "nested files"]);
+        yield* writeTextFile(path.join(nested, "tracked.txt"), "selected change\n");
+        yield* writeTextFile(path.join(tmp, "tracked.txt"), "unrelated change\n");
+        yield* writeTextFile(path.join(nested, "new.txt"), "new nested file\n");
+        for (const fileName of ["tracked.txt", "new.txt"]) {
+          const fromRoot = yield* core.readWorkingTreePatch(tmp, `src/nested/${fileName}`);
+          const fromNested = yield* core.readWorkingTreePatch(nested, fileName);
+          expect(fromNested).toEqual(fromRoot);
+          expect(fromNested.patch).toContain(`b/src/nested/${fileName}`);
+          expect(fromNested.patch).not.toContain("unrelated change");
+        }
+      }),
+    );
+
+    it.effect(
+      "preserves a rename when the selected destination is relative to a subdirectory",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* GitCore;
+          const tmp = yield* makeTmpDir();
+          yield* initRepoWithCommit(tmp);
+          const nested = path.join(tmp, "src");
+          yield* Effect.promise(() => fs.mkdir(nested));
+          yield* writeTextFile(path.join(tmp, "original.txt"), "keep this line\n".repeat(8));
+          yield* git(tmp, ["add", "."]);
+          yield* git(tmp, ["commit", "-m", "rename source"]);
+          yield* git(tmp, ["mv", "original.txt", "src/renamed.txt"]);
+          const patch = yield* core.readWorkingTreePatch(nested, "renamed.txt");
+          expect(patch).toEqual(yield* core.readWorkingTreePatch(tmp, "src/renamed.txt"));
+          expect(patch.patch).toContain("rename from original.txt");
+          expect(patch.patch).toContain("rename to src/renamed.txt");
+        }),
+    );
+
     it.effect("bounds unborn and ignored staged rename destinations without unrelated files", () =>
       Effect.gen(function* () {
         const core = yield* GitCore;

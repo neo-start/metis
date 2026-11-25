@@ -169,3 +169,5 @@ and T3 Code `71c2d3a302092b94511eb7e6ab4e6844a66dbf22`
 Neither inspected component tree provided a reusable drawing board. The original
 Canvas 2D editor reuses local Synara dialog, button, input, icons and image intake;
 no T3 source was copied and no new third-party dependency was added.
+
+The file-preview change highlights (2026-11-25) extend Synara `apps/web/src/components/WorkspaceFilePreview.tsx`, `apps/web/src/lib/editorGutterDiff.ts`, `apps/web/src/components/DiffPanelChangeNavigation.tsx`, and `apps/server/src/git/Layers/GitCore.ts`, reviewed at `ec3b1f6ef9c2f656f26dd9711339fe1265d8cb5c`. Existing single-file Git queries, preview grants, file watchers and theme tokens are reused for full-row highlights and sibling-worktree references. T3 `apps/web/src/components/files/ReadOnlySourcePreview.tsx` and `FilePreviewPanel.tsx` at `f5ef0ddb90a8c36584e181b1913e7b8a5df30ffc` were reviewed; no T3 source was copied.

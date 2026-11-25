@@ -1996,19 +1996,54 @@ export const makeGitCore = (options?: { executeOverride?: GitCoreShape["execute"
             "File path must be a workspace-relative file path.",
           );
         }
+        let diffCwd = cwd;
+        let selectedPath = filePath;
+        if (filePath !== undefined) {
+          // Git object paths and rename metadata are repository-relative even
+          // when a file preview supplies its parent directory as cwd.
+          const repositoryRoot = yield* runGitStdout(
+            "GitCore.readWorkingTreePatch.repositoryRoot",
+            cwd,
+            ["rev-parse", "--show-toplevel"],
+          ).pipe(Effect.map((output) => output.trim()));
+          const realCwd = yield* Effect.tryPromise({
+            try: () => nodeFs.realpath(cwd),
+            catch: (cause) =>
+              createGitCommandError(
+                "GitCore.readWorkingTreePatch.path",
+                cwd,
+                ["diff"],
+                "Could not resolve the file's working directory.",
+                cause,
+              ),
+          });
+          selectedPath = nodePath
+            .relative(repositoryRoot, nodePath.join(realCwd, filePath))
+            .split(nodePath.sep)
+            .join("/");
+          if (!isWorkspaceRelativePathSafe(selectedPath)) {
+            return yield* createGitCommandError(
+              "GitCore.readWorkingTreePatch.path",
+              cwd,
+              ["diff"],
+              "File path must be inside the repository.",
+            );
+          }
+          diffCwd = repositoryRoot;
+        }
         const headExists = yield* executeGit(
           "GitCore.readWorkingTreePatch.headExists",
-          cwd,
+          diffCwd,
           ["rev-parse", "--verify", "HEAD"],
           { allowNonZeroExit: true },
         ).pipe(Effect.map((result) => result.code === 0));
 
-        const paths: string[] = filePath === undefined ? [] : [filePath];
+        const paths: string[] = selectedPath === undefined ? [] : [selectedPath];
         let untrackedFiles: ReadonlyArray<string> | undefined;
-        if (filePath !== undefined) {
+        if (selectedPath !== undefined) {
           const isDirectory = yield* Effect.tryPromise({
             try: () =>
-              nodeFs.lstat(nodePath.join(cwd, filePath)).then(
+              nodeFs.lstat(nodePath.join(diffCwd, selectedPath)).then(
                 (stat) => stat.isDirectory(),
                 (error: NodeJS.ErrnoException) => {
                   if (error.code === "ENOENT" || error.code === "ENOTDIR") return false;
@@ -2018,7 +2053,7 @@ export const makeGitCore = (options?: { executeOverride?: GitCoreShape["execute"
             catch: (cause) =>
               createGitCommandError(
                 "GitCore.readWorkingTreePatch.path",
-                cwd,
+                diffCwd,
                 ["diff"],
                 String(cause),
               ),
@@ -2026,34 +2061,34 @@ export const makeGitCore = (options?: { executeOverride?: GitCoreShape["execute"
           const baseType = headExists
             ? yield* executeGit(
                 "GitCore.readWorkingTreePatch.baseType",
-                cwd,
-                ["cat-file", "-t", `HEAD:${filePath}`],
+                diffCwd,
+                ["cat-file", "-t", `HEAD:${selectedPath}`],
                 { allowNonZeroExit: true },
               )
             : null;
           if (isDirectory || baseType?.stdout.trim() === "tree") {
             return yield* createGitCommandError(
               "GitCore.readWorkingTreePatch.path",
-              cwd,
+              diffCwd,
               ["diff"],
               "A file diff cannot target a directory.",
             );
           }
           untrackedFiles = yield* listUntrackedFiles(
-            cwd,
+            diffCwd,
             "GitCore.readWorkingTreePatch",
             undefined,
-            filePath,
+            selectedPath,
           );
           // A destination alone hides its rename relationship from Git. Stream
           // rename metadata so unrelated paths cannot exhaust the capture limit,
           // then include the old name in the bounded patch.
-          if (headExists && baseType?.code !== 0 && !untrackedFiles.includes(filePath)) {
+          if (headExists && baseType?.code !== 0 && !untrackedFiles.includes(selectedPath)) {
             let field = 0;
             let sourcePath = "";
             yield* executeGit(
               "GitCore.readWorkingTreePatch.renamePaths",
-              cwd,
+              diffCwd,
               ["diff", "--name-status", "-z", "--diff-filter=R", "--no-ext-diff", "HEAD"],
               {
                 timeoutMs: WORKING_TREE_DIFF_TIMEOUT_MS,
@@ -2063,7 +2098,7 @@ export const makeGitCore = (options?: { executeOverride?: GitCoreShape["execute"
                   onStdoutLine: (record) =>
                     Effect.sync(() => {
                       if (field === 1) sourcePath = record;
-                      if (field === 2 && record === filePath) paths.push(sourcePath);
+                      if (field === 2 && record === selectedPath) paths.push(sourcePath);
                       field = (field + 1) % 3;
                     }),
                 },
@@ -2074,14 +2109,16 @@ export const makeGitCore = (options?: { executeOverride?: GitCoreShape["execute"
 
         const tracked = yield* executeGit(
           "GitCore.readWorkingTreePatch.trackedPatch",
-          cwd,
+          diffCwd,
           [
             "diff",
             "--patch",
             "--no-color",
             "--no-ext-diff",
             headExists ? "HEAD" : EMPTY_TREE_OBJECT_ID,
-            ...(filePath === undefined ? [] : ["--", ...paths.map((path) => `:(literal)${path}`)]),
+            ...(selectedPath === undefined
+              ? []
+              : ["--", ...paths.map((path) => `:(literal)${path}`)]),
           ],
           {
             allowNonZeroExit: true,
@@ -2099,7 +2136,7 @@ export const makeGitCore = (options?: { executeOverride?: GitCoreShape["execute"
           DEFAULT_MAX_OUTPUT_BYTES,
         );
         return yield* readUntrackedPatches(
-          cwd,
+          diffCwd,
           "GitCore.readWorkingTreePatch",
           accumulator,
           untrackedFiles,

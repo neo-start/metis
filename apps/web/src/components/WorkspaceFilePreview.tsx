@@ -82,6 +82,7 @@ import { resolveWorkspaceFileEditorReadOnlyReason } from "~/lib/workspaceFileEdi
 import { readNativeApi } from "~/nativeApi";
 import ChatMarkdown from "./ChatMarkdown";
 import { DiffTruncationWarning } from "./DiffTruncationWarning";
+import { DiffPanelChangeNavigationButtons } from "./DiffPanelChangeNavigation";
 import { FileLineCommentBox } from "./chat/FileLineCommentBox";
 import { PanelStateMessage } from "./chat/PanelStateMessage";
 import { useFileLineCommenting } from "./chat/useFileLineCommenting";
@@ -102,9 +103,9 @@ export function isMarkdownPreviewablePath(filePath: string): boolean {
 function parentDirectoryFromPath(path: string): string | null {
   const normalized = path.replace(/\\/g, "/");
   const separatorIndex = normalized.lastIndexOf("/");
-  if (separatorIndex <= 0) {
-    return null;
-  }
+  if (separatorIndex < 0) return null;
+  if (separatorIndex === 0) return "/";
+  if (separatorIndex === 2 && /^[a-z]:/i.test(normalized)) return normalized.slice(0, 3);
   return normalized.slice(0, separatorIndex);
 }
 
@@ -470,6 +471,7 @@ function FilePreviewChangeGutter(props: {
           <span
             key={`deleted-${range.startLine}`}
             className="editor-file-viewer__change-notch"
+            data-change-start={range.startLine}
             style={{ top: filePreviewRowOffset(range.startLine) }}
           />
         ) : (
@@ -477,6 +479,7 @@ function FilePreviewChangeGutter(props: {
             key={`${range.kind}-${range.startLine}-${range.endLine}`}
             className="editor-file-viewer__change-bar"
             data-change={range.kind}
+            data-change-start={range.startLine}
             style={{
               top: filePreviewRowOffset(range.startLine - 1),
               height: filePreviewRowSpan(range.endLine - range.startLine + 1),
@@ -644,8 +647,23 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
     fileQuery.data && isWorkspaceRelativePathSafe(fileQuery.data.relativePath)
       ? fileQuery.data.relativePath
       : null;
-  const watchedWorkspaceRelativePath =
+  // An absolute reference may point to a sibling worktree. Only derive its
+  // Git/watch scope after the existing preview grant and file read succeeded.
+  const grantedAbsoluteFile =
+    fileIsLocalAbsolute && localPreviewGrant && fileQuery.data && !fileQuery.data.symlink
+      ? filePath
+      : null;
+  const fileScopeCwd = resolvedWorkspaceRelativePath
+    ? workspaceRoot
+    : grantedAbsoluteFile
+      ? parentDirectoryFromPath(grantedAbsoluteFile)
+      : null;
+  const fileScopePath =
     resolvedWorkspaceRelativePath ??
+    (grantedAbsoluteFile ? basenameOfPath(grantedAbsoluteFile) : null);
+  const watchedFileCwd = fileScopeCwd ?? workspaceRoot;
+  const watchedWorkspaceRelativePath =
+    fileScopePath ??
     ((fileIsImage || fileIsPdf) &&
     workspaceRoot &&
     requestedFilePath &&
@@ -654,22 +672,22 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
       : null);
   const handleWatchedFileChange = useCallback(
     (event: ProjectFileChangeEvent) => {
-      if (!workspaceRoot || !watchedWorkspaceRelativePath) return;
+      if (!watchedFileCwd || !watchedWorkspaceRelativePath) return;
       void refetchFreshProjectFileQuery(queryClient, {
         cwd: workspaceRoot,
-        relativePath: requestedFilePath,
+        relativePath: filePath,
       });
       // The read-only change gutter and any mounted Source control / diff pane
       // render from the active working-tree diff queries, so refresh them now
       // (serialized on the shared Git queue); a bare invalidation would leave
       // them stale until the window regains focus. Only active variants are
       // re-read, so an idle workspace costs nothing here.
-      void refreshGitAfterFileWrite(queryClient, workspaceRoot);
+      void refreshGitAfterFileWrite(queryClient, watchedFileCwd);
       if (fileIsImage || fileIsPdf) {
         setBinaryPreviewReloading(true);
         setBinaryPreviewRevision((current) => current + 1);
       }
-      if (event.type === "changed") {
+      if (event.type === "changed" && !grantedAbsoluteFile) {
         setRelocation((current) =>
           current?.requestedKey === relocationRequestKey ? null : current,
         );
@@ -681,13 +699,15 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
       fileIsPdf,
       queryClient,
       relocationRequestKey,
-      requestedFilePath,
+      filePath,
+      watchedFileCwd,
+      grantedAbsoluteFile,
       watchedWorkspaceRelativePath,
       workspaceRoot,
     ],
   );
   useProjectFileChangeSubscription({
-    cwd: workspaceRoot,
+    cwd: watchedFileCwd,
     relativePath: watchedWorkspaceRelativePath,
     enabled: liveRevalidationEnabled && watchedWorkspaceRelativePath !== null,
     onChange: handleWatchedFileChange,
@@ -803,32 +823,62 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
       cwd: workspaceRoot,
       relativePath: filePath,
     });
-  }, [fileIsImage, fileIsPdf, filePath, queryClient, workspaceRoot]);
+    if (fileScopeCwd) void refreshGitAfterFileWrite(queryClient, fileScopeCwd);
+  }, [fileIsImage, fileIsPdf, filePath, queryClient, workspaceRoot, fileScopeCwd]);
 
   const handleEditBufferReload = editor.reloadFromDisk;
   // Wait for the file read before asking for the working-tree diff: while the
   // read is pending the editable document is still unresolved, and an editor
   // that turns out to be editable never needs the read-only gutter.
   const changeGutterEnabled =
-    props.workspaceRoot !== null &&
-    resolvedWorkspaceRelativePath !== null &&
+    liveRevalidationEnabled &&
+    fileScopeCwd !== null &&
+    fileScopePath !== null &&
     fileQuery.data !== undefined &&
+    !fileQuery.data.symlink &&
+    !fileQuery.data.truncated &&
     !fileIsImage &&
     !fileIsPdf &&
     !showMarkdownPreview &&
     editableDocument === null;
   const workingTreeDiffQuery = useQuery(
     gitWorkingTreeDiffQueryOptions({
-      cwd: props.workspaceRoot,
-      filePath: resolvedWorkspaceRelativePath,
+      cwd: fileScopeCwd,
+      filePath: fileScopePath,
       enabled: changeGutterEnabled,
     }),
   );
   const workingTreePatch = changeGutterEnabled ? workingTreeDiffQuery.data?.patch : undefined;
   const { ranges: changeRanges, wholeFileAddition: changeGutterSubtle } = useMemo(
-    () => extractEditorGutterChanges(workingTreePatch, resolvedWorkspaceRelativePath),
-    [workingTreePatch, resolvedWorkspaceRelativePath],
+    () => extractEditorGutterChanges(workingTreePatch, fileScopePath),
+    [workingTreePatch, fileScopePath],
   );
+  const changeNavigationRef = useRef({ filePath, patch: workingTreePatch, index: -1 });
+  const goToChange = (direction: -1 | 1) => {
+    const container = contentsRef.current;
+    if (!container || changeRanges.length === 0) return;
+    const previous = changeNavigationRef.current;
+    const current =
+      previous.filePath === filePath && previous.patch === workingTreePatch ? previous.index : -1;
+    const index =
+      current === -1
+        ? direction === 1
+          ? 0
+          : changeRanges.length - 1
+        : (current + direction + changeRanges.length) % changeRanges.length;
+    const markers = container.querySelectorAll<HTMLElement>("[data-change-start]");
+    const marker = markers[index];
+    if (!marker) return;
+    changeNavigationRef.current = { filePath, patch: workingTreePatch, index };
+    container.scrollTo({
+      top:
+        container.scrollTop +
+        marker.getBoundingClientRect().top -
+        container.getBoundingClientRect().top -
+        container.clientHeight / 3,
+      behavior: "instant",
+    });
+  };
   // Highlight -> floating "Add to chat" -> reference that points at exactly what
   // was selected, mirroring the transcript flow. In the source view the DOM
   // mirrors the file's lines/columns 1:1, so a selection resolves to an exact
@@ -1090,6 +1140,35 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
         reloading={fileIsImage || fileIsPdf ? binaryPreviewReloading : fileQuery.isFetching}
         onReload={workspaceRoot && filePath ? handleFileReload : undefined}
       />
+      {changeGutterEnabled && changeRanges.length > 0 ? (
+        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border/60 px-3 py-1 text-ui-xs text-muted-foreground">
+          <span
+            className="min-w-0 flex-1 truncate"
+            title="Compared with Git HEAD; includes agent and manual edits."
+          >
+            Uncommitted changes
+          </span>
+          <span className="editor-file-change-legend" data-change="added">
+            Added
+          </span>
+          <span className="editor-file-change-legend" data-change="modified">
+            Modified
+          </span>
+          <span className="editor-file-change-legend" data-change="deleted">
+            Deleted
+          </span>
+          <DiffPanelChangeNavigationButtons
+            navigation={{
+              canGoToPrevious: true,
+              canGoToNext: true,
+              previousShortcutLabel: null,
+              nextShortcutLabel: null,
+              onGoToPrevious: () => goToChange(-1),
+              onGoToNext: () => goToChange(1),
+            }}
+          />
+        </div>
+      ) : null}
       {activeEditBuffer?.error ? (
         <div
           role="alert"
@@ -1217,15 +1296,17 @@ export function WorkspaceFilePreview(props: WorkspaceFilePreviewProps) {
                   />
                 </div>
               ) : (
-                <FileContentsView
-                  path={filePath}
-                  contents={fileContents}
-                  themeName={diffThemeName}
-                />
+                <div className="editor-file-viewer__source">
+                  <FileContentsView
+                    path={filePath}
+                    contents={fileContents}
+                    themeName={diffThemeName}
+                  />
+                  {changeRanges.length > 0 ? (
+                    <FilePreviewChangeGutter ranges={changeRanges} subtle={changeGutterSubtle} />
+                  ) : null}
+                </div>
               )}
-              {!showMarkdownPreview && changeRanges.length > 0 ? (
-                <FilePreviewChangeGutter ranges={changeRanges} subtle={changeGutterSubtle} />
-              ) : null}
               {!showMarkdownPreview && lineCount > 0 ? (
                 <span className="sr-only">{lineCount} lines</span>
               ) : null}
