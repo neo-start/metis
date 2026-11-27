@@ -43,7 +43,7 @@ export interface ThemeState {
   chromeThemes: Record<ThemeVariant, ChromeTheme>;
   codeThemeIds: Record<ThemeVariant, string>;
   mode: ThemeMode;
-  /** Ignore the theme pack's custom UI font and let the native system stack apply. */
+  /** Ignore the theme pack's custom UI font and use the default monospace stack. */
   systemUiFont: boolean;
 }
 
@@ -399,7 +399,7 @@ export function normalizeThemeState(value: unknown): ThemeState {
     },
     mode: isThemeMode(state.mode) ? state.mode : DEFAULT_THEME_STATE.mode,
     // Preserve the UI font older theme states already rendered. New/default states use the
-    // native stack, while an explicit preference always wins after the first save.
+    // monospace stack, while an explicit preference always wins after the first save.
     systemUiFont:
       typeof state.systemUiFont === "boolean" ? state.systemUiFont : !hasStoredCustomUiFont(state),
   };
@@ -796,8 +796,8 @@ export function buildThemeCssVariables(
     "--success": pack.theme.semanticColors.diffAdded,
     "--success-foreground": pack.theme.surface,
     "--theme-font-code-family": normalizeMonospaceFontFamilyCssValue(pack.theme.fonts.code) ?? "",
-    // Empty string → the applier removes the property, so the base -apple-system stack
-    // (SF Pro on macOS) takes over when the user prefers the native font.
+    // Empty string → the applier removes the property, so the bundled JetBrains Mono
+    // stack takes over. Keep the persisted systemUiFont key for existing preferences.
     "--theme-font-ui-family": options?.systemUiFont
       ? ""
       : (normalizeFontFamilyCssValue(pack.theme.fonts.ui) ?? ""),

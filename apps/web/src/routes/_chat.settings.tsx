@@ -861,18 +861,18 @@ function SettingsRouteView() {
 
       <SettingsSection title="Typography and spacing">
         <SettingsRow
-          title="Use system UI font"
-          description="Ignore the theme's custom UI font and render the interface with the native system font (SF Pro on macOS)."
+          title="Use monospace UI font"
+          description="Use JetBrains Mono for the interface and chat text instead of the theme's custom UI font."
           resetAction={
             !systemUiFont ? (
-              <SettingResetButton label="system UI font" onClick={() => setSystemUiFont(true)} />
+              <SettingResetButton label="monospace UI font" onClick={() => setSystemUiFont(true)} />
             ) : null
           }
           control={
             <Switch
               checked={systemUiFont}
               onCheckedChange={(checked) => setSystemUiFont(Boolean(checked))}
-              aria-label="Use system UI font"
+              aria-label="Use monospace UI font"
             />
           }
         />

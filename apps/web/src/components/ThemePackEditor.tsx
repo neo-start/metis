@@ -276,13 +276,13 @@ export function ThemePackEditor({
           <div className="flex flex-col items-end gap-1">
             <FontInput
               value={theme.fonts.ui ?? ""}
-              placeholder="System default"
+              placeholder="Default (JetBrains Mono)"
               ariaLabel={`${titleLabel} UI font`}
               onChange={(next) => updateThemeFonts(variant, { ui: next.length > 0 ? next : null })}
             />
             {systemUiFont ? (
               <span className="text-ui-sm text-muted-foreground">
-                Use system UI font is on; theme fonts are not applied.
+                Use monospace UI font is on; theme fonts are not applied.
               </span>
             ) : null}
           </div>

@@ -110,7 +110,7 @@ Status text is delegated to `resolveThreadStatusPill`; provider icons are delega
 
 ## Typography
 
-Body and controls inherit the theme's UI family, with the native system stack as fallback. Code uses the inherited JetBrains Mono / system monospace stack. Cal Sans remains the existing display/wordmark family; the workbench home does not introduce a new display face.
+Body, chat text, and controls default to the bundled JetBrains Mono with system monospace fallbacks; missing Chinese glyphs use the platform fallback. The monospace UI font setting can be disabled to use the theme's custom UI family. Code uses the inherited JetBrains Mono / system monospace stack. Cal Sans remains the existing display/wordmark family; the workbench home does not introduce a new display face.
 
 `useAppTypography` supplies the scale from Settings. Body follows the chosen base; panel titles use approximately 1.08 times the base and secondary text approximately 0.92 times, rounded and clamped by [appTypography.ts](apps/web/src/lib/appTypography.ts). The default base is 13px. Use the `text-ui`, `text-ui-lg`, `text-ui-sm`, and `text-ui-xs` utilities; transcript content uses `text-chat*`.
 
