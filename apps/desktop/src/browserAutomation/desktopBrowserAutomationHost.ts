@@ -1214,32 +1214,22 @@ export class DesktopBrowserAutomationHost {
     throwIfAborted(signal);
     const url = input.url === undefined ? undefined : validateWebUrl(input.url);
     const show = input.show ?? true;
-    const before = this.browserManager.getState({ threadId: affinity.threadId });
-    const hiddenTabId = !show && (input.reuse ?? true) ? before.activeTabId : null;
-    if (!show) {
-      if (!hiddenTabId) {
-        browserHostError({
-          code: "BrowserHostUnavailable",
-          retryable: true,
-          phase: "runtime",
-          effectMayHaveCommitted: false,
-        });
-      }
-    }
-    throwIfAborted(signal);
-    // A hidden open may only use the tab proven visible below, under both the
-    // per-tab lock and the human-control guard. Preparing browser state here
-    // would reopen, select, or create a renderer before that proof succeeds.
-    const prepared = show
-      ? await this.withVisibilityLock(affinity.threadId, signal, abortError, async () => {
-          markActionStarted();
-          return this.browserManager.prepareAutomationTab({
-            threadId: affinity.threadId,
-            reuse: input.reuse ?? true,
-          });
-        })
-      : before;
-    const selected = show ? prepared.activeTabId : hiddenTabId;
+    const reuse = input.reuse ?? true;
+    const { before, prepared } = await this.withVisibilityLock(
+      affinity.threadId,
+      signal,
+      abortError,
+      async () => {
+        const target = { threadId: affinity.threadId };
+        const before = this.browserManager.getState(target);
+        if (!show && reuse && before.open && before.activeTabId) {
+          return { before, prepared: before };
+        }
+        markActionStarted();
+        return { before, prepared: this.browserManager.prepareAutomationTab({ ...target, reuse }) };
+      },
+    );
+    const selected = prepared.activeTabId;
     if (!selected) throw new Error("Browser open did not create a tab.");
     const disposition = before.tabs.some((tab) => tab.id === selected) ? "reused" : "created";
     return this.withLock(
@@ -1253,7 +1243,7 @@ export class DesktopBrowserAutomationHost {
           interruptByHuman,
           async () => {
             throwIfAborted(signal);
-            if (!show) {
+            if (!show && disposition === "reused") {
               // Keep the potentially slow diagnostics preflight outside the
               // visibility lease. The state is revalidated under that lease
               // immediately before any hidden mutation below.

@@ -32,7 +32,7 @@ export const BROWSER_FIELD_INSTRUCTION_COPY = {
     "Optional advanced retry key. Synara derives a stable key from the authenticated tool request when omitted; provide one only to deliberately deduplicate a byte-identical retry.",
   target:
     "Exactly one target; prefer a current snapshot {ref,snapshotId}, then a literal semantic locator, strict CSS, or an allowed point.",
-  show: "Whether to request the shared browser surface when its owning thread is already active; defaults true and never changes the user's active chat. False reuses an existing scoped tab without requesting UI visibility.",
+  show: "Whether to request the shared browser surface when its owning thread is already active; defaults true and never changes the user's active chat. False opens or reuses a scoped tab without requesting UI visibility.",
   waitUntil:
     "Navigation milestone; domcontentloaded is the default, while networkidle uses Synara's bounded tracker.",
   annotationId:

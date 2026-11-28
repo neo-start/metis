@@ -334,7 +334,7 @@ const createManager = () => {
     threadId: THREAD_ID,
     version: 1,
     open: true,
-    activeTabId: TAB_ID,
+    activeTabId: TAB_ID as string | null,
     tabs: [
       {
         id: TAB_ID,
@@ -858,7 +858,42 @@ describe("DesktopBrowserAutomationHost", () => {
     expect(openPanel).not.toHaveBeenCalled();
   });
 
-  it("never prepares browser state for a hidden open with a URL", async () => {
+  it.each([true, false])(
+    "creates a background tab for the first open (reuse=%s)",
+    async (reuse) => {
+      const { manager, raw } = createManager();
+      const empty = { ...raw.getState(), open: false, activeTabId: null, tabs: [] };
+      raw.getState.mockReturnValueOnce(empty);
+      const openPanel = vi.fn();
+      const host = new DesktopBrowserAutomationHost(manager, { requestOpenPanel: openPanel });
+      const request = { sessionId: "session-hidden-first", provider: "codex", threadId: THREAD_ID };
+      await expect(
+        host.executeTool({
+          ...request,
+          name: "browser_open",
+          arguments: {
+            idempotencyKey: "hidden-first",
+            show: false,
+            reuse,
+            url: "https://example.test/next",
+          },
+        }),
+      ).resolves.toMatchObject({
+        disposition: "created",
+        tabId: TAB_ID,
+        finalUrl: "https://example.test/next",
+      });
+      expect(raw.prepareAutomationTab).toHaveBeenCalledWith({ threadId: THREAD_ID, reuse });
+      expect(openPanel).not.toHaveBeenCalled();
+      await expect(
+        host.executeTool({ ...request, name: "browser_status", arguments: {} }),
+      ).resolves.toMatchObject({
+        assignedTabId: TAB_ID,
+      });
+    },
+  );
+
+  it("reuses the existing tab for a hidden open with a URL", async () => {
     const { manager, raw } = createManager();
     const host = new DesktopBrowserAutomationHost(manager);
 
